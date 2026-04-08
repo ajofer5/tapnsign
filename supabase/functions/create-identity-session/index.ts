@@ -1,54 +1,88 @@
-import Stripe from 'https://esm.sh/stripe@14?target=deno';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { assert, getProfile, handleRequest, json, requireUser, stripe, supabaseAdmin } from '../_shared/utils.ts';
 
-const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!, {
-  apiVersion: '2023-10-16',
-});
+Deno.serve((req) =>
+  handleRequest(async (request) => {
+    const user = await requireUser(request);
+    const profile = await getProfile(user.id);
 
-const supabase = createClient(
-  Deno.env.get('SUPABASE_URL')!,
-  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-);
+    assert(!profile.suspended_at, 403, 'Account is suspended.');
+    assert(!(profile.role === 'verified' && profile.verification_status === 'verified'), 409, 'User is already verified.');
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+    const { data: paymentEvent, error: paymentEventError } = await supabaseAdmin
+      .from('payment_events')
+      .select('id, stripe_payment_intent_id, status')
+      .eq('user_id', user.id)
+      .eq('purpose', 'verification_fee')
+      .in('status', ['created', 'captured'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
-  }
+    if (paymentEventError || !paymentEvent?.stripe_payment_intent_id) {
+      throw new Error(paymentEventError?.message ?? 'No verification payment found.');
+    }
 
-  try {
-    const { user_id } = await req.json();
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentEvent.stripe_payment_intent_id);
+    assert(paymentIntent.status === 'succeeded' || paymentIntent.status === 'processing', 409, 'Verification payment has not completed.');
 
-    if (!user_id) {
-      return new Response(
-        JSON.stringify({ error: 'user_id is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    if (paymentEvent.status !== 'captured') {
+      const { error: paymentUpdateError } = await supabaseAdmin
+        .from('payment_events')
+        .update({
+          status: 'captured',
+          captured_at: new Date().toISOString(),
+        })
+        .eq('id', paymentEvent.id);
+
+      if (paymentUpdateError) {
+        throw new Error(paymentUpdateError.message);
+      }
     }
 
     const verificationSession = await stripe.identity.verificationSessions.create({
       type: 'document',
-      metadata: { supabase_user_id: user_id },
+      metadata: {
+        supabase_user_id: user.id,
+        payment_event_id: paymentEvent.id,
+      },
     });
 
-    await supabase
-      .from('profiles')
-      .update({ verification_status: 'pending' })
-      .eq('id', user_id);
+    const now = new Date().toISOString();
 
-    return new Response(
-      JSON.stringify({ url: verificationSession.url }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  } catch (error: any) {
-    console.error('create-identity-session error:', error.message);
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-});
+    const { error: profileUpdateError } = await supabaseAdmin
+      .from('profiles')
+      .update({
+        verification_status: 'pending',
+        verification_updated_at: now,
+      })
+      .eq('id', user.id);
+
+    if (profileUpdateError) {
+      throw new Error(profileUpdateError.message);
+    }
+
+    const { error: verificationEventError } = await supabaseAdmin
+      .from('verification_events')
+      .insert({
+        user_id: user.id,
+        event_type: 'identity_session_created',
+        status: 'pending',
+        stripe_verification_session_id: verificationSession.id,
+        provider_payload: {
+          url: verificationSession.url,
+          payment_event_id: paymentEvent.id,
+        },
+        processed_at: now,
+      });
+
+    if (verificationEventError) {
+      throw new Error(verificationEventError.message);
+    }
+
+    return json({
+      url: verificationSession.url,
+      verification_session_id: verificationSession.id,
+      payment_event_id: paymentEvent.id,
+    });
+  }, req)
+);

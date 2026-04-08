@@ -1,83 +1,44 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { handleRequest, json, parseJson, requireInternalRequest, requirePositiveInteger, requireString, sendExpoPush, supabaseAdmin } from '../_shared/utils.ts';
 
-const supabase = createClient(
-  Deno.env.get('SUPABASE_URL')!,
-  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-);
+Deno.serve((req) =>
+  handleRequest(async (request) => {
+    requireInternalRequest(request);
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+    const body = await parseJson(request);
+    const autographId = requireString(body.autograph_id, 'autograph_id');
+    const newBidCents = requirePositiveInteger(body.new_bid_cents, 'new_bid_cents');
+    const newBidderId = requireString(body.new_bidder_id, 'new_bidder_id');
 
-async function sendPushNotification(token: string, title: string, body: string) {
-  await fetch('https://exp.host/--/api/v2/push/send', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ to: token, title, body, sound: 'default' }),
-  });
-}
-
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
-  }
-
-  try {
-    const { autograph_id, new_bid_cents, new_bidder_id } = await req.json();
-
-    // Find the previous top bidder (highest bid excluding the new one)
-    const { data: prevBids } = await supabase
+    const { data: prevBids } = await supabaseAdmin
       .from('bids')
       .select('bidder_id, amount_cents')
-      .eq('autograph_id', autograph_id)
-      .neq('bidder_id', new_bidder_id)
+      .eq('autograph_id', autographId)
+      .neq('bidder_id', newBidderId)
+      .in('status', ['active', 'outbid'])
       .order('amount_cents', { ascending: false })
       .limit(1);
 
     const prevBidder = prevBids?.[0];
     if (!prevBidder) {
-      return new Response(JSON.stringify({ sent: false, reason: 'no previous bidder' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return json({ sent: false, reason: 'no previous bidder' });
     }
 
-    // Get their push token
-    const { data: tokenRow } = await supabase
+    const { data: tokenRow } = await supabaseAdmin
       .from('push_tokens')
       .select('token')
       .eq('user_id', prevBidder.bidder_id)
       .maybeSingle();
 
     if (!tokenRow?.token) {
-      return new Response(JSON.stringify({ sent: false, reason: 'no push token' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return json({ sent: false, reason: 'no push token' });
     }
 
-    // Get autograph celebrity name
-    const { data: autograph } = await supabase
-      .from('autographs')
-      .select('celebrity:celebrity_id ( display_name )')
-      .eq('id', autograph_id)
-      .maybeSingle();
-
-    const celebrityName = (autograph?.celebrity as any)?.display_name ?? 'this autograph';
-    const newBidDollars = `$${(new_bid_cents / 100).toFixed(2)}`;
-
-    await sendPushNotification(
+    await sendExpoPush(
       tokenRow.token,
       "You've been outbid!",
-      `Someone bid ${newBidDollars} on ${celebrityName}. Place a higher bid to stay in the lead.`
+      `Someone bid $${(newBidCents / 100).toFixed(2)}. Place a higher bid to stay in the lead.`
     );
 
-    return new Response(JSON.stringify({ sent: true }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-  } catch (error: any) {
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-  }
-});
+    return json({ sent: true });
+  }, req)
+);

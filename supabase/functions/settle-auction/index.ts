@@ -1,154 +1,207 @@
-import Stripe from 'https://esm.sh/stripe@14?target=deno';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-
-const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!, {
-  apiVersion: '2023-10-16',
-});
-
-// Service role key bypasses RLS so we can update any row
-const supabase = createClient(
-  Deno.env.get('SUPABASE_URL')!,
-  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-);
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
-
-async function sendPush(token: string, title: string, body: string) {
-  await fetch('https://exp.host/--/api/v2/push/send', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ to: token, title, body, sound: 'default' }),
-  }).catch(() => {});
-}
+import { handleRequest, json, requireInternalRequest, sendExpoPush, stripe, supabaseAdmin } from '../_shared/utils.ts';
 
 async function getToken(userId: string): Promise<string | null> {
-  const { data } = await supabase.from('push_tokens').select('token').eq('user_id', userId).maybeSingle();
+  const { data } = await supabaseAdmin
+    .from('push_tokens')
+    .select('token')
+    .eq('user_id', userId)
+    .maybeSingle();
+
   return data?.token ?? null;
 }
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+type SettlementPlan = {
+  status: 'not_auction' | 'not_ready' | 'pending_capture' | 'settled' | 'unsold';
+  autograph_id: string;
+  winner_bid_id?: string;
+  winner_bidder_id?: string;
+  winner_amount_cents?: number;
+  winner_payment_event_id?: string;
+  winner_payment_intent_id?: string;
+  seller_id?: string;
+  creator_id?: string;
+  losers?: Array<{
+    bid_id: string;
+    bidder_id: string;
+    payment_event_id: string | null;
+    payment_intent_id: string | null;
+    amount_cents: number;
+  }>;
+};
+
+type SettlementFinalize = {
+  status: 'settled' | 'unsold' | 'capture_retry_needed';
+  transfer_id?: string;
+  winner_bid_id?: string;
+};
+
+async function cancelLoserAuthorizations(losers: SettlementPlan['losers']) {
+  const canceledPaymentEventIds: string[] = [];
+
+  for (const loser of losers ?? []) {
+    if (!loser.payment_intent_id || !loser.payment_event_id) continue;
+
+    try {
+      const intent = await stripe.paymentIntents.retrieve(loser.payment_intent_id);
+      if (intent.status === 'canceled') {
+        canceledPaymentEventIds.push(loser.payment_event_id);
+        continue;
+      }
+
+      if (intent.status === 'requires_capture' || intent.status === 'requires_payment_method' || intent.status === 'requires_confirmation') {
+        await stripe.paymentIntents.cancel(loser.payment_intent_id);
+        canceledPaymentEventIds.push(loser.payment_event_id);
+      }
+    } catch (error) {
+      console.error('Failed to cancel losing auction authorization:', loser.payment_intent_id, error);
+    }
   }
 
-  try {
-    // Find all ended auctions that are still listed for sale
-    const { data: auctions, error: auctionError } = await supabase
-      .from('autographs')
-      .select('id, reserve_price_cents, celebrity_id')
-      .eq('is_for_sale', true)
-      .eq('listing_type', 'auction')
-      .lt('auction_ends_at', new Date().toISOString());
+  return canceledPaymentEventIds;
+}
 
-    if (auctionError) throw auctionError;
+async function notifySettlement(plan: SettlementPlan, finalize: SettlementFinalize) {
+  if (plan.status === 'unsold' || finalize.status === 'unsold') return;
+  if (!plan.winner_bidder_id || !plan.seller_id) return;
+
+  const winnerToken = await getToken(plan.winner_bidder_id);
+  if (winnerToken && typeof plan.winner_amount_cents === 'number') {
+    const amount = `$${(plan.winner_amount_cents / 100).toFixed(2)}`;
+    await sendExpoPush(winnerToken, 'You won the auction!', `Congratulations! You won the auction for ${amount}.`);
+  }
+
+  for (const loser of plan.losers ?? []) {
+    if (loser.bidder_id === plan.winner_bidder_id) continue;
+    const loserToken = await getToken(loser.bidder_id);
+    if (loserToken) {
+      await sendExpoPush(loserToken, 'Auction ended', 'The auction ended and you did not win this autograph.');
+    }
+  }
+}
+
+Deno.serve((req) =>
+  handleRequest(async (request) => {
+    requireInternalRequest(request);
+
+    const nowIso = new Date().toISOString();
+    const { data: auctions, error: auctionsError } = await supabaseAdmin
+      .from('autographs')
+      .select('id')
+      .or(`and(listing_type.eq.auction,is_for_sale.eq.true,auction_ends_at.lt.${nowIso}),auction_settlement_status.eq.pending_capture,auction_settlement_status.eq.settled,auction_settlement_status.eq.unsold`);
+
+    if (auctionsError) {
+      throw new Error(auctionsError.message);
+    }
 
     let settled = 0;
     let unsold = 0;
+    let captureRetryNeeded = 0;
+    let cleanupCanceled = 0;
 
     for (const auction of auctions ?? []) {
-      // Get the top bid for this auction
-      const { data: topBid } = await supabase
-        .from('bids')
-        .select('id, bidder_id, amount_cents, payment_intent_id')
-        .eq('autograph_id', auction.id)
-        .order('amount_cents', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      const { data: plan, error: planError } = await supabaseAdmin
+        .rpc('rpc_start_auction_settlement', {
+          p_autograph_id: auction.id,
+        });
 
-      const reserveMet =
-        topBid &&
-        topBid.amount_cents >= (auction.reserve_price_cents ?? 0);
+      if (planError || !plan) {
+        console.error('rpc_start_auction_settlement failed:', auction.id, planError?.message);
+        continue;
+      }
 
-      if (!reserveMet || !topBid?.payment_intent_id) {
-        // No qualifying bid — unlist without charging
-        await supabase
-          .from('autographs')
-          .update({ is_for_sale: false })
-          .eq('id', auction.id);
+      const typedPlan = plan as SettlementPlan;
+      if (typedPlan.status === 'not_auction' || typedPlan.status === 'not_ready') {
+        continue;
+      }
 
-        // Cancel any payment intents that exist (bids without reserve met)
-        if (topBid) {
-          const { data: allBids } = await supabase
-            .from('bids')
-            .select('payment_intent_id')
-            .eq('autograph_id', auction.id)
-            .not('payment_intent_id', 'is', null);
+      const canceledPaymentEventIds = await cancelLoserAuthorizations(typedPlan.losers);
+      cleanupCanceled += canceledPaymentEventIds.length;
 
-          for (const bid of allBids ?? []) {
-            await stripe.paymentIntents.cancel(bid.payment_intent_id!).catch(() => {});
-          }
+      if (typedPlan.status === 'settled') {
+        const { error: finalizeError } = await supabaseAdmin
+          .rpc('rpc_finalize_auction_settlement', {
+            p_autograph_id: auction.id,
+            p_winner_bid_id: typedPlan.winner_bid_id,
+            p_capture_succeeded: true,
+            p_canceled_loser_payment_event_ids: canceledPaymentEventIds,
+          });
+
+        if (finalizeError) {
+          console.error('rpc_finalize_auction_settlement settled cleanup failed:', auction.id, finalizeError.message);
+        }
+        continue;
+      }
+
+      if (typedPlan.status === 'unsold') {
+        const { data: finalize, error: finalizeError } = await supabaseAdmin
+          .rpc('rpc_finalize_auction_settlement', {
+            p_autograph_id: auction.id,
+            p_winner_bid_id: null,
+            p_capture_succeeded: false,
+            p_canceled_loser_payment_event_ids: canceledPaymentEventIds,
+          });
+
+        if (finalizeError || !finalize) {
+          console.error('rpc_finalize_auction_settlement unsold failed:', auction.id, finalizeError?.message);
+          continue;
         }
 
         unsold++;
         continue;
       }
 
-      // Capture the winning payment
-      try {
-        await stripe.paymentIntents.capture(topBid.payment_intent_id);
-      } catch (captureError: any) {
-        console.error(`Failed to capture payment for auction ${auction.id}:`, captureError.message);
-        // Skip this auction — will retry next cron cycle
+      if (!typedPlan.winner_payment_intent_id || !typedPlan.winner_bid_id) {
+        console.error('Auction settlement plan missing winner payment reference:', auction.id);
         continue;
       }
 
-      // Transfer ownership to the winner
-      await supabase
-        .from('autographs')
-        .update({ owner_id: topBid.bidder_id, is_for_sale: false })
-        .eq('id', auction.id);
-
-      await supabase.from('transfers').insert({
-        autograph_id: auction.id,
-        from_user_id: auction.celebrity_id,
-        to_user_id: topBid.bidder_id,
-        price_cents: topBid.amount_cents,
-      });
-
-      // Cancel all losing bids' payment authorizations and notify losers
-      const { data: losingBids } = await supabase
-        .from('bids')
-        .select('id, bidder_id, payment_intent_id')
-        .eq('autograph_id', auction.id)
-        .neq('id', topBid.id);
-
-      const celebrityName = (auction as any).celebrity_name ?? 'the autograph';
-
-      for (const loser of losingBids ?? []) {
-        if (loser.payment_intent_id) {
-          await stripe.paymentIntents.cancel(loser.payment_intent_id).catch(() => {});
+      let captureSucceeded = false;
+      try {
+        const intent = await stripe.paymentIntents.retrieve(typedPlan.winner_payment_intent_id);
+        if (intent.status === 'succeeded') {
+          captureSucceeded = true;
+        } else if (intent.status === 'requires_capture') {
+          await stripe.paymentIntents.capture(typedPlan.winner_payment_intent_id);
+          captureSucceeded = true;
+        } else {
+          console.error('Winner payment intent not capturable:', typedPlan.winner_payment_intent_id, intent.status);
         }
-        const loserToken = await getToken(loser.bidder_id);
-        if (loserToken) {
-          await sendPush(loserToken, 'Auction ended', `The auction ended — you were outbid on ${celebrityName}.`);
-        }
+      } catch (error) {
+        console.error('Failed to capture winning auction authorization:', typedPlan.winner_payment_intent_id, error);
       }
 
-      // Notify the winner
-      const winnerToken = await getToken(topBid.bidder_id);
-      if (winnerToken) {
-        const amount = `$${(topBid.amount_cents / 100).toFixed(2)}`;
-        await sendPush(winnerToken, 'You won the auction!', `Congratulations! You won ${celebrityName} for ${amount}.`);
+      const { data: finalize, error: finalizeError } = await supabaseAdmin
+        .rpc('rpc_finalize_auction_settlement', {
+          p_autograph_id: auction.id,
+          p_winner_bid_id: typedPlan.winner_bid_id,
+          p_capture_succeeded: captureSucceeded,
+          p_canceled_loser_payment_event_ids: canceledPaymentEventIds,
+        });
+
+      if (finalizeError || !finalize) {
+        console.error('rpc_finalize_auction_settlement failed:', auction.id, finalizeError?.message);
+        continue;
       }
 
-      // Clean up all bids for this auction
-      await supabase.from('bids').delete().eq('autograph_id', auction.id);
+      const typedFinalize = finalize as SettlementFinalize;
+      if (typedFinalize.status === 'capture_retry_needed') {
+        captureRetryNeeded++;
+        continue;
+      }
 
-      settled++;
+      if (typedFinalize.status === 'settled') {
+        settled++;
+        await notifySettlement(typedPlan, typedFinalize);
+      } else if (typedFinalize.status === 'unsold') {
+        unsold++;
+      }
     }
 
-    return new Response(
-      JSON.stringify({ settled, unsold }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  } catch (error: any) {
-    console.error('settle-auction error:', error.message);
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-});
+    return json({
+      settled,
+      unsold,
+      capture_retry_needed: captureRetryNeeded,
+      loser_authorizations_canceled: cleanupCanceled,
+    });
+  }, req)
+);

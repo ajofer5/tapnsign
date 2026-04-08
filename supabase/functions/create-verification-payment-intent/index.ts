@@ -1,36 +1,108 @@
-import Stripe from 'https://esm.sh/stripe@14?target=deno';
+import { assert, getIdempotencyKey, getProfile, getRequestId, handleRequest, json, requireUser, stripe, supabaseAdmin } from '../_shared/utils.ts';
 
-const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!, {
-  apiVersion: '2023-10-16',
-});
+const VERIFICATION_FEE_CENTS = 499;
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+Deno.serve((req) =>
+  handleRequest(async (request) => {
+    const user = await requireUser(request);
+    let body: Record<string, unknown> = {};
+    try {
+      body = await request.clone().json();
+    } catch {
+      body = {};
+    }
+    const profile = await getProfile(user.id);
+    const idempotencyKey = getIdempotencyKey(request, body, `verification:${user.id}`);
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
-  }
+    assert(!profile.suspended_at, 403, 'Account is suspended.');
+    assert(!(profile.role === 'verified' && profile.verification_status === 'verified'), 409, 'User is already verified.');
 
-  try {
+    const { data: existingEvent } = await supabaseAdmin
+      .from('payment_events')
+      .select('id, stripe_payment_intent_id, amount_cents')
+      .eq('user_id', user.id)
+      .eq('purpose', 'verification_fee')
+      .eq('idempotency_key', idempotencyKey)
+      .in('status', ['created', 'requires_action', 'authorized', 'captured'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (existingEvent?.stripe_payment_intent_id) {
+      const existingIntent = await stripe.paymentIntents.retrieve(existingEvent.stripe_payment_intent_id);
+      return json({
+        client_secret: existingIntent.client_secret,
+        payment_intent_id: existingIntent.id,
+        payment_event_id: existingEvent.id,
+        amount_cents: existingEvent.amount_cents,
+        reused: true,
+      });
+    }
+
+    const requestId = getRequestId();
     const paymentIntent = await stripe.paymentIntents.create({
-      amount: 499,
+      amount: VERIFICATION_FEE_CENTS,
       currency: 'usd',
-      metadata: { purpose: 'identity_verification' },
       automatic_payment_methods: { enabled: true },
+      metadata: {
+        request_id: requestId,
+        purpose: 'verification_fee',
+        user_id: user.id,
+      },
+    }, {
+      idempotencyKey,
     });
 
-    return new Response(
-      JSON.stringify({ client_secret: paymentIntent.client_secret }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  } catch (error: any) {
-    console.error('create-verification-payment-intent error:', error.message);
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-});
+    const { data: paymentEvent, error } = await supabaseAdmin
+      .from('payment_events')
+      .insert({
+        provider: 'stripe',
+        purpose: 'verification_fee',
+        status: 'created',
+        user_id: user.id,
+        amount_cents: VERIFICATION_FEE_CENTS,
+        currency: 'usd',
+        idempotency_key: idempotencyKey,
+        stripe_payment_intent_id: paymentIntent.id,
+        provider_metadata: {
+          request_id: requestId,
+        },
+      })
+      .select('id')
+      .single();
+
+    if (error || !paymentEvent) {
+      const { data: retryEvent } = await supabaseAdmin
+        .from('payment_events')
+        .select('id, stripe_payment_intent_id, amount_cents')
+        .eq('user_id', user.id)
+        .eq('purpose', 'verification_fee')
+        .eq('idempotency_key', idempotencyKey)
+        .in('status', ['created', 'requires_action', 'authorized', 'captured'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (retryEvent?.stripe_payment_intent_id) {
+        const retryIntent = await stripe.paymentIntents.retrieve(retryEvent.stripe_payment_intent_id);
+        return json({
+          client_secret: retryIntent.client_secret,
+          payment_intent_id: retryIntent.id,
+          payment_event_id: retryEvent.id,
+          amount_cents: retryEvent.amount_cents,
+          reused: true,
+        });
+      }
+
+      throw new Error(error?.message ?? 'Could not create payment event.');
+    }
+
+    return json({
+      client_secret: paymentIntent.client_secret,
+      payment_intent_id: paymentIntent.id,
+      payment_event_id: paymentEvent.id,
+      amount_cents: VERIFICATION_FEE_CENTS,
+      reused: false,
+    });
+  }, req)
+);
