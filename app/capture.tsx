@@ -298,11 +298,23 @@ export default function CaptureScreen() {
         capture_width: captureSize.width,
         capture_height: captureSize.height,
         content_hash: contentHash,
+        listing_type: null,
+        is_for_sale: false,
+        open_to_trade: false,
+        price_cents: null,
+        reserve_price_cents: null,
+        auction_ends_at: null,
+        latest_transfer_id: null,
+        media_asset_id: null,
       };
 
-      const { error: insertError } = await supabase
+      console.log('Autograph insert payload', autographInsertPayload);
+
+      const { data: insertedAutograph, error: insertError } = await supabase
         .from('autographs')
-        .insert(autographInsertPayload, { defaultToNull: true });
+        .insert(autographInsertPayload, { defaultToNull: true })
+        .select('id, certificate_id, listing_type, is_for_sale, open_to_trade')
+        .single();
 
       if (insertError) {
         console.log('Autograph insert failed', {
@@ -314,6 +326,8 @@ export default function CaptureScreen() {
         });
         throw insertError;
       }
+
+      console.log('Autograph insert succeeded', insertedAutograph);
 
       // Keep local AsyncStorage record for offline viewing
       const newItem = {
