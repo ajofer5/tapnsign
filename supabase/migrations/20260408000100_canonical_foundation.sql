@@ -116,7 +116,7 @@ create or replace function public.generate_certificate_id()
 returns text
 language sql
 as $$
-  select upper(encode(gen_random_bytes(10), 'hex'));
+  select upper(replace(gen_random_uuid()::text, '-', ''));
 $$;
 
 create or replace function public.handle_new_user_profile()
@@ -169,6 +169,15 @@ create table if not exists public.profiles (
 comment on table public.profiles is 'Public user profile and verification state. Sensitive trust fields are backend-controlled.';
 comment on column public.profiles.role is 'Trust role. Must not be client-writeable.';
 comment on column public.profiles.verification_status is 'Stripe identity state. Must not be client-writeable.';
+
+alter table public.profiles
+  add column if not exists display_name text,
+  add column if not exists role public.profile_role default 'member',
+  add column if not exists verification_status public.verification_status default 'none',
+  add column if not exists created_at timestamptz default now(),
+  add column if not exists updated_at timestamptz default now(),
+  add column if not exists verification_updated_at timestamptz,
+  add column if not exists suspended_at timestamptz;
 
 create table if not exists public.autographs (
   id uuid primary key default gen_random_uuid(),
@@ -230,6 +239,16 @@ comment on column public.autographs.celebrity_id is 'Original creator/signer acc
 comment on column public.autographs.owner_id is 'Current owner. Must not be client-writeable after creation.';
 comment on column public.autographs.content_hash is 'App-level authenticity/provenance hash. Should become backend-generated in later phases.';
 
+alter table public.autographs
+  add column if not exists certificate_id text,
+  add column if not exists status public.autograph_status default 'active',
+  add column if not exists ownership_source public.ownership_event_source default 'capture',
+  add column if not exists certificate_version integer default 1,
+  add column if not exists updated_at timestamptz default now(),
+  add column if not exists integrity_manifest_hash text,
+  add column if not exists media_asset_id uuid,
+  add column if not exists latest_transfer_id uuid;
+
 create table if not exists public.media_assets (
   id uuid primary key default gen_random_uuid(),
   autograph_id uuid not null references public.autographs(id) on delete cascade,
@@ -289,6 +308,12 @@ create table if not exists public.trade_offers (
 
 comment on table public.trade_offers is 'Trade proposals. Accept/decline is backend-only.';
 
+alter table public.trade_offers
+  add column if not exists status public.trade_offer_status default 'pending',
+  add column if not exists responded_at timestamptz,
+  add column if not exists expires_at timestamptz,
+  add column if not exists accepted_transfer_id uuid;
+
 create table if not exists public.bids (
   id uuid primary key default gen_random_uuid(),
   autograph_id uuid not null references public.autographs(id) on delete cascade,
@@ -304,6 +329,12 @@ create table if not exists public.bids (
 );
 
 comment on table public.bids is 'Auction bids. Client writes are intentionally locked down until server-side bid flows exist.';
+
+alter table public.bids
+  add column if not exists status public.bid_status default 'active',
+  add column if not exists payment_event_id uuid,
+  add column if not exists settled_at timestamptz,
+  add column if not exists voided_at timestamptz;
 
 create table if not exists public.transfers (
   id uuid primary key default gen_random_uuid(),
@@ -322,6 +353,13 @@ create table if not exists public.transfers (
 );
 
 comment on table public.transfers is 'Immutable ownership transfer history.';
+
+alter table public.transfers
+  add column if not exists transfer_type public.transfer_type default 'secondary_sale',
+  add column if not exists trade_offer_id uuid,
+  add column if not exists payment_event_id uuid,
+  add column if not exists created_at timestamptz default now(),
+  add column if not exists created_by_backend boolean default true;
 
 create table if not exists public.verification_events (
   id uuid primary key default gen_random_uuid(),
@@ -362,6 +400,14 @@ create table if not exists public.push_tokens (
 
 comment on table public.push_tokens is 'Current push token per user. Kept one-per-user for temporary app compatibility.';
 
+alter table public.push_tokens
+  add column if not exists id uuid default gen_random_uuid(),
+  add column if not exists platform text,
+  add column if not exists device_label text,
+  add column if not exists created_at timestamptz default now(),
+  add column if not exists last_seen_at timestamptz default now(),
+  add column if not exists revoked_at timestamptz;
+
 alter table public.autographs
   add constraint autographs_media_asset_id_fkey
   foreign key (media_asset_id)
@@ -401,6 +447,25 @@ create index if not exists trade_offers_target_owner_idx on public.trade_offers 
 create index if not exists trade_offers_offerer_idx on public.trade_offers (offerer_id, created_at desc);
 create index if not exists trade_offers_target_autograph_idx on public.trade_offers (target_autograph_id, created_at desc);
 create index if not exists trade_offers_status_idx on public.trade_offers (status, created_at desc);
+with ranked_pending_trade_offers as (
+  select
+    id,
+    row_number() over (
+      partition by offered_autograph_id, target_autograph_id
+      order by created_at desc, id desc
+    ) as pending_rank
+  from public.trade_offers
+  where status = 'pending'
+)
+update public.trade_offers
+set
+  status = 'declined',
+  responded_at = coalesce(responded_at, now())
+where id in (
+  select id
+  from ranked_pending_trade_offers
+  where pending_rank > 1
+);
 create unique index if not exists trade_offers_pending_pair_idx
   on public.trade_offers (offered_autograph_id, target_autograph_id)
   where status = 'pending';
