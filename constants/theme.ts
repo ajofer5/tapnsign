@@ -5,6 +5,16 @@
 
 import { Platform } from 'react-native';
 
+export const BrandColors = {
+  background: '#F2F2F4',
+  primary: '#E53935',
+};
+
+export const BrandFonts = {
+  primary: 'Arial',
+  script: Platform.OS === 'ios' ? 'SignPainter-HouseScript' : 'serif',
+};
+
 const tintColorLight = '#0a7ea4';
 const tintColorDark = '#fff';
 

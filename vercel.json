@@ -1,0 +1,14 @@
+{
+  "redirects": [
+    { "source": "/", "destination": "https://tapnsign.com", "permanent": false },
+    { "source": "/login", "destination": "https://tapnsign.com", "permanent": false },
+    { "source": "/signup", "destination": "https://tapnsign.com", "permanent": false },
+    { "source": "/autographs", "destination": "https://tapnsign.com", "permanent": false },
+    { "source": "/capture", "destination": "https://tapnsign.com", "permanent": false },
+    { "source": "/thankyou", "destination": "https://tapnsign.com", "permanent": false },
+    { "source": "/marketplace", "destination": "https://tapnsign.com", "permanent": false }
+  ],
+  "rewrites": [
+    { "source": "/verify/:id", "destination": "/index.html" }
+  ]
+}

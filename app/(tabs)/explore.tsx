@@ -1,112 +1,250 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { BrandColors, BrandFonts } from '@/constants/theme';
+import { useAuth } from '@/lib/auth-context';
+import { useStripe } from '@stripe/stripe-react-native';
+import * as WebBrowser from 'expo-web-browser';
+import { useState } from 'react';
+import { Alert, ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { Collapsible } from '@/components/ui/collapsible';
-import { ExternalLink } from '@/components/external-link';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Fonts } from '@/constants/theme';
+export default function AccountScreen() {
+  const { profile, user, signOut, refreshProfile } = useAuth();
+  const { initPaymentSheet, presentPaymentSheet } = useStripe();
+  const [verifying, setVerifying] = useState(false);
 
-export default function TabTwoScreen() {
+  const handleApplyForVerification = async () => {
+    if (!user) return;
+    setVerifying(true);
+
+    try {
+      // Step 1: Create payment intent for $4.99
+      const paymentResponse = await fetch(
+        `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/create-verification-payment-intent`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+      const paymentData = await paymentResponse.json();
+
+      if (!paymentResponse.ok || !paymentData?.client_secret) {
+        Alert.alert('Error', paymentData?.error ?? 'Could not start payment. Please try again.');
+        setVerifying(false);
+        return;
+      }
+
+      // Step 2: Present payment sheet
+      const { error: initError } = await initPaymentSheet({
+        paymentIntentClientSecret: paymentData.client_secret,
+        merchantDisplayName: 'TapnSign',
+      });
+
+      if (initError) {
+        Alert.alert('Error', initError.message);
+        setVerifying(false);
+        return;
+      }
+
+      const { error: paymentError } = await presentPaymentSheet();
+      if (paymentError) {
+        if (paymentError.code !== 'Canceled') {
+          Alert.alert('Payment Failed', paymentError.message);
+        }
+        setVerifying(false);
+        return;
+      }
+
+      // Step 3: Create identity verification session
+      const identityResponse = await fetch(
+        `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/create-identity-session`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ user_id: user.id }),
+        }
+      );
+      const identityData = await identityResponse.json();
+
+      if (!identityResponse.ok || !identityData?.url) {
+        Alert.alert('Error', identityData?.error ?? 'Payment received but could not start identity check. Contact support.');
+        setVerifying(false);
+        return;
+      }
+
+      // Step 4: Open Stripe Identity in browser
+      await WebBrowser.openBrowserAsync(identityData.url);
+
+      // Refresh profile to show pending status
+      await refreshProfile();
+    } catch (e: any) {
+      Alert.alert('Error', e.message ?? 'Something went wrong.');
+    }
+
+    setVerifying(false);
+  };
+
+  const verificationStatus = profile?.verification_status ?? 'none';
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#D0D0D0', dark: '#353636' }}
-      headerImage={
-        <IconSymbol
-          size={310}
-          color="#808080"
-          name="chevron.left.forwardslash.chevron.right"
-          style={styles.headerImage}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText
-          type="title"
-          style={{
-            fontFamily: Fonts.rounded,
-          }}>
-          Explore
-        </ThemedText>
-      </ThemedView>
-      <ThemedText>This app includes example code to help you get started.</ThemedText>
-      <Collapsible title="File-based routing">
-        <ThemedText>
-          This app has two screens:{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/explore.tsx</ThemedText>
-        </ThemedText>
-        <ThemedText>
-          The layout file in <ThemedText type="defaultSemiBold">app/(tabs)/_layout.tsx</ThemedText>{' '}
-          sets up the tab navigator.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/router/introduction">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Android, iOS, and web support">
-        <ThemedText>
-          You can open this project on Android, iOS, and the web. To open the web version, press{' '}
-          <ThemedText type="defaultSemiBold">w</ThemedText> in the terminal running this project.
-        </ThemedText>
-      </Collapsible>
-      <Collapsible title="Images">
-        <ThemedText>
-          For static images, you can use the <ThemedText type="defaultSemiBold">@2x</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">@3x</ThemedText> suffixes to provide files for
-          different screen densities
-        </ThemedText>
-        <Image
-          source={require('@/assets/images/react-logo.png')}
-          style={{ width: 100, height: 100, alignSelf: 'center' }}
-        />
-        <ExternalLink href="https://reactnative.dev/docs/images">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Light and dark mode components">
-        <ThemedText>
-          This template has light and dark mode support. The{' '}
-          <ThemedText type="defaultSemiBold">useColorScheme()</ThemedText> hook lets you inspect
-          what the user&apos;s current color scheme is, and so you can adjust UI colors accordingly.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/develop/user-interface/color-themes/">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Animations">
-        <ThemedText>
-          This template includes an example of an animated component. The{' '}
-          <ThemedText type="defaultSemiBold">components/HelloWave.tsx</ThemedText> component uses
-          the powerful{' '}
-          <ThemedText type="defaultSemiBold" style={{ fontFamily: Fonts.mono }}>
-            react-native-reanimated
-          </ThemedText>{' '}
-          library to create a waving hand animation.
-        </ThemedText>
-        {Platform.select({
-          ios: (
-            <ThemedText>
-              The <ThemedText type="defaultSemiBold">components/ParallaxScrollView.tsx</ThemedText>{' '}
-              component provides a parallax effect for the header image.
-            </ThemedText>
-          ),
-        })}
-      </Collapsible>
-    </ParallaxScrollView>
+    <View style={styles.container}>
+      <Text style={styles.title}>Account</Text>
+
+      <View style={styles.card}>
+        <Row label="Name" value={profile?.display_name ?? '—'} />
+        <Row label="Email" value={user?.email ?? '—'} />
+        <Row label="Status" value={profile?.role === 'verified' ? 'Verified' : 'Member'} />
+      </View>
+
+      {profile?.role === 'member' && verificationStatus === 'none' && (
+        <Pressable style={styles.verifyButton} onPress={handleApplyForVerification} disabled={verifying}>
+          {verifying
+            ? <ActivityIndicator color="#fff" />
+            : <Text style={styles.verifyButtonText}>Apply for Verification — $4.99</Text>
+          }
+        </Pressable>
+      )}
+
+      {profile?.role === 'member' && verificationStatus === 'pending' && (
+        <View style={styles.pendingBanner}>
+          <Text style={styles.pendingText}>Verification Pending</Text>
+          <Text style={styles.pendingSubtext}>We're reviewing your ID. This usually takes a few minutes.</Text>
+        </View>
+      )}
+
+      {profile?.role === 'member' && verificationStatus === 'failed' && (
+        <>
+          <View style={styles.failedBanner}>
+            <Text style={styles.failedText}>Verification Failed</Text>
+            <Text style={styles.failedSubtext}>We could not verify your identity. Please try again.</Text>
+          </View>
+          <Pressable style={styles.verifyButton} onPress={handleApplyForVerification} disabled={verifying}>
+            {verifying
+              ? <ActivityIndicator color="#fff" />
+              : <Text style={styles.verifyButtonText}>Retry Verification — $4.99</Text>
+            }
+          </Pressable>
+        </>
+      )}
+
+      <Pressable style={styles.signOutButton} onPress={signOut}>
+        <Text style={styles.signOutText}>Sign Out</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.row}>
+      <Text style={styles.label}>{label}</Text>
+      <Text style={styles.value}>{value}</Text>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  headerImage: {
-    color: '#808080',
-    bottom: -90,
-    left: -35,
-    position: 'absolute',
+  container: {
+    flex: 1,
+    backgroundColor: BrandColors.background,
+    paddingHorizontal: 24,
+    paddingTop: 80,
   },
-  titleContainer: {
+  title: {
+    fontSize: 56,
+    lineHeight: 72,
+    fontFamily: BrandFonts.primary,
+    color: '#111',
+    marginBottom: 32,
+  },
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    paddingHorizontal: 20,
+    marginBottom: 24,
+  },
+  row: {
     flexDirection: 'row',
-    gap: 8,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  label: {
+    fontSize: 16,
+    color: '#666',
+    fontFamily: BrandFonts.primary,
+  },
+  value: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111',
+    fontFamily: BrandFonts.primary,
+  },
+  verifyButton: {
+    backgroundColor: BrandColors.primary,
+    borderRadius: 10,
+    paddingVertical: 16,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  verifyButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    fontFamily: BrandFonts.primary,
+  },
+  pendingBanner: {
+    backgroundColor: '#FFF8E1',
+    borderRadius: 10,
+    padding: 16,
+    marginBottom: 16,
+  },
+  pendingText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#F57F17',
+    fontFamily: BrandFonts.primary,
+    marginBottom: 4,
+  },
+  pendingSubtext: {
+    fontSize: 13,
+    color: '#F57F17',
+    fontFamily: BrandFonts.primary,
+  },
+  failedBanner: {
+    backgroundColor: '#FFEBEE',
+    borderRadius: 10,
+    padding: 16,
+    marginBottom: 12,
+  },
+  failedText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#111',
+    fontFamily: BrandFonts.primary,
+    marginBottom: 4,
+  },
+  failedSubtext: {
+    fontSize: 13,
+    color: '#111',
+    fontFamily: BrandFonts.primary,
+  },
+  signOutButton: {
+    backgroundColor: BrandColors.primary,
+    borderRadius: 10,
+    paddingVertical: 16,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  signOutText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
+    fontFamily: BrandFonts.primary,
   },
 });
