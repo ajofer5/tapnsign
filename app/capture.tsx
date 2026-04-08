@@ -290,7 +290,7 @@ export default function CaptureScreen() {
       );
 
       // Insert autograph record
-      const { error: insertError } = await supabase.from('autographs').insert({
+      const autographInsertPayload = {
         celebrity_id: user!.id,
         owner_id: user!.id,
         video_url: publicUrl,
@@ -298,9 +298,22 @@ export default function CaptureScreen() {
         capture_width: captureSize.width,
         capture_height: captureSize.height,
         content_hash: contentHash,
-      });
+      };
 
-      if (insertError) throw insertError;
+      const { error: insertError } = await supabase
+        .from('autographs')
+        .insert(autographInsertPayload, { defaultToNull: true });
+
+      if (insertError) {
+        console.log('Autograph insert failed', {
+          message: insertError.message,
+          details: (insertError as any).details ?? null,
+          hint: (insertError as any).hint ?? null,
+          code: (insertError as any).code ?? null,
+          payload: autographInsertPayload,
+        });
+        throw insertError;
+      }
 
       // Keep local AsyncStorage record for offline viewing
       const newItem = {
@@ -323,7 +336,12 @@ export default function CaptureScreen() {
       router.push('/thankyou');
     } catch (error: any) {
       const message = error?.message ?? error?.error_description ?? JSON.stringify(error);
-      console.log('Capture error:', message);
+      console.log('Capture error:', {
+        message,
+        details: error?.details ?? null,
+        hint: error?.hint ?? null,
+        code: error?.code ?? null,
+      });
       Alert.alert('Capture Failed', message);
       resetState();
     }
