@@ -1,5 +1,6 @@
 import { BrandColors, BrandFonts } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
+import { callEdgeFunction } from '@/lib/api';
 import { supabase } from '@/lib/supabase';
 import { AVPlaybackStatus, ResizeMode, Video } from 'expo-av';
 import { useFocusEffect } from 'expo-router';
@@ -253,20 +254,19 @@ export default function AutographsScreen() {
         return;
       }
       setSaving(true);
-      await supabase.from('trade_offers').delete().eq('target_autograph_id', sellItem.id).eq('status', 'pending');
-      const { error } = await supabase
-        .from('autographs')
-        .update({
-          is_for_sale: true,
+      let errorMessage: string | null = null;
+      try {
+        await callEdgeFunction('create-listing', {
+          autograph_id: sellItem.id,
           listing_type: 'fixed',
           price_cents: Math.round(dollars * 100),
-          reserve_price_cents: null,
-          auction_ends_at: null,
           open_to_trade: openToTradeToo,
-        })
-        .eq('id', sellItem.id);
+        });
+      } catch (error: any) {
+        errorMessage = error.message ?? 'Could not create listing.';
+      }
       setSaving(false);
-      if (error) { Alert.alert('Error', error.message); return; }
+      if (errorMessage) { Alert.alert('Error', errorMessage); return; }
       setData((prev) => prev.map((i) =>
         i.id === sellItem.id
           ? { ...i, isForSale: true, priceCents: Math.round(dollars * 100), listingType: 'fixed', openToTrade: openToTradeToo }
@@ -286,20 +286,19 @@ export default function AutographsScreen() {
       const endsAt = new Date();
       endsAt.setDate(endsAt.getDate() + durationDays);
       setSaving(true);
-      // Clear any old bids so the auction starts fresh
-      await supabase.from('bids').delete().eq('autograph_id', sellItem.id);
-      const { error } = await supabase
-        .from('autographs')
-        .update({
-          is_for_sale: true,
+      let errorMessage: string | null = null;
+      try {
+        await callEdgeFunction('create-listing', {
+          autograph_id: sellItem.id,
           listing_type: 'auction',
           reserve_price_cents: Math.round(reserve * 100),
           auction_ends_at: endsAt.toISOString(),
-          price_cents: null,
-        })
-        .eq('id', sellItem.id);
+        });
+      } catch (error: any) {
+        errorMessage = error.message ?? 'Could not create auction.';
+      }
       setSaving(false);
-      if (error) { Alert.alert('Error', error.message); return; }
+      if (errorMessage) { Alert.alert('Error', errorMessage); return; }
       setData((prev) => prev.map((i) =>
         i.id === sellItem.id
           ? { ...i, isForSale: true, listingType: 'auction', reservePriceCents: Math.round(reserve * 100), auctionEndsAt: endsAt.toISOString(), topBidCents: null }
@@ -314,43 +313,18 @@ export default function AutographsScreen() {
 
   const handleRemoveFromTrade = (item: AutographItem) => {
     Alert.alert(
-      'Remove Trade Listing',
-      'Are you sure you want to stop accepting trade offers for this autograph?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: async () => {
-            await supabase.from('trade_offers').delete().eq('target_autograph_id', item.id).eq('status', 'pending');
-            const { error } = await supabase
-              .from('autographs')
-              .update({ open_to_trade: false })
-              .eq('id', item.id);
-            if (error) { Alert.alert('Error', error.message); return; }
-            setData((prev) => prev.map((i) =>
-              i.id === item.id ? { ...i, openToTrade: false } : i
-            ));
-          },
-        },
-      ]
+      'Unavailable',
+      'Removing trade-only availability is not wired to a secure backend endpoint yet.'
     );
   };
 
   const handleAcceptTrade = async (offer: TradeOffer) => {
     setRespondingOffer(offer.id);
     try {
-      const { data: offerRow } = await supabase.from('trade_offers').select('offerer_id').eq('id', offer.id).single();
-      const offererId = offerRow?.offerer_id;
-      if (!offererId) throw new Error('Could not find offerer.');
-      await Promise.all([
-        supabase.from('autographs').update({ owner_id: user!.id, is_for_sale: false, open_to_trade: false }).eq('id', offer.offeredAutographId),
-        supabase.from('autographs').update({ owner_id: offererId, is_for_sale: false, open_to_trade: false }).eq('id', offer.targetAutographId),
-      ]);
-      await supabase.from('trade_offers').update({ status: 'accepted' }).eq('id', offer.id);
-      await supabase.from('trade_offers').update({ status: 'declined' })
-        .in('target_autograph_id', [offer.targetAutographId, offer.offeredAutographId])
-        .eq('status', 'pending').neq('id', offer.id);
+      await callEdgeFunction('respond-trade-offer', {
+        trade_offer_id: offer.id,
+        action: 'accept',
+      });
       setTradeOffers((prev) => prev.filter((o) => o.id !== offer.id));
       setData((prev) => prev.filter((i) => i.id !== offer.targetAutographId));
       setViewOffersItem(null);
@@ -363,8 +337,15 @@ export default function AutographsScreen() {
 
   const handleDeclineTrade = async (offer: TradeOffer) => {
     setRespondingOffer(offer.id);
-    await supabase.from('trade_offers').update({ status: 'declined' }).eq('id', offer.id);
-    setTradeOffers((prev) => prev.filter((o) => o.id !== offer.id));
+    try {
+      await callEdgeFunction('respond-trade-offer', {
+        trade_offer_id: offer.id,
+        action: 'decline',
+      });
+      setTradeOffers((prev) => prev.filter((o) => o.id !== offer.id));
+    } catch (error: any) {
+      Alert.alert('Error', error.message ?? 'Could not decline trade offer.');
+    }
     setRespondingOffer(null);
   };
 
@@ -378,26 +359,8 @@ export default function AutographsScreen() {
     }
 
     Alert.alert(
-      'Unlist Autograph',
-      'Are you sure you want to remove this from the marketplace?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Unlist',
-          style: 'destructive',
-          onPress: async () => {
-            await supabase.from('trade_offers').delete().eq('target_autograph_id', item.id).eq('status', 'pending');
-            const { error } = await supabase
-              .from('autographs')
-              .update({ is_for_sale: false, open_to_trade: false, price_cents: null, reserve_price_cents: null, auction_ends_at: null })
-              .eq('id', item.id);
-            if (error) { Alert.alert('Error', error.message); return; }
-            setData((prev) => prev.map((i) =>
-              i.id === item.id ? { ...i, isForSale: false, openToTrade: false, priceCents: null, reservePriceCents: null, auctionEndsAt: null } : i
-            ));
-          },
-        },
-      ]
+      'Unavailable',
+      'Unlisting is not wired to a secure backend endpoint yet.'
     );
   };
 

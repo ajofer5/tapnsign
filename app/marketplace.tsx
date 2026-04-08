@@ -1,5 +1,6 @@
 import { BrandColors, BrandFonts } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
+import { callEdgeFunction } from '@/lib/api';
 import { supabase } from '@/lib/supabase';
 import { useStripe } from '@stripe/stripe-react-native';
 import { AVPlaybackStatus, ResizeMode, Video } from 'expo-av';
@@ -340,22 +341,16 @@ useFocusEffect(
     setBidding(item.id);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const response = await fetch(
-        `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/create-bid-payment-intent`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${session?.access_token}`,
-          },
-          body: JSON.stringify({ autograph_id: item.id, amount_cents: bidCents }),
-        }
-      );
+      const responseJson = await callEdgeFunction<{
+        client_secret?: string;
+        payment_event_id?: string;
+      }>('create-bid-payment-intent', {
+        autograph_id: item.id,
+        amount_cents: bidCents,
+      });
 
-      const responseJson = await response.json();
-      const { client_secret, payment_intent_id, error: fnError } = responseJson;
-      if (!client_secret) throw new Error(fnError ?? `No client_secret returned (status ${response.status})`);
+      const { client_secret, payment_event_id } = responseJson;
+      if (!client_secret || !payment_event_id) throw new Error('Could not start bid authorization.');
 
       const { error: initError } = await initPaymentSheet({
         paymentIntentClientSecret: client_secret,
@@ -373,27 +368,15 @@ useFocusEffect(
         return;
       }
 
-      // Card authorized — record the bid with payment_intent_id
-      const { error: insertError } = await supabase.from('bids').insert({
+      await callEdgeFunction('place-bid', {
         autograph_id: item.id,
-        bidder_id: user.id,
-        amount_cents: bidCents,
-        payment_intent_id,
+        payment_event_id,
       });
-      if (insertError) throw insertError;
-
-      // Notify the previous top bidder they've been outbid
-      fetch(
-        `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/notify-outbid`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
-          body: JSON.stringify({ autograph_id: item.id, new_bid_cents: bidCents, new_bidder_id: user.id }),
-        }
-      ).catch(() => {});
 
       setPreviewItem((prev) => prev ? { ...prev, topBidCents: bidCents } : prev);
-      setListings((prev) => prev.map((l) => l.id === item.id ? { ...l, topBidCents: bidCents } : l));
+      setListings((prev) => prev.map((l) =>
+        l.id === item.id ? { ...l, topBidCents: bidCents, topBidderId: user.id } : l
+      ));
       setBidInput('');
       Alert.alert('Bid Placed!', `Your bid of ${formatPrice(bidCents)} has been authorized. Your card will only be charged if you win.`);
     } catch (error: any) {
@@ -406,39 +389,28 @@ useFocusEffect(
   const handleTradeOffer = async (offeredAutographId: string) => {
     if (!user || !tradeTarget) return;
     setSubmittingTrade(true);
-    const { error } = await supabase.from('trade_offers').insert({
-      offerer_id: user.id,
-      offered_autograph_id: offeredAutographId,
-      target_autograph_id: tradeTarget.id,
-      target_owner_id: tradeTarget.ownerId,
-    });
-    setSubmittingTrade(false);
-    if (error) { Alert.alert('Error', error.message); return; }
-    setTradeTarget(null);
-    Alert.alert('Trade Offer Sent!', 'The owner will be notified and can accept or decline your offer.');
+    try {
+      await callEdgeFunction('create-trade-offer', {
+        offered_autograph_id: offeredAutographId,
+        target_autograph_id: tradeTarget.id,
+      });
+      setTradeTarget(null);
+      Alert.alert('Trade Offer Sent!', 'The owner will be notified and can accept or decline your offer.');
+    } catch (error: any) {
+      Alert.alert('Error', error.message ?? 'Could not send trade offer.');
+    } finally {
+      setSubmittingTrade(false);
+    }
   };
 
   const handleAcceptTrade = async (offer: TradeOffer) => {
     if (!user) return;
     setRespondingOffer(offer.id);
     try {
-      const { data: offerRow } = await supabase
-        .from('trade_offers').select('offerer_id').eq('id', offer.id).single();
-      const offererId = offerRow?.offerer_id;
-      if (!offererId) throw new Error('Could not find offerer.');
-
-      // Swap ownership: offerer gets target, owner gets offered
-      await Promise.all([
-        supabase.from('autographs').update({ owner_id: user.id, is_for_sale: false, open_to_trade: false }).eq('id', offer.offeredAutographId),
-        supabase.from('autographs').update({ owner_id: offererId, is_for_sale: false, open_to_trade: false }).eq('id', offer.targetAutographId),
-      ]);
-
-      await supabase.from('trade_offers').update({ status: 'accepted' }).eq('id', offer.id);
-      // Decline all other pending offers on both autographs
-      await supabase.from('trade_offers').update({ status: 'declined' })
-        .in('target_autograph_id', [offer.targetAutographId, offer.offeredAutographId])
-        .eq('status', 'pending').neq('id', offer.id);
-
+      await callEdgeFunction('respond-trade-offer', {
+        trade_offer_id: offer.id,
+        action: 'accept',
+      });
       setTradeOffers((prev) => prev.filter((o) => o.id !== offer.id));
       setViewOffersItem(null);
       Alert.alert('Trade Accepted!', `You now own ${offer.offeredAutographCelebrity}'s autograph.`);
@@ -450,8 +422,15 @@ useFocusEffect(
 
   const handleDeclineTrade = async (offer: TradeOffer) => {
     setRespondingOffer(offer.id);
-    await supabase.from('trade_offers').update({ status: 'declined' }).eq('id', offer.id);
-    setTradeOffers((prev) => prev.filter((o) => o.id !== offer.id));
+    try {
+      await callEdgeFunction('respond-trade-offer', {
+        trade_offer_id: offer.id,
+        action: 'decline',
+      });
+      setTradeOffers((prev) => prev.filter((o) => o.id !== offer.id));
+    } catch (error: any) {
+      Alert.alert('Error', error.message ?? 'Could not decline trade offer.');
+    }
     setRespondingOffer(null);
   };
 
@@ -464,23 +443,15 @@ useFocusEffect(
     setPurchasing(item.id);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const response = await fetch(
-        `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/create-payment-intent`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${session?.access_token}`,
-          },
-          body: JSON.stringify({ autograph_id: item.id, amount_cents: item.priceCents }),
-        }
-      );
+      const responseJson = await callEdgeFunction<{
+        client_secret?: string;
+        payment_event_id?: string;
+      }>('create-payment-intent', {
+        autograph_id: item.id,
+      });
 
-      const responseJson = await response.json();
-      console.log('Edge function response:', JSON.stringify(responseJson));
-      const { client_secret, error: fnError } = responseJson;
-      if (!client_secret) throw new Error(fnError ?? `No client_secret returned (status ${response.status})`);
+      const { client_secret, payment_event_id } = responseJson;
+      if (!client_secret || !payment_event_id) throw new Error('Could not start purchase.');
 
       const { error: initError } = await initPaymentSheet({
         paymentIntentClientSecret: client_secret,
@@ -499,17 +470,9 @@ useFocusEffect(
         return;
       }
 
-      const { error: transferError } = await supabase
-        .from('autographs')
-        .update({ owner_id: user.id, is_for_sale: false })
-        .eq('id', item.id);
-      if (transferError) throw transferError;
-
-      await supabase.from('transfers').insert({
+      await callEdgeFunction('purchase-autograph', {
         autograph_id: item.id,
-        from_user_id: item.ownerId,
-        to_user_id: user.id,
-        price_cents: item.priceCents,
+        payment_event_id,
       });
 
       closePreview();

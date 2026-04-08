@@ -1,5 +1,6 @@
 import { BrandColors, BrandFonts } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
+import { callEdgeFunction } from '@/lib/api';
 import { useStripe } from '@stripe/stripe-react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { useState } from 'react';
@@ -15,21 +16,12 @@ export default function AccountScreen() {
     setVerifying(true);
 
     try {
-      // Step 1: Create payment intent for $4.99
-      const paymentResponse = await fetch(
-        `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/create-verification-payment-intent`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
-      const paymentData = await paymentResponse.json();
+      const paymentData = await callEdgeFunction<{
+        client_secret?: string;
+      }>('create-verification-payment-intent');
 
-      if (!paymentResponse.ok || !paymentData?.client_secret) {
-        Alert.alert('Error', paymentData?.error ?? 'Could not start payment. Please try again.');
+      if (!paymentData?.client_secret) {
+        Alert.alert('Error', 'Could not start payment. Please try again.');
         setVerifying(false);
         return;
       }
@@ -56,21 +48,10 @@ export default function AccountScreen() {
       }
 
       // Step 3: Create identity verification session
-      const identityResponse = await fetch(
-        `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/create-identity-session`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ user_id: user.id }),
-        }
-      );
-      const identityData = await identityResponse.json();
+      const identityData = await callEdgeFunction<{ url?: string }>('create-identity-session');
 
-      if (!identityResponse.ok || !identityData?.url) {
-        Alert.alert('Error', identityData?.error ?? 'Payment received but could not start identity check. Contact support.');
+      if (!identityData?.url) {
+        Alert.alert('Error', 'Payment received but could not start identity check. Contact support.');
         setVerifying(false);
         return;
       }
