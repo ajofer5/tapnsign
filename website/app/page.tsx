@@ -16,7 +16,7 @@ export default function HomePage() {
 
       {/* Hero */}
       <section className="bg-black min-h-screen flex flex-col items-center justify-center text-center px-6 pt-20 pb-16">
-        <img src="/logo.png" alt="TapnSign" className="w-52 md:w-72 mb-12" />
+        <img src="/logo.png" alt="TapnSign" className="w-[39rem] md:w-[54rem] mb-12" />
         <h1 className="text-white text-5xl md:text-7xl font-black leading-none tracking-tight">
           Sign It.<br />
           Own It.<br />
