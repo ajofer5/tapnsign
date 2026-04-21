@@ -18,9 +18,9 @@ export default function HomePage() {
       <section className="bg-black min-h-screen flex flex-col items-center justify-center text-center px-6 pt-10 pb-8">
         <img src="/logo.png" alt="TapnSign" className="w-[39rem] md:w-[54rem] mb-2" />
         <h1 className="text-white text-5xl md:text-7xl font-black leading-none tracking-tight">
-          Sign It.<br />
-          Own It.<br />
-          Print It.
+          Create.<br />
+          Collect.<br />
+          Display.
         </h1>
         <p className="text-gray-400 text-lg md:text-xl mt-8 max-w-md leading-relaxed">
           The platform for verified digital autographs. Creators sign. Fans own. Everyone wins.
