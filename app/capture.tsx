@@ -1,12 +1,10 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { CameraView, useCameraPermissions } from 'expo-camera';
-import * as Crypto from 'expo-crypto';
-import * as MediaLibrary from 'expo-media-library';
-import { useNavigation, useRouter } from 'expo-router';
-import * as ScreenOrientation from 'expo-screen-orientation';
 import { BrandColors, BrandFonts } from '@/constants/theme';
+import { callEdgeFunction } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
+import { ResizeMode, Video } from 'expo-av';
+import { CameraView, useCameraPermissions } from 'expo-camera';
+import { useNavigation, useRouter } from 'expo-router';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -31,18 +29,27 @@ type Stroke = {
   points: Point[];
 };
 
+function buildSparkPath(cx: number, cy: number, r: number) {
+  const inner = r * 0.3;
+  return `M ${cx},${cy - r} L ${cx + inner},${cy - inner} L ${cx + r},${cy} L ${cx + inner},${cy + inner} L ${cx},${cy + r} L ${cx - inner},${cy + inner} L ${cx - r},${cy} L ${cx - inner},${cy - inner} Z`;
+}
+
 export default function CaptureScreen() {
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
-  const [mediaPermission, requestMediaPermission] = MediaLibrary.usePermissions();
+
+  const GOLD_COLOR = '#C9A84C';
+  const RED_COLOR = '#FA0909';
 
   const [started, setStarted] = useState(false);
   const [timeLeft, setTimeLeft] = useState(5);
   const [strokes, setStrokes] = useState<Stroke[]>([]);
   const [currentStroke, setCurrentStroke] = useState<Stroke | null>(null);
   const [captureSize, setCaptureSize] = useState({ width: 1, height: 1 });
-  const [orientationReady, setOrientationReady] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [isGold, setIsGold] = useState(false);
+  const [reviewData, setReviewData] = useState<{ uri: string; strokes: Stroke[]; strokeColor: string } | null>(null);
 
+  // Refs used by PanResponder and recording callbacks (closures that can't see state updates)
   const startedRef = useRef(false);
   const strokesRef = useRef<Stroke[]>([]);
   const currentStrokeRef = useRef<Stroke | null>(null);
@@ -54,13 +61,19 @@ export default function CaptureScreen() {
   const navigation = useNavigation();
   const { user, profile } = useAuth();
 
+  const isBirthday = (() => {
+    if (!profile?.birthday_month || !profile?.birthday_day) return false;
+    const now = new Date();
+    return now.getMonth() + 1 === profile.birthday_month && now.getDate() === profile.birthday_day;
+  })();
+
   useEffect(() => {
-    startedRef.current = started;
-  }, [started]);
+    if (isBirthday) setIsGold(true);
+  }, [isBirthday]);
 
   useLayoutEffect(() => {
     navigation.setOptions({
-      headerShown: !started && !uploading,
+      headerShown: !started && !uploading && !reviewData,
     });
 
     return () => {
@@ -68,31 +81,8 @@ export default function CaptureScreen() {
         headerShown: true,
       });
     };
-  }, [navigation, started, uploading]);
+  }, [navigation, started, uploading, reviewData]);
 
-  useEffect(() => {
-    let isMounted = true;
-
-    const lockOrientation = async () => {
-      try {
-        setOrientationReady(false);
-        await ScreenOrientation.lockAsync(
-          ScreenOrientation.OrientationLock.LANDSCAPE_RIGHT
-        );
-        if (isMounted) setOrientationReady(true);
-      } catch (error) {
-        console.log('Orientation lock error:', error);
-        if (isMounted) setOrientationReady(true);
-      }
-    };
-
-    lockOrientation();
-
-    return () => {
-      isMounted = false;
-      ScreenOrientation.unlockAsync().catch(() => {});
-    };
-  }, []);
 
   useEffect(() => {
     if (!started) return;
@@ -117,21 +107,22 @@ export default function CaptureScreen() {
   };
 
   const resetState = () => {
+    // Reset refs first so PanResponder stops accepting touches immediately
+    startedRef.current = false;
+    strokesRef.current = [];
+    currentStrokeRef.current = null;
+    recordingStartTimeRef.current = null;
+    if (stopTimeoutRef.current) {
+      clearTimeout(stopTimeoutRef.current);
+      stopTimeoutRef.current = null;
+    }
+
     setStarted(false);
     setTimeLeft(5);
     setStrokes([]);
     setCurrentStroke(null);
     setUploading(false);
-
-    startedRef.current = false;
-    strokesRef.current = [];
-    currentStrokeRef.current = null;
-    recordingStartTimeRef.current = null;
-
-    if (stopTimeoutRef.current) {
-      clearTimeout(stopTimeoutRef.current);
-      stopTimeoutRef.current = null;
-    }
+    setReviewData(null);
   };
 
   const finalizeCurrentStroke = () => {
@@ -191,35 +182,19 @@ export default function CaptureScreen() {
   };
 
   const handleStart = async () => {
-    if (!orientationReady) {
-      Alert.alert('Please wait', 'Screen orientation is still being prepared.');
-      return;
-    }
-    if (!cameraRef.current || startedRef.current) return;
+if (!cameraRef.current || startedRef.current) return;
 
     if (!user) {
       Alert.alert('Not signed in', 'Please sign in before capturing an autograph.');
       return;
     }
 
-    if (profile?.role !== 'verified') {
+    if (profile?.role !== 'verified' || profile?.verification_status !== 'verified') {
       Alert.alert('Verified accounts only', 'Only verified accounts can capture autographs.');
       return;
     }
 
-    if (!mediaPermission?.granted) {
-      const permissionResponse = await requestMediaPermission();
-      if (!permissionResponse.granted) {
-        Alert.alert('Permission required', 'Photo library permission is required to save videos.');
-        return;
-      }
-    }
-
     try {
-      await ScreenOrientation.lockAsync(
-        ScreenOrientation.OrientationLock.LANDSCAPE_RIGHT
-      );
-
       setStarted(true);
       startedRef.current = true;
       setTimeLeft(5);
@@ -239,124 +214,82 @@ export default function CaptureScreen() {
       finalizeCurrentStroke();
       const finalizedStrokes = [...strokesRef.current];
 
-      setStarted(false);
       startedRef.current = false;
-      setUploading(true);
+      setStarted(false);
+      setReviewData({ uri: video.uri, strokes: finalizedStrokes, strokeColor: isGold ? GOLD_COLOR : RED_COLOR });
+    } catch {
+      Alert.alert('Capture Failed', 'Something went wrong while capturing. Please try again.');
+      resetState();
+    }
+  };
 
-      // Save to device media library
-      const asset = await MediaLibrary.createAssetAsync(video.uri);
-      const album = await MediaLibrary.getAlbumAsync('My Autographs');
-      if (album) {
-        await MediaLibrary.addAssetsToAlbumAsync([asset], album.id, false);
-      } else {
-        await MediaLibrary.createAlbumAsync('My Autographs', asset, false);
-      }
+  const handleSubmit = async (pickedThumbnailUri: string | null) => {
+    if (!reviewData || !user) return;
+    const { uri, strokes: finalizedStrokes, strokeColor } = reviewData;
+    setReviewData(null);
+    setUploading(true);
 
-      // Upload video to Supabase Storage via FormData (required for file:// URIs in React Native)
-      const fileName = `${user!.id}/${Date.now()}.mov`;
-      const { data: { session } } = await supabase.auth.getSession();
+    try {
+      const uploadTargets = await callEdgeFunction<{
+        video: { path: string; signedUrl: string; token: string };
+        thumbnail: { path: string; signedUrl: string; token: string } | null;
+      }>('create-capture-upload-targets', {
+        include_thumbnail: !!pickedThumbnailUri,
+      });
+
+      // Upload video
       const formData = new FormData();
-      formData.append('', {
-        uri: video.uri,
-        name: fileName,
-        type: 'video/quicktime',
-      } as any);
-
-      const uploadResponse = await fetch(
-        `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/autograph-videos/${fileName}`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${session?.access_token}`,
-            'x-upsert': 'false',
-          },
-          body: formData,
-        }
-      );
-
-      if (!uploadResponse.ok) {
-        const err = await uploadResponse.json();
-        throw new Error(err.message ?? 'Upload failed');
+      formData.append('', { uri, name: uploadTargets.video.path.split('/').pop() ?? 'capture.mov', type: 'video/quicktime' } as any);
+      const { error: videoUploadError } = await supabase.storage
+        .from('autograph-videos')
+        .uploadToSignedUrl(
+          uploadTargets.video.path,
+          uploadTargets.video.token,
+          formData
+        );
+      if (videoUploadError) {
+        throw new Error(videoUploadError.message ?? 'Upload failed');
       }
 
-      const { data: { publicUrl } } = supabase.storage
-        .from('autograph-videos')
-        .getPublicUrl(fileName);
+      // Upload thumbnail if one was picked
+      if (pickedThumbnailUri && uploadTargets.thumbnail) {
+        const thumbForm = new FormData();
+        thumbForm.append('', { uri: pickedThumbnailUri, name: uploadTargets.thumbnail.path.split('/').pop() ?? 'capture-thumb.jpg', type: 'image/jpeg' } as any);
+        const { error: thumbnailUploadError } = await supabase.storage
+          .from('autograph-videos')
+          .uploadToSignedUrl(
+            uploadTargets.thumbnail.path,
+            uploadTargets.thumbnail.token,
+            thumbForm
+          );
+        if (thumbnailUploadError) console.log('Thumbnail upload skipped', thumbnailUploadError.message);
+      }
 
-      // Generate content hash from metadata (not full video bytes)
-      const contentHash = await Crypto.digestStringAsync(
-        Crypto.CryptoDigestAlgorithm.SHA256,
-        publicUrl + JSON.stringify(finalizedStrokes) + user!.id
-      );
-
-      // Insert autograph record
-      const autographInsertPayload = {
-        celebrity_id: user!.id,
-        owner_id: user!.id,
-        video_url: publicUrl,
+      const insertedAutograph = await callEdgeFunction<{
+        autograph: {
+          id: string;
+          certificate_id: string;
+          visibility: 'private' | 'public';
+          sale_state: 'not_for_sale' | 'fixed';
+          is_for_sale: boolean;
+          content_hash: string;
+        };
+      }>('mint-autograph', {
+        video_path: uploadTargets.video.path,
+        thumbnail_path: uploadTargets.thumbnail?.path ?? null,
         strokes_json: finalizedStrokes,
         capture_width: captureSize.width,
         capture_height: captureSize.height,
-        content_hash: contentHash,
-        listing_type: null,
-        is_for_sale: false,
-        open_to_trade: false,
-        price_cents: null,
-        reserve_price_cents: null,
-        auction_ends_at: null,
-        latest_transfer_id: null,
-        media_asset_id: null,
-      };
+        stroke_color: strokeColor,
+      });
 
-      console.log('Autograph insert payload', autographInsertPayload);
-
-      const { data: insertedAutograph, error: insertError } = await supabase
-        .from('autographs')
-        .insert(autographInsertPayload, { defaultToNull: true })
-        .select('id, certificate_id, listing_type, is_for_sale, open_to_trade')
-        .single();
-
-      if (insertError) {
-        console.log('Autograph insert failed', {
-          message: insertError.message,
-          details: (insertError as any).details ?? null,
-          hint: (insertError as any).hint ?? null,
-          code: (insertError as any).code ?? null,
-          payload: autographInsertPayload,
-        });
-        throw insertError;
-      }
-
-      console.log('Autograph insert succeeded', insertedAutograph);
-
-      // Keep local AsyncStorage record for offline viewing
-      const newItem = {
-        id: Date.now().toString(),
-        createdAt: new Date().toISOString(),
-        videoUri: publicUrl,
-        strokes: finalizedStrokes,
-        captureWidth: captureSize.width,
-        captureHeight: captureSize.height,
-        lockedOrientation: 'LANDSCAPE_RIGHT',
-        videoRotationCorrection: 0,
-      };
-
-      const existing = await AsyncStorage.getItem('autographs');
-      const parsed = existing ? JSON.parse(existing) : [];
-      parsed.unshift(newItem);
-      await AsyncStorage.setItem('autographs', JSON.stringify(parsed));
+      console.log('Autograph mint succeeded', insertedAutograph);
 
       resetState();
       router.push('/thankyou');
     } catch (error: any) {
-      const message = error?.message ?? error?.error_description ?? JSON.stringify(error);
-      console.log('Capture error:', {
-        message,
-        details: error?.details ?? null,
-        hint: error?.hint ?? null,
-        code: error?.code ?? null,
-      });
-      Alert.alert('Capture Failed', message);
+      console.log('Capture error:', { message: error?.message, details: error?.details, hint: error?.hint, code: error?.code });
+      Alert.alert('Capture Failed', 'Something went wrong while saving your autograph. Please try again.');
       resetState();
     }
   };
@@ -378,12 +311,17 @@ export default function CaptureScreen() {
     );
   }
 
-  if (!orientationReady) {
+  if (reviewData) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={BrandColors.primary} />
-        <Text style={styles.loadingText}>Preparing camera…</Text>
-      </View>
+      <ReviewScreen
+        uri={reviewData.uri}
+        strokes={reviewData.strokes}
+        strokeColor={reviewData.strokeColor}
+        captureWidth={captureSize.width}
+        captureHeight={captureSize.height}
+        onRetake={resetState}
+        onSubmit={() => handleSubmit(null)}
+      />
     );
   }
 
@@ -405,32 +343,62 @@ export default function CaptureScreen() {
           {allStrokes.map((stroke) => {
             const d = buildSvgPath(stroke.points);
             if (!d) return null;
-            return (
-              <Path
-                key={stroke.id}
-                d={d}
-                stroke="#FA0909"
-                strokeWidth={5}
-                fill="none"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                opacity={0.9}
-              />
-            );
+            if (!isGold) {
+              return (
+                <Path
+                  key={stroke.id}
+                  d={d}
+                  stroke={RED_COLOR}
+                  strokeWidth={5}
+                  fill="none"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  opacity={0.9}
+                />
+              );
+            }
+            const last = stroke.points[stroke.points.length - 1];
+            const lx = last?.x ?? 0;
+            const ly = last?.y ?? 0;
+            return [
+              <Path key={`${stroke.id}-g1`} d={d} stroke="#C9A84C" strokeWidth={16} fill="none" strokeLinecap="round" strokeLinejoin="round" opacity={0.10} />,
+              <Path key={`${stroke.id}-g2`} d={d} stroke="#C9A84C" strokeWidth={10} fill="none" strokeLinecap="round" strokeLinejoin="round" opacity={0.25} />,
+              <Path key={`${stroke.id}-g3`} d={d} stroke="#E8C56E" strokeWidth={5} fill="none" strokeLinecap="round" strokeLinejoin="round" opacity={0.9} />,
+              <Path key={`${stroke.id}-g4`} d={d} stroke="#FFF0A0" strokeWidth={2} fill="none" strokeLinecap="round" strokeLinejoin="round" opacity={0.85} />,
+              <Path key={`${stroke.id}-s1`} d={buildSparkPath(lx, ly, 10)} fill="#FFF0A0" opacity={0.95} />,
+              <Path key={`${stroke.id}-s2`} d={buildSparkPath(lx + 12, ly - 8, 5)} fill="#E8C56E" opacity={0.7} />,
+            ];
           })}
         </Svg>
       </View>
 
-      {started && <Text style={styles.timer}>{timeLeft}</Text>}
+      {started && (
+        <View style={styles.timerCircle}>
+          <Text style={styles.timerText}>{timeLeft}</Text>
+        </View>
+      )}
 
       {!started && (
         <View style={styles.center}>
+          <Pressable style={styles.tapButton} onPress={handleStart}>
+            <Text style={[styles.tapText, isGold && { color: GOLD_COLOR }]} adjustsFontSizeToFit numberOfLines={1}>TapnSign </Text>
+          </Pressable>
           <Text style={styles.instructions}>
             Tap TapnSign, then sign the screen for 5 seconds
           </Text>
-          <Pressable style={styles.tapButton} onPress={handleStart}>
-            <Text style={styles.tapText}>TapnSign</Text>
-          </Pressable>
+          {isBirthday ? (
+            <View style={styles.birthdayBanner}>
+              <Text style={styles.birthdayBannerText}>Happy Birthday — your signature is gold today</Text>
+              <Pressable style={styles.goldToggle} onPress={() => setIsGold((prev: boolean) => !prev)}>
+                <View style={[styles.goldToggleBox, isGold && styles.goldToggleBoxActive]}>
+                  {isGold && <Text style={styles.goldToggleTick}>✓</Text>}
+                </View>
+                <Text style={[styles.goldToggleLabel, isGold && { color: GOLD_COLOR }]}>
+                  Gold Signature
+                </Text>
+              </Pressable>
+            </View>
+          ) : null}
         </View>
       )}
     </View>
@@ -450,7 +418,6 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 24,
   },
   loadingContainer: {
     flex: 1,
@@ -472,21 +439,32 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   tapButton: {
-    paddingHorizontal: 24,
     paddingVertical: 12,
+    width: '90%',
+    alignItems: 'center',
   },
   tapText: {
-    fontSize: 56,
-    color: '#111',
-    fontFamily: BrandFonts.primary,
-    fontWeight: 'bold',
+    fontSize: 120,
+    lineHeight: 155,
+    fontWeight: '700',
+    fontFamily: BrandFonts.script,
+    color: BrandColors.primary,
+    includeFontPadding: false,
   },
-  timer: {
+  timerCircle: {
     position: 'absolute',
-    top: 40,
-    right: 24,
-    fontSize: 48,
-    color: 'white',
+    top: 24,
+    left: 24,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(200, 200, 200, 0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  timerText: {
+    fontSize: 32,
+    color: '#111',
     fontWeight: 'bold',
   },
   permissionText: {
@@ -513,4 +491,180 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 24,
   },
+  reviewContainer: {
+    flex: 1,
+    backgroundColor: 'black',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  reviewVideoWrapper: {
+    width: '100%',
+    flex: 1,
+  },
+  reviewButtons: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  retakeButton: {
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  retakeButtonText: {
+    color: '#fff',
+    fontFamily: BrandFonts.primary,
+    fontSize: 17,
+    fontWeight: '600',
+  },
+  submitButton: {
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+    borderRadius: 10,
+    backgroundColor: '#fff',
+  },
+  submitButtonText: {
+    color: '#111',
+    fontFamily: BrandFonts.primary,
+    fontSize: 17,
+    fontWeight: '600',
+  },
+  goldToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 24,
+    gap: 10,
+  },
+  goldToggleBox: {
+    width: 26,
+    height: 26,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.6)',
+    backgroundColor: 'transparent',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  goldToggleBoxActive: {
+    borderColor: '#C9A84C',
+    backgroundColor: 'rgba(201,168,76,0.2)',
+  },
+  goldToggleTick: {
+    color: '#C9A84C',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  goldToggleLabel: {
+    color: 'rgba(255,255,255,0.8)',
+    fontFamily: BrandFonts.primary,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  birthdayBanner: {
+    alignItems: 'center',
+    marginTop: 24,
+    gap: 12,
+  },
+  birthdayBannerText: {
+    color: '#C9A84C',
+    fontFamily: BrandFonts.primary,
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
+    opacity: 0.9,
+  },
 });
+
+function ReviewScreen({
+  uri, strokes, strokeColor, captureWidth, captureHeight, onRetake, onSubmit,
+}: {
+  uri: string;
+  strokes: Stroke[];
+  strokeColor: string;
+  captureWidth: number;
+  captureHeight: number;
+  onRetake: () => void;
+  onSubmit: () => void;
+}) {
+  const [currentTime, setCurrentTime] = useState(0);
+  const [displaySize, setDisplaySize] = useState({ width: 1, height: 1 });
+
+  return (
+    <View style={styles.reviewContainer}>
+      <View
+        style={styles.reviewVideoWrapper}
+        onLayout={(e) => {
+          const { width, height } = e.nativeEvent.layout;
+          setDisplaySize({ width, height });
+        }}
+      >
+        <Video
+          source={{ uri }}
+          style={StyleSheet.absoluteFill}
+          resizeMode={ResizeMode.CONTAIN}
+          shouldPlay
+          isLooping
+          isMuted
+          onPlaybackStatusUpdate={(status) => {
+            if (status.isLoaded) setCurrentTime(status.positionMillis / 1000);
+          }}
+        />
+        <Svg
+          width={displaySize.width}
+          height={displaySize.height}
+          style={StyleSheet.absoluteFill}
+          pointerEvents="none"
+        >
+          {strokes.map((stroke) => {
+            const scaleX = displaySize.width / (captureWidth || 1);
+            const scaleY = displaySize.height / (captureHeight || 1);
+            const visible = stroke.points.filter((p) => p.t <= currentTime);
+            if (!visible.length) return null;
+            const d = visible
+              .map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x * scaleX} ${p.y * scaleY}`)
+              .join(' ');
+            const isGoldStroke = strokeColor === '#C9A84C';
+            if (!isGoldStroke) {
+              return (
+                <Path
+                  key={stroke.id}
+                  d={d}
+                  stroke={strokeColor}
+                  strokeWidth={5}
+                  fill="none"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  opacity={0.9}
+                />
+              );
+            }
+            const first = visible[0];
+            const last = visible[visible.length - 1];
+            const fx = first.x * scaleX;
+            const fy = first.y * scaleY;
+            const lx = last.x * scaleX;
+            const ly = last.y * scaleY;
+            return [
+              <Path key={`${stroke.id}-g1`} d={d} stroke="#C9A84C" strokeWidth={16} fill="none" strokeLinecap="round" strokeLinejoin="round" opacity={0.10} />,
+              <Path key={`${stroke.id}-g2`} d={d} stroke="#C9A84C" strokeWidth={10} fill="none" strokeLinecap="round" strokeLinejoin="round" opacity={0.25} />,
+              <Path key={`${stroke.id}-g3`} d={d} stroke="#E8C56E" strokeWidth={5} fill="none" strokeLinecap="round" strokeLinejoin="round" opacity={0.9} />,
+              <Path key={`${stroke.id}-g4`} d={d} stroke="#FFF0A0" strokeWidth={2} fill="none" strokeLinecap="round" strokeLinejoin="round" opacity={0.85} />,
+              <Path key={`${stroke.id}-s1`} d={buildSparkPath(fx, fy, 8)} fill="#FFF0A0" opacity={0.9} />,
+              <Path key={`${stroke.id}-s2`} d={buildSparkPath(lx, ly, 10)} fill="#FFF0A0" opacity={0.95} />,
+              <Path key={`${stroke.id}-s3`} d={buildSparkPath(lx + 12, ly - 8, 5)} fill="#E8C56E" opacity={0.7} />,
+            ];
+          })}
+        </Svg>
+      </View>
+      <View style={styles.reviewButtons}>
+        <Pressable style={styles.retakeButton} onPress={onRetake}>
+          <Text style={styles.retakeButtonText}>Retake</Text>
+        </Pressable>
+        <Pressable style={styles.submitButton} onPress={onSubmit}>
+          <Text style={styles.submitButtonText}>Submit</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}

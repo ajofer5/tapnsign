@@ -1,16 +1,9 @@
 import { useRouter } from 'expo-router';
-import * as ScreenOrientation from 'expo-screen-orientation';
-import { useEffect } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { BrandColors, BrandFonts } from '@/constants/theme';
 
 export default function ThankYouScreen() {
   const router = useRouter();
-
-  useEffect(() => {
-    // Unlock orientation so user can rotate device freely
-    ScreenOrientation.unlockAsync();
-  }, []);
 
   const goHome = () => {
     // Replace so user cannot go back to Capture page
