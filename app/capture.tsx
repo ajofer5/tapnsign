@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { ResizeMode, Video } from 'expo-av';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useNavigation, useRouter } from 'expo-router';
+import * as VideoThumbnails from 'expo-video-thumbnails';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -48,6 +49,7 @@ export default function CaptureScreen() {
   const [uploading, setUploading] = useState(false);
   const [isGold, setIsGold] = useState(false);
   const [reviewData, setReviewData] = useState<{ uri: string; strokes: Stroke[]; strokeColor: string } | null>(null);
+  const [thumbnailUri, setThumbnailUri] = useState<string | null>(null);
 
   // Refs used by PanResponder and recording callbacks (closures that can't see state updates)
   const startedRef = useRef(false);
@@ -123,6 +125,7 @@ export default function CaptureScreen() {
     setCurrentStroke(null);
     setUploading(false);
     setReviewData(null);
+    setThumbnailUri(null);
   };
 
   const finalizeCurrentStroke = () => {
@@ -217,6 +220,9 @@ if (!cameraRef.current || startedRef.current) return;
       startedRef.current = false;
       setStarted(false);
       setReviewData({ uri: video.uri, strokes: finalizedStrokes, strokeColor: isGold ? GOLD_COLOR : RED_COLOR });
+      VideoThumbnails.getThumbnailAsync(video.uri, { time: 1000 })
+        .then((thumb) => setThumbnailUri(thumb.uri))
+        .catch(() => setThumbnailUri(null));
     } catch {
       Alert.alert('Capture Failed', 'Something went wrong while capturing. Please try again.');
       resetState();
@@ -227,6 +233,7 @@ if (!cameraRef.current || startedRef.current) return;
     if (!reviewData || !user) return;
     const { uri, strokes: finalizedStrokes, strokeColor } = reviewData;
     setReviewData(null);
+    setThumbnailUri(null);
     setUploading(true);
 
     try {
@@ -320,7 +327,7 @@ if (!cameraRef.current || startedRef.current) return;
         captureWidth={captureSize.width}
         captureHeight={captureSize.height}
         onRetake={resetState}
-        onSubmit={() => handleSubmit(null)}
+        onSubmit={() => handleSubmit(thumbnailUri)}
       />
     );
   }

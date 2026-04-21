@@ -1,14 +1,37 @@
 import { Session, User } from '@supabase/supabase-js';
 import { createContext, useContext, useEffect, useState } from 'react';
+import { AppState } from 'react-native';
 import { registerPushToken } from './notifications';
 import { supabase } from './supabase';
 
 type Profile = {
   id: string;
-  role: 'member' | 'verified';
+  role: 'member' | 'verified' | 'admin';
   display_name: string;
+  profile_avatar_autograph_id?: string | null;
+  avatar_url?: string | null;
+  avatar_storage_path?: string | null;
+  profile_avatar?: {
+    id: string;
+    thumbnail_url: string | null;
+    video_url: string | null;
+    strokes_json: { id: string; points: { x: number; y: number; t: number }[] }[];
+    capture_width: number;
+    capture_height: number;
+    stroke_color: string | null;
+  } | null;
   verified: boolean;
-  verification_status: 'none' | 'pending' | 'verified' | 'failed';
+  verification_status: 'none' | 'pending' | 'verified' | 'failed' | 'expired';
+  birthday_month: number | null;
+  birthday_day: number | null;
+  instagram_handle?: string | null;
+  instagram_status?: 'none' | 'connected' | 'verified';
+  instagram_verified_at?: string | null;
+  instagram_verification_method?: string | null;
+  instagram_verification_code?: string | null;
+  instagram_verification_requested_at?: string | null;
+  instagram_verification_expires_at?: string | null;
+  instagram_verification_checked_at?: string | null;
 };
 
 type AuthContextType = {
@@ -37,10 +60,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const fetchProfile = async (userId: string) => {
     const { data } = await supabase
       .from('profiles')
-      .select('*')
+      .select('*, profile_avatar:profile_avatar_autograph_id ( id, thumbnail_url, video_url, strokes_json, capture_width, capture_height, stroke_color )')
       .eq('id', userId)
       .single();
-    setProfile(data ?? null);
+    const hydrated = data
+      ? {
+          ...data,
+          avatar_url: (data as any)?.profile_avatar?.thumbnail_url ?? data.avatar_url ?? null,
+        }
+      : null;
+    setProfile(hydrated ?? null);
   };
 
   useEffect(() => {
@@ -65,6 +94,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (!session?.user?.id) return;
+
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        registerPushToken(session.user.id);
+      }
+    });
+
+    return () => sub.remove();
+  }, [session?.user?.id]);
 
   const refreshProfile = async () => {
     const userId = session?.user?.id;

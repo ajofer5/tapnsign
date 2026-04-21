@@ -1,0 +1,2 @@
+[functions.get-creator-verifications]
+verify_jwt = false
