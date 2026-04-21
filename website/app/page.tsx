@@ -5,7 +5,7 @@ export default function HomePage() {
     <main>
       {/* Nav */}
       <nav className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-6 py-4 bg-black/95 backdrop-blur-sm">
-        <img src="/logo.png" alt="TapnSign" className="h-20" />
+        <img src="/logo.png" alt="TapnSign" className="h-16" />
         <a
           href="#download"
           className="bg-[#E53935] text-white px-5 py-2 rounded-full text-sm font-semibold hover:bg-red-700 transition-colors"
@@ -16,7 +16,7 @@ export default function HomePage() {
 
       {/* Hero */}
       <section className="bg-black min-h-screen flex flex-col items-center justify-center text-center px-6 pt-20 pb-16">
-        <img src="/logo.png" alt="TapnSign" className="w-[39rem] md:w-[54rem] mb-12" />
+        <img src="/logo.png" alt="TapnSign" className="w-[31rem] md:w-[43rem] mb-12" />
         <h1 className="text-white text-5xl md:text-7xl font-black leading-none tracking-tight">
           Create.<br />
           Collect.<br />
@@ -123,7 +123,7 @@ export default function HomePage() {
 
       {/* Download CTA */}
       <section className="bg-black py-24 px-6 text-center">
-        <img src="/logo.png" alt="TapnSign" className="h-[7.5rem] mx-auto mb-8" />
+        <img src="/logo.png" alt="TapnSign" className="h-24 mx-auto mb-8" />
         <h2 className="text-white text-3xl md:text-4xl font-black mb-4">
           Ready to sign?
         </h2>
@@ -141,7 +141,7 @@ export default function HomePage() {
       {/* Footer */}
       <footer className="bg-black border-t border-white/10 py-10 px-6">
         <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
-          <img src="/logo.png" alt="TapnSign" className="h-[4.5rem]" />
+          <img src="/logo.png" alt="TapnSign" className="h-14" />
           <div className="flex gap-6 text-sm text-gray-500">
             <Link href="/privacy" className="hover:text-white transition-colors">
               Privacy Policy

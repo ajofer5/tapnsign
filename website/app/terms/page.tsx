@@ -19,7 +19,7 @@ export default function TermsPage() {
     <main className="min-h-screen bg-[#F2F2F4]">
       <nav className="bg-white border-b border-gray-200 px-6 py-4">
         <Link href="/">
-          <img src="/logo.png" alt="TapnSign" className="h-24" />
+          <img src="/logo.png" alt="TapnSign" className="h-[4.5rem]" />
         </Link>
       </nav>
       <div className="max-w-3xl mx-auto px-6 py-14">
