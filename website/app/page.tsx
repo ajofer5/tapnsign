@@ -123,7 +123,7 @@ export default function HomePage() {
 
       {/* Download CTA */}
       <section className="bg-black py-24 px-6 text-center">
-        <img src="/logo.png" alt="TapnSign" className="h-10 mx-auto mb-8" />
+        <img src="/logo.png" alt="TapnSign" className="h-[7.5rem] mx-auto mb-8" />
         <h2 className="text-white text-3xl md:text-4xl font-black mb-4">
           Ready to sign?
         </h2>
@@ -141,7 +141,7 @@ export default function HomePage() {
       {/* Footer */}
       <footer className="bg-black border-t border-white/10 py-10 px-6">
         <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
-          <img src="/logo.png" alt="TapnSign" className="h-6" />
+          <img src="/logo.png" alt="TapnSign" className="h-[4.5rem]" />
           <div className="flex gap-6 text-sm text-gray-500">
             <Link href="/privacy" className="hover:text-white transition-colors">
               Privacy Policy

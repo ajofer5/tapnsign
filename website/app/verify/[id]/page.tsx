@@ -45,7 +45,7 @@ export default async function VerifyPage({ params }: { params: { id: string } })
       {/* Nav */}
       <nav className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
         <Link href="/">
-          <img src="/logo.png" alt="TapnSign" className="h-8" />
+          <img src="/logo.png" alt="TapnSign" className="h-24" />
         </Link>
         <span className="text-sm text-gray-500">Certificate of Authenticity</span>
       </nav>
@@ -80,7 +80,7 @@ export default async function VerifyPage({ params }: { params: { id: string } })
                 <span className="text-white font-bold text-sm tracking-wide uppercase">
                   Certificate of Authenticity
                 </span>
-                <img src="/logo.png" alt="TapnSign" className="h-5 brightness-0 invert" />
+                <img src="/logo.png" alt="TapnSign" className="h-[3.75rem] brightness-0 invert" />
               </div>
               <div className="px-6 py-5 space-y-4">
                 <CertRow
