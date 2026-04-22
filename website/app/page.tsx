@@ -15,14 +15,14 @@ export default function HomePage() {
       </nav>
 
       {/* Hero */}
-      <section className="bg-black min-h-screen flex flex-col items-center justify-center text-center px-6 pt-20 pb-16">
+      <section className="bg-[#F2F2F4] min-h-screen flex flex-col items-center justify-center text-center px-6 pt-20 pb-16">
         <img src="/logo.png" alt="TapnSign" className="w-[31rem] md:w-[43rem] mb-12" />
-        <h1 className="text-white text-5xl md:text-7xl font-black leading-none tracking-tight">
+        <h1 className="text-black text-5xl md:text-7xl font-black leading-none tracking-tight">
           Create.<br />
           Collect.<br />
           Display.
         </h1>
-        <p className="text-gray-400 text-lg md:text-xl mt-8 max-w-md leading-relaxed">
+        <p className="text-gray-600 text-lg md:text-xl mt-8 max-w-md leading-relaxed">
           The platform for verified digital autographs. Creators sign. Fans own. Everyone wins.
         </p>
         <div id="download" className="mt-12 flex flex-col items-center gap-3">
