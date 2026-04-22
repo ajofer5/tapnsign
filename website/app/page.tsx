@@ -4,7 +4,7 @@ export default function HomePage() {
   return (
     <main>
       {/* Nav */}
-      <nav className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-6 py-4 bg-[#4B5563]">
+      <nav className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-6 py-4 bg-black/95 backdrop-blur-sm">
         <img src="/logo.png" alt="TapnSign" className="h-9" />
         <a
           href="#download"
@@ -139,7 +139,7 @@ export default function HomePage() {
       </section>
 
       {/* Footer */}
-      <footer className="bg-[#4B5563] border-t border-white/10 py-10 px-6">
+      <footer className="bg-black border-t border-white/10 py-10 px-6">
         <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
           <img src="/logo.png" alt="TapnSign" className="h-5" />
           <div className="flex gap-6 text-sm text-gray-500">
