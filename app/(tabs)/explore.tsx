@@ -477,11 +477,11 @@ export default function AccountScreen() {
           <Text style={styles.sectionSubtext}>
             Share your TapnSign profile with fans using your personal QR code.
           </Text>
-          <Pressable style={styles.marketingButton} onPress={() => setQrModalVisible(true)}>
-            <Text style={styles.marketingButtonText}>Creator QR Code</Text>
+          <Pressable style={styles.marketingLink} onPress={() => setQrModalVisible(true)}>
+            <Text style={styles.marketingLinkText}>Creator QR Code</Text>
           </Pressable>
-          <Pressable style={[styles.marketingButton, { marginTop: 10, backgroundColor: '#f5f0e8' }]} onPress={() => WebBrowser.openBrowserAsync(`${appUrl}/marketing-tips`)}>
-            <Text style={[styles.marketingButtonText, { color: BrandColors.primary }]}>Creator Marketing Tips</Text>
+          <Pressable style={styles.marketingLink} onPress={() => WebBrowser.openBrowserAsync(`${appUrl}/marketing-tips`)}>
+            <Text style={styles.marketingLinkText}>Creator Marketing Tips</Text>
           </Pressable>
         </View>
       )}
@@ -1093,17 +1093,14 @@ const styles = StyleSheet.create({
     paddingVertical: 18,
     fontFamily: BrandFonts.primary,
   },
-  marketingButton: {
-    marginTop: 12,
-    backgroundColor: BrandColors.primary,
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: 'center',
+  marketingLink: {
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#e0d8cc',
   },
-  marketingButtonText: {
-    color: '#fff',
+  marketingLinkText: {
     fontSize: 15,
-    fontWeight: '600',
+    color: BrandColors.primary,
     fontFamily: BrandFonts.primary,
   },
   qrOverlay: {
