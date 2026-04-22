@@ -1,15 +1,14 @@
-import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { AutographPlayer } from '@/components/autograph-player';
 import { CertificateSheet } from '@/components/certificate-sheet';
 import { ProfileAvatar } from '@/components/profile-avatar';
 import { NameWithSequence, PublicVideoCard, formatPublicVideoDate, formatPublicVideoPrice, publicVideoCardStyles } from '@/components/public-video-card';
 import { PublicVideoThumbnail } from '@/components/public-video-thumbnail';
-import { IconSymbol } from '@/components/ui/icon-symbol';
 import { BrandColors, BrandFonts } from '@/constants/theme';
 import { callEdgeFunction } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { logInterestEvent } from '@/lib/interest';
 import { supabase } from '@/lib/supabase';
+import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
@@ -149,6 +148,8 @@ export default function ProfileScreen() {
   const [detailsVisible, setDetailsVisible] = useState(false);
   const [offerInput, setOfferInput] = useState('');
   const [offerSubmitting, setOfferSubmitting] = useState(false);
+  const [reportItem, setReportItem] = useState<Listing | null>(null);
+  const [reportSubmitting, setReportSubmitting] = useState(false);
 
   const appUrl = process.env.EXPO_PUBLIC_APP_URL ?? 'https://tapnsign.app';
   const isOwnProfile = user?.id === id;
@@ -157,8 +158,9 @@ export default function ProfileScreen() {
     navigation.setOptions({
       headerBackVisible: !isOwnProfile,
       headerLeft: isOwnProfile ? () => null : undefined,
+      headerRight: undefined,
     });
-  }, [isOwnProfile, navigation]);
+  }, [isOwnProfile, navigation, router]);
 
   const openPreview = (item: Listing) => {
     if (item.video_url) {
@@ -169,6 +171,28 @@ export default function ProfileScreen() {
       });
     } else {
       Linking.openURL(`${appUrl}/verify/${item.certificate_id}`);
+    }
+  };
+
+  const handleReport = async (reason: string) => {
+    if (!reportItem || !user) return;
+    setReportSubmitting(true);
+    try {
+      const { error } = await supabase.from('reports').insert({
+        autograph_id: reportItem.id,
+        reporter_id: user.id,
+        reason,
+      });
+      setReportItem(null);
+      if (error?.code === '23505') {
+        Alert.alert('Already Reported', 'You have already reported this autograph.');
+      } else if (error) {
+        Alert.alert('Error', 'Could not submit report. Please try again.');
+      } else {
+        Alert.alert('Report Submitted', 'Thank you. Our team will review this content.');
+      }
+    } finally {
+      setReportSubmitting(false);
     }
   };
 
@@ -348,19 +372,12 @@ export default function ProfileScreen() {
           </View>
         </Pressable>
         {isOwnProfile && (
-          <Pressable style={styles.accountLink} onPress={() => router.push('/account')}>
-            <IconSymbol name="gearshape.fill" size={22} color="#777" />
+          <Pressable onPress={() => router.push('/account')} hitSlop={10}>
+            <FontAwesome name="cog" size={33} color="#777" />
           </Pressable>
         )}
       </View>
 
-
-      {/* Own profile CTA */}
-      {isOwnProfile && (
-        <Pressable style={styles.editButton} onPress={() => router.push('/autographs')}>
-          <Text style={styles.editButtonText}>View My Autographs</Text>
-        </Pressable>
-      )}
 
       {/* Public videos */}
       {publicVideos.length > 0 && (
@@ -571,6 +588,41 @@ export default function ProfileScreen() {
                 >
                   <Text style={styles.contextMenuItemText}>Creator Profile</Text>
                 </Pressable>
+
+                {!isOwnProfile && (
+                  <Pressable
+                    style={styles.contextMenuItem}
+                    onPress={() => { setContextMenuVisible(false); setReportItem(previewItem); }}
+                  >
+                    <Text style={[styles.contextMenuItemText, { color: '#FF3B30' }]}>Report</Text>
+                  </Pressable>
+                )}
+              </View>
+            </Pressable>
+          )}
+
+          {reportItem && (
+            <Pressable style={styles.contextOverlay} onPress={() => setReportItem(null)}>
+              <View style={styles.contextMenu} onStartShouldSetResponder={() => true}>
+                <Text style={styles.contextMenuTitle}>Report Autograph</Text>
+                {[
+                  { reason: 'impersonation', label: 'Impersonation' },
+                  { reason: 'offensive_content', label: 'Offensive Content' },
+                  { reason: 'fraudulent_listing', label: 'Fraudulent Listing' },
+                  { reason: 'copyright_issue', label: 'Copyright / IP Issue' },
+                ].map(({ reason, label }) => (
+                  <Pressable
+                    key={reason}
+                    style={styles.contextMenuItem}
+                    onPress={() => handleReport(reason)}
+                    disabled={reportSubmitting}
+                  >
+                    <Text style={styles.contextMenuItemText}>{label}</Text>
+                  </Pressable>
+                ))}
+                <Pressable style={styles.contextMenuItem} onPress={() => setReportItem(null)}>
+                  <Text style={[styles.contextMenuItemText, { color: '#888' }]}>Cancel</Text>
+                </Pressable>
               </View>
             </Pressable>
           )}
@@ -715,7 +767,6 @@ const styles = StyleSheet.create({
     fontFamily: BrandFonts.primary,
   },
   accountLink: {
-    alignSelf: 'flex-start',
     backgroundColor: BrandColors.background,
     borderRadius: 999,
     width: 36,
