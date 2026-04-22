@@ -141,7 +141,7 @@ export default function HomePage() {
       {/* Footer */}
       <footer className="bg-black border-t border-white/10 py-10 px-6">
         <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
-          <img src="/logo.png" alt="TapnSign" className="h-14" />
+          <img src="/logo.png" alt="TapnSign" className="h-5" />
           <div className="flex gap-6 text-sm text-gray-500">
             <Link href="/privacy" className="hover:text-white transition-colors">
               Privacy Policy
