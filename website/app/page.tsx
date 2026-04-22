@@ -88,10 +88,10 @@ export default function HomePage() {
             Collectors
           </div>
           <h2 className="text-3xl md:text-4xl font-black text-center mb-4">
-            Buy it. Sell it. Frame it.
+            Browse. Collect. Display.
           </h2>
           <p className="text-gray-500 text-center text-lg mb-12 max-w-xl mx-auto">
-            Purchase autographs from verified creators, sell when you're ready, and order official prints to display at home.
+            TapnSign autographs are verified digital collectibles, each authenticated with a unique Certificate of Authenticity. Display them on your public profile or order an official print for your wall.
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <BulletCard text="Purchase autographs directly from verified creators" />
@@ -111,13 +111,9 @@ export default function HomePage() {
           <h2 className="text-3xl md:text-4xl font-black mb-6">
             Hang it on the wall.
           </h2>
-          <p className="text-red-100 text-lg max-w-xl mx-auto mb-8">
-            Every autograph owner can order one official 8×12 lustre print, shipped to their door.
-            Scarcity is guaranteed — one print per owner, permanently on record.
+          <p className="text-red-100 text-lg max-w-xl mx-auto">
+            One print per owner. Designed to protect the value of every autograph you collect.
           </p>
-          <div className="inline-block bg-white text-[#E53935] px-8 py-3 rounded-full text-xl font-black">
-            $16.99 — Shipping included
-          </div>
         </div>
       </section>
 
