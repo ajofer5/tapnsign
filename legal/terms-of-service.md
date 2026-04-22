@@ -1,7 +1,7 @@
 # Terms of Service
 
 **Effective Date:** April 19, 2026
-**Last Updated:** April 21, 2026 (rev. 5)
+**Last Updated:** April 22, 2026 (rev. 6)
 
 These Terms of Service ("Terms") govern your use of the TapnSign mobile application (the "App") operated by TAPNSIGN LLC ("TapnSign," "we," "us," or "our"), an Indiana limited liability company. By creating an account or using the App, you agree to these Terms.
 
@@ -9,7 +9,9 @@ These Terms of Service ("Terms") govern your use of the TapnSign mobile applicat
 
 ## 1. Eligibility
 
-You must be at least 18 years old to use the App. By using the App, you represent that you are at least 18 years old and have the legal capacity to enter into these Terms.
+You must be at least 13 years old to create an account and use the App. Users under 18 may browse and maintain a profile but may not purchase autographs or become verified creators. You must be at least 18 years old to make purchases or apply for creator verification.
+
+By using the App, you represent that you meet the applicable age requirement and have the legal capacity to agree to these Terms. If you are under 18, you represent that your parent or legal guardian has reviewed and consented to these Terms on your behalf.
 
 ---
 
@@ -25,13 +27,13 @@ You must be at least 18 years old to use the App. By using the App, you represen
 
 ## 3. The TapnSign Platform
 
-TapnSign is a platform that allows verified creators to capture and digitally sign video autographs, and for collectors to purchase, own, and trade those autographs. Each autograph is accompanied by a Certificate of Authenticity ("CoA") that records the creator, owner, and capture details.
+TapnSign is a platform that allows verified creators to capture and digitally sign video autographs, and for collectors to purchase and own those autographs. Each autograph is accompanied by a Certificate of Authenticity ("CoA") that records the creator, owner, and capture details.
 
 ---
 
 ## 4. Creator Verification
 
-To capture and sell autographs, you must complete our creator verification process, which includes identity verification through Stripe Identity. By submitting to verification, you consent to Stripe's collection and processing of your identity information under Stripe's terms and privacy policy.
+To capture and sell autographs, you must be at least 18 years old and complete our creator verification process, which includes identity verification through Stripe Identity. By submitting to verification, you consent to Stripe's collection and processing of your identity information under Stripe's terms and privacy policy.
 
 We reserve the right to approve or deny verification at our discretion and to revoke verification status for violations of these Terms.
 
