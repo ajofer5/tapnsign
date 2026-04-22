@@ -480,6 +480,9 @@ export default function AccountScreen() {
           <Pressable style={styles.marketingButton} onPress={() => setQrModalVisible(true)}>
             <Text style={styles.marketingButtonText}>Creator QR Code</Text>
           </Pressable>
+          <Pressable style={[styles.marketingButton, { marginTop: 10, backgroundColor: '#f5f0e8' }]} onPress={() => WebBrowser.openBrowserAsync(`${appUrl}/marketing-tips`)}>
+            <Text style={[styles.marketingButtonText, { color: BrandColors.primary }]}>Creator Marketing Tips</Text>
+          </Pressable>
         </View>
       )}
 
