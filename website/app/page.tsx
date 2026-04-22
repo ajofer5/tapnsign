@@ -122,12 +122,12 @@ export default function HomePage() {
       </section>
 
       {/* Download CTA */}
-      <section className="bg-black py-24 px-6 text-center">
+      <section className="bg-[#F2F2F4] py-24 px-6 text-center">
         <img src="/logo.png" alt="TapnSign" className="h-24 mx-auto mb-8" />
-        <h2 className="text-white text-3xl md:text-4xl font-black mb-4">
+        <h2 className="text-black text-3xl md:text-4xl font-black mb-4">
           Ready to sign?
         </h2>
-        <p className="text-gray-400 text-lg mb-10">
+        <p className="text-gray-600 text-lg mb-10">
           TapnSign is coming to the App Store soon.
         </p>
         <a
