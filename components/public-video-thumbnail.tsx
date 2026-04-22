@@ -42,7 +42,13 @@ function SignatureOverlay({
       {strokes.map((stroke) => {
         const visible = stroke.points.filter((p) => p.t <= currentTimeSeconds);
         if (!visible.length) return null;
-        const d = visible.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+        let d = `M ${visible[0].x} ${visible[0].y}`;
+        for (let i = 1; i < visible.length - 1; i++) {
+          const mx = (visible[i].x + visible[i + 1].x) / 2;
+          const my = (visible[i].y + visible[i + 1].y) / 2;
+          d += ` Q ${visible[i].x} ${visible[i].y} ${mx} ${my}`;
+        }
+        if (visible.length > 1) d += ` L ${visible[visible.length - 1].x} ${visible[visible.length - 1].y}`;
 
         if (!isGold) {
           return (

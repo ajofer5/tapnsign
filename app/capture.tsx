@@ -101,11 +101,16 @@ export default function CaptureScreen() {
 
   const buildSvgPath = (points: Point[]) => {
     if (!points.length) return '';
-    return points
-      .map((point, index) =>
-        index === 0 ? `M ${point.x} ${point.y}` : `L ${point.x} ${point.y}`
-      )
-      .join(' ');
+    if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
+    let d = `M ${points[0].x} ${points[0].y}`;
+    for (let i = 1; i < points.length - 1; i++) {
+      const mx = (points[i].x + points[i + 1].x) / 2;
+      const my = (points[i].y + points[i + 1].y) / 2;
+      d += ` Q ${points[i].x} ${points[i].y} ${mx} ${my}`;
+    }
+    const last = points[points.length - 1];
+    d += ` L ${last.x} ${last.y}`;
+    return d;
   };
 
   const resetState = () => {
@@ -628,9 +633,14 @@ function ReviewScreen({
             const scaleY = displaySize.height / (captureHeight || 1);
             const visible = stroke.points.filter((p) => p.t <= currentTime);
             if (!visible.length) return null;
-            const d = visible
-              .map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x * scaleX} ${p.y * scaleY}`)
-              .join(' ');
+            const scaled = visible.map((p) => ({ x: p.x * scaleX, y: p.y * scaleY }));
+            let d = `M ${scaled[0].x} ${scaled[0].y}`;
+            for (let i = 1; i < scaled.length - 1; i++) {
+              const mx = (scaled[i].x + scaled[i + 1].x) / 2;
+              const my = (scaled[i].y + scaled[i + 1].y) / 2;
+              d += ` Q ${scaled[i].x} ${scaled[i].y} ${mx} ${my}`;
+            }
+            if (scaled.length > 1) d += ` L ${scaled[scaled.length - 1].x} ${scaled[scaled.length - 1].y}`;
             const isGoldStroke = strokeColor === '#C9A84C';
             if (!isGoldStroke) {
               return (
