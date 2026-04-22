@@ -23,7 +23,7 @@ export default function HomePage() {
           Display.
         </h1>
         <p className="text-gray-600 text-lg md:text-xl mt-8 max-w-md leading-relaxed">
-          The platform for verified digital autographs. Creators sign. Fans own. Everyone wins.
+          The marketplace for verified digital autographs.
         </p>
         <div id="download" className="mt-12 flex flex-col items-center gap-3">
           <a
@@ -49,13 +49,13 @@ export default function HomePage() {
           />
           <FeatureCard
             icon="🔐"
-            title="Owned Forever"
+            title="Secured Ownership"
             desc="Every autograph has a Certificate of Authenticity. Ownership is recorded and transferable."
           />
           <FeatureCard
             icon="🖼️"
-            title="Official Prints"
-            desc="Order an official 8×12 lustre print shipped to your door. One per owner, guaranteed scarce."
+            title="Limited Prints"
+            desc="One print per owner, guaranteed exclusive. A physical display of something truly yours."
           />
         </div>
       </section>
@@ -67,10 +67,10 @@ export default function HomePage() {
             Creators
           </div>
           <h2 className="text-3xl md:text-4xl font-black text-center mb-4">
-            Your signature. Your legacy.
+            Your name. Your image. Your terms.
           </h2>
           <p className="text-gray-500 text-center text-lg mb-12 max-w-xl mx-auto">
-            Capture a video autograph, add your digital signature, and sell directly to fans — all in the TapnSign app.
+            TapnSign gives talented individuals direct control over monetizing their name, image, and likeness — no middlemen, no gatekeepers. Capture a video autograph, set your price, and sell directly to fans.
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <BulletCard text="Identity verified through Stripe Identity — fans know it's really you" />
@@ -88,16 +88,16 @@ export default function HomePage() {
             Collectors
           </div>
           <h2 className="text-3xl md:text-4xl font-black text-center mb-4">
-            Own it. Trade it. Frame it.
+            Buy it. Sell it. Frame it.
           </h2>
           <p className="text-gray-500 text-center text-lg mb-12 max-w-xl mx-auto">
-            Purchase autographs from verified creators, trade in the marketplace, and order official prints to display at home.
+            Purchase autographs from verified creators, sell when you're ready, and order official prints to display at home.
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <BulletCard text="Purchase autographs directly from verified creators" />
             <BulletCard text="Every autograph includes a Certificate of Authenticity with QR verification" />
-            <BulletCard text="Trade autographs with other collectors in the marketplace" />
-            <BulletCard text="Order an official 8×12 print — one per owner, forever yours" />
+            <BulletCard text="Sell your autographs in the marketplace when you're ready" />
+            <BulletCard text="Order an official print — one per owner, guaranteed exclusive" />
           </div>
         </div>
       </section>
