@@ -119,7 +119,7 @@ export default function HomePage() {
 
       {/* Download CTA */}
       <section className="bg-[#F2F2F4] py-24 px-6 text-center">
-        <img src="/logo.png" alt="TapnSign" className="h-24 mx-auto mb-8" />
+        <img src="/logo.png" alt="TapnSign" className="h-16 mx-auto mb-8" />
         <h2 className="text-black text-3xl md:text-4xl font-black mb-4">
           Ready to sign?
         </h2>
