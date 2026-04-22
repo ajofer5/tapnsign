@@ -7,8 +7,10 @@ import { getPushDiagnostics, type PushDiagnostics } from '@/lib/notifications';
 import { useStripe } from '@stripe/stripe-react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { Alert, ActivityIndicator, FlatList, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Alert, ActivityIndicator, FlatList, Image, Modal, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native';
+import QRCode from 'react-native-qrcode-svg';
+import ViewShot from 'react-native-view-shot';
 import { supabase } from '@/lib/supabase';
 
 type AvatarAutograph = {
@@ -117,6 +119,10 @@ export default function AccountScreen() {
   const [loadingPushDiagnostics, setLoadingPushDiagnostics] = useState(true);
   const [latestVerificationEvent, setLatestVerificationEvent] = useState<VerificationEvent | null>(null);
   const [courtesyRetryAvailable, setCourtesyRetryAvailable] = useState(false);
+  const [qrModalVisible, setQrModalVisible] = useState(false);
+  const qrRef = useRef<ViewShot>(null);
+  const appUrl = process.env.EXPO_PUBLIC_APP_URL ?? 'https://tapnsign.com';
+  const profileUrl = user ? `${appUrl}/profile/${user.id}` : '';
 
   const instagramStatusLabel =
     profile?.instagram_handle ? 'Connected' : 'Not Linked';
@@ -465,6 +471,18 @@ export default function AccountScreen() {
         )}
       </View>
 
+      {profile?.role === 'verified' && (
+        <View style={styles.card}>
+          <Text style={styles.sectionHeader}>Marketing Tools</Text>
+          <Text style={styles.sectionSubtext}>
+            Share your TapnSign profile with fans using your personal QR code.
+          </Text>
+          <Pressable style={styles.marketingButton} onPress={() => setQrModalVisible(true)}>
+            <Text style={styles.marketingButtonText}>Creator QR Code</Text>
+          </Pressable>
+        </View>
+      )}
+
       {profile?.role === 'member' && verificationStatus === 'none' && (
         <>
           <VerificationPolicyCard />
@@ -533,6 +551,51 @@ export default function AccountScreen() {
       <Pressable style={styles.signOutButton} onPress={signOut}>
         <Text style={styles.signOutText}>Sign Out</Text>
       </Pressable>
+
+      <Modal
+        visible={qrModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setQrModalVisible(false)}
+      >
+        <Pressable style={styles.qrOverlay} onPress={() => setQrModalVisible(false)}>
+          <View style={styles.qrSheet} onStartShouldSetResponder={() => true}>
+            <Text style={styles.qrTitle}>Creator QR Code</Text>
+            <Text style={styles.qrSubtitle}>
+              Download or share this QR code. Fans who scan it will be directed to your TapnSign profile.
+            </Text>
+            <View style={styles.qrCodeWrap}>
+              <ViewShot ref={qrRef} options={{ format: 'png', quality: 1 }}>
+                <View style={styles.qrCodeInner}>
+                  <QRCode value={profileUrl} size={200} />
+                </View>
+              </ViewShot>
+            </View>
+            <Text
+              style={styles.qrLink}
+              selectable
+            >
+              {profileUrl}
+            </Text>
+            <Pressable
+              style={styles.qrShareButton}
+              onPress={async () => {
+                try {
+                  const uri = await qrRef.current?.capture?.();
+                  if (uri) {
+                    await Share.share({ url: uri, message: `Follow me on TapnSign: ${profileUrl}` });
+                  }
+                } catch {}
+              }}
+            >
+              <Text style={styles.qrShareButtonText}>Download / Share QR Code</Text>
+            </Pressable>
+            <Pressable style={styles.qrDoneButton} onPress={() => setQrModalVisible(false)}>
+              <Text style={styles.qrDoneButtonText}>Done</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
 
       <Modal
         visible={avatarPickerVisible}
@@ -1025,6 +1088,87 @@ const styles = StyleSheet.create({
     color: '#666',
     textAlign: 'center',
     paddingVertical: 18,
+    fontFamily: BrandFonts.primary,
+  },
+  marketingButton: {
+    marginTop: 12,
+    backgroundColor: BrandColors.primary,
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  marketingButtonText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600',
+    fontFamily: BrandFonts.primary,
+  },
+  qrOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  qrSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 24,
+    paddingTop: 24,
+    paddingBottom: 40,
+    alignItems: 'center',
+  },
+  qrTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    fontFamily: BrandFonts.primary,
+    color: '#111',
+    marginBottom: 8,
+  },
+  qrSubtitle: {
+    fontSize: 13,
+    color: '#666',
+    fontFamily: BrandFonts.primary,
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  qrCodeWrap: {
+    marginBottom: 20,
+  },
+  qrCodeInner: {
+    padding: 16,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  qrLink: {
+    fontSize: 13,
+    color: BrandColors.primary,
+    fontFamily: BrandFonts.primary,
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  qrShareButton: {
+    backgroundColor: BrandColors.primary,
+    borderRadius: 10,
+    paddingVertical: 13,
+    paddingHorizontal: 32,
+    alignItems: 'center',
+    width: '100%',
+    marginBottom: 12,
+  },
+  qrShareButtonText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600',
+    fontFamily: BrandFonts.primary,
+  },
+  qrDoneButton: {
+    paddingVertical: 10,
+  },
+  qrDoneButtonText: {
+    fontSize: 15,
+    color: '#888',
     fontFamily: BrandFonts.primary,
   },
 });
