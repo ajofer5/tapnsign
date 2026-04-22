@@ -5,7 +5,7 @@ export default function HomePage() {
     <main>
       {/* Nav */}
       <nav className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-6 py-4 bg-black/95 backdrop-blur-sm">
-        <img src="/logo.png" alt="TapnSign" className="h-12" />
+        <img src="/logo.png" alt="TapnSign" className="h-9" />
         <a
           href="#download"
           className="bg-[#E53935] text-white px-5 py-2 rounded-full text-sm font-semibold hover:bg-red-700 transition-colors"
