@@ -1,7 +1,7 @@
 # Terms of Service
 
 **Effective Date:** April 19, 2026
-**Last Updated:** April 22, 2026 (rev. 6)
+**Last Updated:** April 22, 2026 (rev. 7)
 
 These Terms of Service ("Terms") govern your use of the TapnSign mobile application (the "App") operated by TAPNSIGN LLC ("TapnSign," "we," "us," or "our"), an Indiana limited liability company. By creating an account or using the App, you agree to these Terms.
 
@@ -91,7 +91,23 @@ Official Print payments are non-refundable except in cases of verified shipping 
 
 ---
 
-## 8. Prohibited Conduct
+## 8. Content Standards
+
+All content uploaded to or displayed on TapnSign — including autograph videos, profile photos, and any associated text — must be appropriate for a general audience. By uploading content, you represent and warrant that it:
+
+- Does not contain nudity, sexual content, or graphic violence
+- Does not depict, promote, or glorify illegal activity
+- Does not target, harass, or demean any individual or group
+- Does not infringe on any third-party intellectual property rights
+- Does not contain defamatory, obscene, or hateful material
+
+**Public-facing content** (content visible on public profiles or accessible via QR code or shared link) is held to the same standard regardless of whether it is viewed inside the App or on the TapnSign website.
+
+TapnSign reserves the right to remove any content that violates these standards and to suspend or terminate the accounts of creators who repeatedly or egregiously violate this policy. Users may report content that appears to violate these standards through the in-app reporting feature.
+
+---
+
+## 9. Prohibited Conduct
 
 You agree not to:
 
@@ -108,7 +124,7 @@ You agree not to:
 
 ---
 
-## 9. Intellectual Property
+## 10. Intellectual Property
 
 - **Your content:** You retain ownership of the content you create through the App. By uploading content, you grant TapnSign a non-exclusive, worldwide, royalty-free license to host, display, and deliver that content as necessary to operate the App.
 - **Our content:** The TapnSign name, logo, and all App software are owned by TAPNSIGN LLC. You may not copy, modify, or distribute our intellectual property without written permission.
@@ -116,7 +132,7 @@ You agree not to:
 
 ---
 
-## 10. Disclaimers
+## 11. Disclaimers
 
 THE APP IS PROVIDED "AS IS" WITHOUT WARRANTIES OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, OR NON-INFRINGEMENT.
 
@@ -128,7 +144,7 @@ We do not guarantee that:
 
 ---
 
-## 11. Limitation of Liability
+## 12. Limitation of Liability
 
 TO THE FULLEST EXTENT PERMITTED BY LAW, TAPNSIGN LLC SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, INCLUDING LOSS OF PROFITS, DATA, OR GOODWILL, ARISING OUT OF OR IN CONNECTION WITH YOUR USE OF THE APP.
 
@@ -136,31 +152,31 @@ IN NO EVENT SHALL OUR TOTAL LIABILITY TO YOU EXCEED THE GREATER OF (A) THE AMOUN
 
 ---
 
-## 12. Indemnification
+## 13. Indemnification
 
 You agree to indemnify, defend, and hold harmless TAPNSIGN LLC and its members, officers, employees, and agents from any claims, liabilities, damages, losses, or expenses (including reasonable attorneys' fees) arising out of your use of the App, your violation of these Terms, or your violation of any third-party rights.
 
 ---
 
-## 13. Termination
+## 14. Termination
 
 We may suspend or terminate your access to the App at any time, with or without cause or notice. Upon termination, your right to use the App ceases immediately. Provisions that by their nature should survive termination will survive, including ownership provisions, disclaimers, indemnification, and limitations of liability.
 
 ---
 
-## 14. Governing Law and Disputes
+## 15. Governing Law and Disputes
 
 These Terms are governed by the laws of the State of Indiana, without regard to conflict of law principles. Any disputes arising under these Terms shall be resolved exclusively in the state or federal courts located in Indiana, and you consent to personal jurisdiction in those courts.
 
 ---
 
-## 15. Changes to These Terms
+## 16. Changes to These Terms
 
 We may update these Terms from time to time. We will notify you of material changes through an in-app notification or by email. Continued use of the App after changes take effect constitutes your acceptance of the revised Terms.
 
 ---
 
-## 16. Contact Us
+## 17. Contact Us
 
 If you have questions about these Terms, please contact us:
 
