@@ -231,7 +231,7 @@ export default function ProfileScreen() {
       });
       setOfferItem(null);
       setOfferInput('');
-      Alert.alert('Offer Sent', 'Your offer was sent and will expire in 72 hours if it is not answered.');
+      Alert.alert('Offer Sent', 'Your offer was sent and will expire in 24 hours if it is not answered.');
     } catch {
       Alert.alert('Offer Failed', 'Could not send offer. Please try again.');
     } finally {
@@ -659,7 +659,7 @@ export default function ProfileScreen() {
           <View style={styles.offerSheet} onStartShouldSetResponder={() => true}>
             <Text style={styles.offerTitle}>Make Offer</Text>
             <Text style={styles.offerSubtitle}>
-              {offerItem?.creator_name ?? 'Autograph'} · Expires in 72 hours if not accepted
+              {offerItem?.creator_name ?? 'Autograph'} · Expires in 24 hours if not accepted
             </Text>
             <TextInput
               style={styles.offerInput}
