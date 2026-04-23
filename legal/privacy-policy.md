@@ -77,7 +77,7 @@ We implement industry-standard security measures including encrypted data transm
 
 ## 6. Children's Privacy
 
-The App is not directed to individuals under the age of 18. We do not knowingly collect personal information from anyone under 18. If we learn that we have collected such information, we will delete it promptly. If you believe someone under 18 has provided us information, please contact us at andy@tapnsign.com.
+The App is not directed to individuals under the age of 18. We do not knowingly collect personal information from anyone under 18. If we learn that we have collected such information, we will delete it promptly. If you believe someone under 18 has provided us information, please contact us at hello@tapnsign.com.
 
 ---
 
@@ -86,10 +86,10 @@ The App is not directed to individuals under the age of 18. We do not knowingly 
 You may:
 
 - **Access or update** your account information through the App settings
-- **Delete your account** by contacting us at andy@tapnsign.com
+- **Delete your account** by contacting us at hello@tapnsign.com
 - **Opt out of push notifications** through your device settings
-- **Request a copy** of the personal data we hold about you by emailing andy@tapnsign.com
-- **Request deletion of your shipping address** after your print order has been fulfilled by contacting andy@tapnsign.com
+- **Request a copy** of the personal data we hold about you by emailing hello@tapnsign.com
+- **Request deletion of your shipping address** after your print order has been fulfilled by contacting hello@tapnsign.com
 
 ---
 
@@ -110,5 +110,5 @@ We may update this Privacy Policy from time to time. We will notify you of mater
 If you have questions or concerns about this Privacy Policy, please contact us:
 
 **TAPNSIGN LLC**
-Email: andy@tapnsign.com
+Email: hello@tapnsign.com
 Website: https://tapnsign.com

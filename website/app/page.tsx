@@ -145,7 +145,7 @@ export default function HomePage() {
             <Link href="/terms" className="hover:text-white transition-colors">
               Terms of Service
             </Link>
-            <a href="mailto:andy@tapnsign.com" className="hover:text-white transition-colors">
+            <a href="mailto:hello@tapnsign.com" className="hover:text-white transition-colors">
               Contact
             </a>
           </div>
