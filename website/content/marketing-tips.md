@@ -74,4 +74,4 @@ Release thoughtfully. Price consistently. Show up for your collectors. The value
 
 ---
 
-*Have a tip or question? Reach us at andy@tapnsign.com*
+*Have a tip or question? Reach us at hello@tapnsign.com*
