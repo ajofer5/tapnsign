@@ -17,7 +17,7 @@ export default function MarketingTipsPage() {
 
   return (
     <main className="min-h-screen bg-[#F2F2F4]">
-      <nav className="bg-white border-b border-gray-200 px-6 py-4">
+      <nav className="bg-[#F2F2F4] border-b border-gray-200 px-6 py-4">
         <Link href="/">
           <img src="/logo.png" alt="TapnSign" className="h-[4.5rem]" />
         </Link>
