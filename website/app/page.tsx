@@ -135,17 +135,17 @@ export default function HomePage() {
       </section>
 
       {/* Footer */}
-      <footer className="bg-black border-t border-white/10 py-10 px-6">
+      <footer className="bg-[#F2F2F4] border-t border-gray-200 py-10 px-6">
         <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
           <img src="/logo.png" alt="TapnSign" className="h-5" />
           <div className="flex gap-6 text-sm text-gray-500">
-            <Link href="/privacy" className="hover:text-white transition-colors">
+            <Link href="/privacy" className="hover:text-black transition-colors">
               Privacy Policy
             </Link>
-            <Link href="/terms" className="hover:text-white transition-colors">
+            <Link href="/terms" className="hover:text-black transition-colors">
               Terms of Service
             </Link>
-            <a href="mailto:hello@tapnsign.com" className="hover:text-white transition-colors">
+            <a href="mailto:hello@tapnsign.com" className="hover:text-black transition-colors">
               Contact
             </a>
           </div>
