@@ -39,6 +39,7 @@ type PublicVideoCardProps = {
   gold?: boolean;
   seriesName?: string | null;
   seriesEdition?: string | null;
+  priceLabel?: string;
   priceText: string;
   secondaryText?: string | null;
   onPress?: () => void;
@@ -54,6 +55,7 @@ export function PublicVideoCard({
   gold = false,
   seriesName,
   seriesEdition,
+  priceLabel,
   priceText,
   secondaryText,
   onPress,
@@ -79,6 +81,7 @@ export function PublicVideoCard({
           </View>
         </View>
         <View style={styles.details}>
+          {priceLabel ? <Text style={styles.priceLabel}>{priceLabel}</Text> : null}
           <Text style={styles.price}>{priceText}</Text>
           {secondaryText ? <Text style={styles.secondary}>{secondaryText}</Text> : null}
           {trailing}
@@ -181,6 +184,15 @@ const styles = StyleSheet.create({
   },
   details: {
     marginTop: 18,
+  },
+  priceLabel: {
+    fontSize: 11,
+    color: '#888',
+    fontFamily: BrandFonts.primary,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 2,
   },
   price: {
     fontSize: 28,

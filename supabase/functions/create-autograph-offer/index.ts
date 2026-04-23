@@ -59,7 +59,70 @@ Deno.serve((req) =>
 
     assert(!existingPending, 409, 'You already have a pending offer on this autograph.');
 
+    const label = await getAutographDisplayLabel(autographId);
+
+    // ── Auto-accept: offer is at or above estimated value and seller opted in ──
+    const shouldAutoAccept =
+      autograph.sale_state === 'fixed' &&
+      autograph.auto_accept_above === true &&
+      autograph.price_cents != null &&
+      amountCents >= autograph.price_cents;
+
+    if (shouldAutoAccept) {
+      const now = new Date().toISOString();
+      const paymentDueAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
+      const { data: offer, error } = await supabaseAdmin
+        .from('autograph_offers')
+        .insert({
+          autograph_id: autographId,
+          buyer_id: user.id,
+          owner_id: autograph.owner_id,
+          amount_cents: amountCents,
+          status: 'accepted',
+          expires_at: paymentDueAt,
+          responded_at: now,
+          accepted_at: now,
+          payment_due_at: paymentDueAt,
+        })
+        .select('id, created_at, expires_at, status, payment_due_at')
+        .single();
+
+      if (error || !offer) {
+        throw new Error(error?.message ?? 'Could not create offer.');
+      }
+
+      // Decline any other pending offers on this autograph
+      await supabaseAdmin
+        .from('autograph_offers')
+        .update({ status: 'declined', responded_at: now })
+        .eq('autograph_id', autographId)
+        .eq('status', 'pending')
+        .neq('id', offer.id);
+
+      await logInterestEvent({ userId: user.id, eventType: 'offer_sent', autographId });
+
+      await notifyUser(
+        user.id,
+        'Offer Accepted',
+        `Your offer on ${label} was automatically accepted. Complete purchase within 24 hours.`
+      );
+
+      return json({ offer, auto_accepted: true });
+    }
+
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
+    // ── Auto-decline: offer is below estimated value and seller opted in ──
+    const shouldAutoDecline =
+      autograph.sale_state === 'fixed' &&
+      autograph.auto_decline_below === true &&
+      autograph.price_cents != null &&
+      amountCents < autograph.price_cents;
+
+    const declineAfter = shouldAutoDecline
+      ? new Date(Date.now() + 60 * 1000).toISOString() // 1 minute
+      : null;
 
     const { data: offer, error } = await supabaseAdmin
       .from('autograph_offers')
@@ -70,6 +133,7 @@ Deno.serve((req) =>
         amount_cents: amountCents,
         status: 'pending',
         expires_at: expiresAt,
+        decline_after: declineAfter,
       })
       .select('id, created_at, expires_at, status')
       .single();
@@ -78,19 +142,17 @@ Deno.serve((req) =>
       throw new Error(error?.message ?? 'Could not create offer.');
     }
 
-    await logInterestEvent({
-      userId: user.id,
-      eventType: 'offer_sent',
-      autographId: autographId,
-    });
+    await logInterestEvent({ userId: user.id, eventType: 'offer_sent', autographId });
 
-    const label = await getAutographDisplayLabel(autographId);
-    await notifyUser(
-      autograph.owner_id,
-      'Offer Received',
-      `You received a new offer on ${label}.`
-    );
+    // Only notify the owner if the offer won't be auto-declined
+    if (!shouldAutoDecline) {
+      await notifyUser(
+        autograph.owner_id,
+        'Offer Received',
+        `You received a new offer on ${label}.`
+      );
+    }
 
-    return json({ offer });
+    return json({ offer, auto_decline_scheduled: shouldAutoDecline });
   }, req)
 );

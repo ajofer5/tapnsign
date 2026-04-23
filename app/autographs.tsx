@@ -131,6 +131,8 @@ export default function AutographsScreen() {
   const [shareItem, setShareItem] = useState<AutographItem | null>(null);
   const [sellItems, setSellItems] = useState<AutographItem[]>([]);
   const [priceInput, setPriceInput] = useState('');
+  const [autoDeclineBelow, setAutoDeclineBelow] = useState(false);
+  const [autoAcceptAbove, setAutoAcceptAbove] = useState(false);
 
   // Formats a cents-as-string value to "X.XX" display string
   const formatCentsInput = (raw: string) => {
@@ -185,14 +187,16 @@ export default function AutographsScreen() {
   const closeSellSheet = () => {
     setSellItems([]);
     setPriceInput('');
+    setAutoDeclineBelow(false);
+    setAutoAcceptAbove(false);
   };
 
   const handleListForSale = async () => {
     if (sellItems.length === 0) return;
 
     const dollars = parseFloat(priceInput);
-    if (isNaN(dollars) || dollars <= 0) {
-      Alert.alert('Invalid price', 'Please enter a valid price greater than $0.');
+    if (isNaN(dollars) || dollars < 10) {
+      Alert.alert('Invalid price', 'Estimated value must be at least $10.00.');
       return;
     }
     setSaving(true);
@@ -203,9 +207,10 @@ export default function AutographsScreen() {
       try {
         await callEdgeFunction('create-listing', {
           autograph_id: item.id,
-          listing_type: 'fixed',
           price_cents: priceCents,
           open_to_trade: false,
+          auto_decline_below: autoDeclineBelow,
+          auto_accept_above: autoAcceptAbove,
         });
         setData((prev) => prev.map((i) =>
           i.id === item.id
@@ -226,7 +231,7 @@ export default function AutographsScreen() {
       const message = `${succeeded} listed, ${failed} failed.`;
       Alert.alert('Partially listed', firstError ? `${message}\n\n${firstError}` : message);
     } else {
-      Alert.alert('Listed!', `${succeeded} autograph${succeeded !== 1 ? 's' : ''} listed for $${dollars.toFixed(2)} each.`);
+      Alert.alert('Listed!', `${succeeded} autograph${succeeded !== 1 ? 's' : ''} listed with an estimated value of $${dollars.toFixed(2)} each.`);
     }
   };
 
@@ -885,75 +890,61 @@ export default function AutographsScreen() {
       <FlatList
         data={filteredData}
         keyExtractor={(item) => item.id}
+        numColumns={2}
+        columnWrapperStyle={styles.gridRow}
         ListEmptyComponent={emptyComponent}
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
+        contentContainerStyle={{ paddingBottom: 24 }}
         renderItem={({ item }) => {
           const isSelectable = seriesSelectionMode && canCreateSeriesWithItem(item);
           const isSelected = selectedIds.has(item.id);
-          const acceptedOffer = acceptedOffers[item.id];
           return (
-          <Pressable
-            style={[styles.row, seriesSelectionMode && !isSelectable && styles.rowDisabled]}
-            onPress={() => {
-              if (seriesSelectionMode) {
-                if (!isSelectable) return;
-                setSelectedIds((prev) => {
-                  const next = new Set(prev);
-                  if (next.has(item.id)) {
-                    next.delete(item.id);
+            <Pressable
+              style={[styles.gridCard, seriesSelectionMode && !isSelectable && styles.rowDisabled]}
+              onPress={() => {
+                if (seriesSelectionMode) {
+                  if (!isSelectable) return;
+                  setSelectedIds((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(item.id)) {
+                      next.delete(item.id);
+                      return next;
+                    }
+                    if (next.size >= 50) {
+                      Alert.alert('Series Limit', 'A series can include at most 50 videos.');
+                      return prev;
+                    }
+                    next.add(item.id);
                     return next;
-                  }
-                  if (next.size >= 50) {
-                    Alert.alert('Series Limit', 'A series can include at most 50 videos.');
-                    return prev;
-                  }
-                  next.add(item.id);
-                  return next;
-                });
-              } else {
-                openVideo(item);
-              }
-            }}
-          >
-            {seriesSelectionMode && (
-              <View style={[styles.selectionCheckCircle, isSelected && styles.selectionCheckCircleSelected, !isSelectable && styles.selectionCheckCircleDisabled]}>
-                {isSelected && <Text style={styles.selectionCheckTick}>✓</Text>}
+                  });
+                } else {
+                  openVideo(item);
+                }
+              }}
+            >
+              <View style={styles.thumbnailWrap}>
+                <PublicVideoThumbnail
+                  videoUrl={item.videoUri}
+                  strokes={item.strokes ?? []}
+                  captureWidth={item.captureWidth || 1}
+                  captureHeight={item.captureHeight || 1}
+                  strokeColor={item.strokeColor}
+                  shellStyle={styles.thumbnail}
+                />
+                {seriesSelectionMode && (
+                  <View style={[styles.selectionCheckCircle, isSelected && styles.selectionCheckCircleSelected, !isSelectable && styles.selectionCheckCircleDisabled]}>
+                    {isSelected && <Text style={styles.selectionCheckTick}>✓</Text>}
+                  </View>
+                )}
               </View>
-            )}
-            <PublicVideoThumbnail
-              videoUrl={item.videoUri}
-              strokes={item.strokes ?? []}
-              captureWidth={item.captureWidth || 1}
-              captureHeight={item.captureHeight || 1}
-              strokeColor={item.strokeColor}
-              shellStyle={styles.thumbnail}
-            />
-            <View style={styles.textContainer}>
-              <NameWithSequence name={item.creatorName ?? ''} sequenceNumber={item.creatorSequenceNumber} style={styles.dateText} />
-              {item.seriesName ? (
-                <Text style={styles.seriesMetaText}>
-                  <Text style={styles.seriesNameText}>{item.seriesName}</Text>
-                  {formatSeriesEdition(item) ? <Text style={styles.seriesEditionText}>{` · ${formatSeriesEdition(item)}`}</Text> : null}
-                </Text>
-              ) : null}
-              <Text style={styles.cardSubDate}>{formatDateTime(item.createdAt)}</Text>
-              {acceptedOffer ? (
-                <Text style={styles.pendingBuyerPaymentBadge}>
-                  {acceptedOffer.paymentDueAt
-                    ? `Pending Buyer Payment · ${formatDateTime(acceptedOffer.paymentDueAt)}`
-                    : 'Pending Buyer Payment'}
-                </Text>
-              ) : item.isForSale ? (
-                <Text style={styles.listedBadge}>
-                  {`Fixed Price · $${((item.priceCents ?? 0) / 100).toFixed(2)}`}
-                </Text>
-              ) : (
-                <Text style={item.visibility === 'public' ? styles.publicBadge : styles.privateBadge}>
-                  {item.visibility === 'public' ? 'Public · Not for Sale' : 'Private · Not for Sale'}
-                </Text>
-              )}
-            </View>
-          </Pressable>
+              <View style={styles.gridCardInfo}>
+                <NameWithSequence name={item.creatorName ?? ''} sequenceNumber={item.creatorSequenceNumber} style={styles.gridCardName} />
+                {item.seriesName ? (
+                  <Text style={styles.gridCardSeries} numberOfLines={1}>
+                    {item.seriesName}{formatSeriesEdition(item) ? ` · ${formatSeriesEdition(item)}` : ''}
+                  </Text>
+                ) : null}
+              </View>
+            </Pressable>
           );
         }}
       />
@@ -1639,16 +1630,17 @@ export default function AutographsScreen() {
             keyboardShouldPersistTaps="handled"
             onStartShouldSetResponder={() => true}
           >
-            <Text style={styles.certTitle}>Set Sale State</Text>
+            <Text style={styles.certTitle}>List for Sale</Text>
             <Text style={styles.certDate}>
               {sellItems.length === 1
                 ? (sellItems[0].creatorName ?? formatDateTime(sellItems[0].createdAt))
                 : `${sellItems.length} autographs`}
             </Text>
 
+            <Text style={[styles.certDate, { marginTop: 16, marginBottom: 4, fontWeight: '600', color: '#444' }]}>Estimated Value (min $10.00)</Text>
             <TextInput
               style={styles.priceInput}
-              placeholder="Price per item in USD"
+              placeholder="e.g. 25.00"
               placeholderTextColor="#999"
               keyboardType="decimal-pad"
               returnKeyType="done"
@@ -1657,12 +1649,32 @@ export default function AutographsScreen() {
             />
 
             <Pressable
+              style={styles.checkboxRow}
+              onPress={() => setAutoDeclineBelow((v) => !v)}
+            >
+              <View style={[styles.checkbox, autoDeclineBelow && styles.checkboxChecked]}>
+                {autoDeclineBelow && <Text style={styles.checkboxTick}>✓</Text>}
+              </View>
+              <Text style={styles.checkboxLabel}>Auto-decline offers below estimated value</Text>
+            </Pressable>
+
+            <Pressable
+              style={styles.checkboxRow}
+              onPress={() => setAutoAcceptAbove((v) => !v)}
+            >
+              <View style={[styles.checkbox, autoAcceptAbove && styles.checkboxChecked]}>
+                {autoAcceptAbove && <Text style={styles.checkboxTick}>✓</Text>}
+              </View>
+              <Text style={styles.checkboxLabel}>Auto-accept first offer at or above estimated value</Text>
+            </Pressable>
+
+            <Pressable
               style={[styles.certCloseButton, saving && { opacity: 0.6 }]}
               onPress={handleListForSale}
               disabled={saving}
             >
               <Text style={styles.closeButtonText}>
-                {saving ? 'Saving…' : `Set Fixed Price for ${sellItems.length > 1 ? `${sellItems.length} autographs` : '1 autograph'}`}
+                {saving ? 'Saving…' : `List ${sellItems.length > 1 ? `${sellItems.length} autographs` : '1 autograph'}`}
               </Text>
             </Pressable>
 
@@ -1682,15 +1694,45 @@ const styles = StyleSheet.create({
     padding: 16,
     backgroundColor: BrandColors.background,
   },
+  gridRow: {
+    paddingHorizontal: 12,
+    gap: 12,
+    marginBottom: 12,
+  },
+  gridCard: {
+    flex: 1,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#fff',
+  },
+  thumbnailWrap: {
+    position: 'relative',
+  },
+  gridCardInfo: {
+    paddingHorizontal: 8,
+    paddingVertical: 7,
+  },
+  gridCardName: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#111',
+    fontFamily: BrandFonts.primary,
+  },
+  gridCardSeries: {
+    fontSize: 11,
+    color: '#777',
+    marginTop: 2,
+    fontFamily: BrandFonts.primary,
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 10,
   },
   thumbnail: {
-    width: 56,
-    height: 56,
-    borderRadius: 10,
+    width: '100%',
+    aspectRatio: 3 / 4,
+    borderRadius: 0,
     backgroundColor: '#d9d9d9',
     justifyContent: 'center',
     alignItems: 'center',
@@ -2264,6 +2306,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   selectionCheckCircle: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
     width: 24,
     height: 24,
     borderRadius: 12,
@@ -2272,6 +2317,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     justifyContent: 'center',
     alignItems: 'center',
+    zIndex: 10,
     marginRight: 10,
   },
   selectionCheckCircleSelected: {

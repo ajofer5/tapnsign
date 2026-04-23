@@ -2,7 +2,7 @@ import Stripe from 'https://esm.sh/stripe@14?target=deno';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2?target=deno';
 
 export const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') ?? 'https://tapnsign.app',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -119,7 +119,20 @@ export function assert(condition: unknown, status: number, message: string): ass
 export async function getProfile(userId: string) {
   const { data, error } = await supabaseAdmin
     .from('profiles')
-    .select('id, role, verification_status, suspended_at')
+    .select(`
+      id,
+      role,
+      verification_status,
+      suspended_at,
+      instagram_handle,
+      instagram_status,
+      instagram_verified_at,
+      instagram_verification_method,
+      instagram_verification_code,
+      instagram_verification_requested_at,
+      instagram_verification_expires_at,
+      instagram_verification_checked_at
+    `)
     .eq('id', userId)
     .single();
 
@@ -136,17 +149,18 @@ export async function getAutographForUpdate(autographId: string) {
     .select(`
       id,
       certificate_id,
-      celebrity_id,
+      creator_id,
       owner_id,
       status,
       ownership_source,
+      visibility,
+      sale_state,
       is_for_sale,
-      listing_type,
       price_cents,
-      reserve_price_cents,
-      auction_ends_at,
       open_to_trade,
-      latest_transfer_id
+      latest_transfer_id,
+      auto_decline_below,
+      auto_accept_above
     `)
     .eq('id', autographId)
     .single();
@@ -203,6 +217,117 @@ export async function markTradeOffersInactive(autographIds: string[]) {
 
   if (error) {
     throw new HttpError(500, error.message);
+  }
+}
+
+export async function logInterestEvent(params: {
+  userId: string;
+  eventType: 'offer_sent' | 'purchase_completed';
+  autographId: string;
+}) {
+  try {
+    const { data: autograph } = await supabaseAdmin
+      .from('autographs')
+      .select('creator_id, series_id')
+      .eq('id', params.autographId)
+      .maybeSingle();
+
+    await supabaseAdmin
+      .from('interest_events')
+      .insert({
+        user_id: params.userId,
+        autograph_id: params.autographId,
+        creator_id: autograph?.creator_id ?? null,
+        series_id: autograph?.series_id ?? null,
+        event_type: params.eventType,
+      });
+  } catch (error) {
+    console.warn('interest event log failed:', error);
+  }
+}
+
+export async function getAutographDisplayLabel(autographId: string) {
+  const { data } = await supabaseAdmin
+    .from('autographs')
+    .select('creator_sequence_number, creator:creator_id ( display_name )')
+    .eq('id', autographId)
+    .maybeSingle();
+
+  const creatorName = (data as any)?.creator?.display_name ?? 'an autograph';
+  const creatorSequenceNumber = (data as any)?.creator_sequence_number;
+
+  return creatorSequenceNumber != null
+    ? `${creatorName} #${creatorSequenceNumber}`
+    : creatorName;
+}
+
+export async function notifyUser(userId: string, title: string, body: string) {
+  try {
+    const { data } = await supabaseAdmin
+      .from('push_tokens')
+      .select('token')
+      .eq('user_id', userId)
+      .is('revoked_at', null)
+      .maybeSingle();
+
+    const token = data?.token;
+    if (!token) return;
+
+    await sendExpoPush(token, title, body);
+  } catch (error) {
+    console.warn('push notify failed:', error);
+  }
+}
+
+export async function autoDeclinePendingOffers() {
+  try {
+    const { data: declineCandidates } = await supabaseAdmin
+      .from('autograph_offers')
+      .select('id, autograph_id, buyer_id')
+      .eq('status', 'pending')
+      .not('decline_after', 'is', null)
+      .lt('decline_after', new Date().toISOString());
+
+    await supabaseAdmin.rpc('auto_decline_pending_offers');
+
+    for (const offer of declineCandidates ?? []) {
+      const label = await getAutographDisplayLabel(offer.autograph_id);
+      await notifyUser(
+        offer.buyer_id,
+        'Offer Not Accepted',
+        `The seller is not currently accepting offers below their estimated value for ${label}. Feel free to adjust your offer and resubmit if you're still interested.`
+      );
+    }
+  } catch (error) {
+    console.warn('auto decline offers failed:', error);
+  }
+}
+
+export async function expireOffersAndNotify() {
+  await autoDeclinePendingOffers();
+  const nowIso = new Date().toISOString();
+
+  const { data: reopenCandidates } = await supabaseAdmin
+    .from('autograph_offers')
+    .select('id, autograph_id, buyer_id, owner_id')
+    .eq('status', 'accepted')
+    .is('accepted_transfer_id', null)
+    .lt('payment_due_at', nowIso);
+
+  await supabaseAdmin.rpc('expire_autograph_offers');
+
+  for (const offer of reopenCandidates ?? []) {
+    const label = await getAutographDisplayLabel(offer.autograph_id);
+    await notifyUser(
+      offer.buyer_id,
+      'Offer Reopened',
+      `Your accepted offer on ${label} reopened after the payment window expired.`
+    );
+    await notifyUser(
+      offer.owner_id,
+      'Offer Reopened',
+      `${label} is available again after the buyer missed the payment window.`
+    );
   }
 }
 

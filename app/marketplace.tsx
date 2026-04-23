@@ -1,24 +1,29 @@
+import { AutographPlayer } from '@/components/autograph-player';
+import { CertificateSheet } from '@/components/certificate-sheet';
+import { NameWithSequence, PublicVideoCard, formatPublicVideoDate, formatPublicVideoPrice } from '@/components/public-video-card';
+import { PublicVideoThumbnail } from '@/components/public-video-thumbnail';
 import { BrandColors, BrandFonts } from '@/constants/theme';
-import { useAuth } from '@/lib/auth-context';
 import { callEdgeFunction } from '@/lib/api';
+import { useAuth } from '@/lib/auth-context';
+import { logInterestEvent } from '@/lib/interest';
 import { supabase } from '@/lib/supabase';
 import { useStripe } from '@stripe/stripe-react-native';
-import { AVPlaybackStatus, ResizeMode, Video } from 'expo-av';
 import { useFocusEffect, useRouter } from 'expo-router';
-import * as ScreenOrientation from 'expo-screen-orientation';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   FlatList,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
-import Svg, { Path } from 'react-native-svg';
 
 type Point = { x: number; y: number; t: number };
 type Stroke = { id: string; points: Point[] };
@@ -27,284 +32,225 @@ type ListingItem = {
   id: string;
   certificateId: string;
   createdAt: string;
+  visibility: 'private' | 'public';
+  saleState: 'not_for_sale' | 'fixed';
   priceCents: number | null;
-  listingType: 'fixed' | 'auction';
-  reservePriceCents: number | null;
-  auctionEndsAt: string | null;
-  topBidCents: number | null;
-  topBidderId: string | null;
   videoUri: string;
   strokes: Stroke[];
   captureWidth: number;
   captureHeight: number;
-  celebrityId: string;
+  creatorId: string;
   ownerId: string;
+  ownerName: string;
   isForSale: boolean;
   openToTrade: boolean;
-  celebrity: {
+  creator: {
     display_name: string;
     verified: boolean;
   };
+  strokeColor: string;
+  creatorSequenceNumber: number | null;
+  seriesName: string | null;
+  seriesSequenceNumber: number | null;
+  seriesMaxSize: number | null;
+  offerLockedUntil?: string | null;
 };
 
-type MyAutograph = {
-  id: string;
-  celebrityName: string;
-  createdAt: string;
+type MarketplaceFilters = {
+  savedOnly: boolean;
+  buyNow: boolean;
+  creator: string;
+  series: string;
+  minPrice: string;
+  maxPrice: string;
 };
 
-type TradeOffer = {
-  id: string;
-  offererName: string;
-  offeredAutographId: string;
-  offeredAutographCelebrity: string;
-  targetAutographId: string;
-  createdAt: string;
+const defaultFilters: MarketplaceFilters = {
+  savedOnly: false,
+  buyNow: false,
+  creator: '',
+  series: '',
+  minPrice: '',
+  maxPrice: '',
 };
 
-function formatPrice(cents: number | null) {
-  if (!cents) return '$0.00';
-  return `$${(cents / 100).toFixed(2)}`;
-}
+type MarketplaceSort = 'newest' | 'oldest' | 'price_asc' | 'price_desc';
 
-function formatTimeLeft(endsAt: string | null) {
-  if (!endsAt) return '';
-  const ms = new Date(endsAt).getTime() - Date.now();
-  if (ms <= 0) return 'Ended';
-  const hours = Math.floor(ms / 3600000);
-  if (hours < 24) return `${hours}h left`;
-  const days = Math.floor(hours / 24);
-  return `${days}d left`;
-}
-
-function formatDate(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString([], { month: 'short', day: 'numeric', year: 'numeric' });
-}
-
-function SignatureOverlay({
-  strokes, currentTimeSeconds, sourceWidth, sourceHeight, displayWidth, displayHeight,
-}: {
-  strokes: Stroke[]; currentTimeSeconds: number;
-  sourceWidth: number; sourceHeight: number;
-  displayWidth: number; displayHeight: number;
-}) {
-  const scaleX = displayWidth / (sourceWidth || 1);
-  const scaleY = displayHeight / (sourceHeight || 1);
-
+function MarketplaceThumbnail({ item }: { item: ListingItem }) {
   return (
-    <Svg width={displayWidth} height={displayHeight} style={{ position: 'absolute', top: 0, left: 0 }}>
-      {strokes.map((stroke) => {
-        const visible = stroke.points.filter((p) => p.t <= currentTimeSeconds);
-        if (!visible.length) return null;
-        const d = visible.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x * scaleX} ${p.y * scaleY}`).join(' ');
-        return (
-          <Path key={stroke.id} d={d} stroke="red" strokeWidth={5}
-            fill="none" strokeLinecap="round" strokeLinejoin="round" />
-        );
-      })}
-    </Svg>
-  );
-}
-
-function PreviewPlayer({ item }: { item: ListingItem }) {
-  const [box, setBox] = useState({ width: 1, height: 1 });
-  const [playbackTime, setPlaybackTime] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [rotation, setRotation] = useState(0);
-  const videoRef = useRef<Video | null>(null);
-  const isRotated = rotation === 90 || rotation === -90;
-
-  const handleStatus = (status: AVPlaybackStatus) => {
-    if (!status.isLoaded) return;
-    setPlaybackTime(status.positionMillis / 1000);
-    setIsPlaying(status.isPlaying);
-  };
-
-  const togglePlay = async () => {
-    if (!videoRef.current) return;
-    const s = await videoRef.current.getStatusAsync();
-    if (!s.isLoaded) return;
-    s.isPlaying ? await videoRef.current.pauseAsync() : await videoRef.current.playAsync();
-  };
-
-  const restart = async () => {
-    if (!videoRef.current) return;
-    await videoRef.current.setPositionAsync(0);
-    await videoRef.current.playAsync();
-  };
-
-  return (
-    <>
-      <View
-        style={styles.videoWrapper}
-        onLayout={(e) => setBox({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}
-      >
-        <View style={styles.videoLayer}>
-          <Video
-            ref={videoRef}
-            source={{ uri: item.videoUri }}
-            style={[
-              styles.video,
-              isRotated && { width: box.height, height: box.width },
-              rotation !== 0 && { transform: [{ rotate: `${rotation}deg` }] },
-            ]}
-            useNativeControls={false}
-            resizeMode={ResizeMode.CONTAIN}
-            shouldPlay={false}
-            onReadyForDisplay={({ naturalSize }) => {
-              setRotation(naturalSize.height > naturalSize.width ? 90 : 0);
-            }}
-            onPlaybackStatusUpdate={handleStatus}
-          />
-        </View>
-        <View pointerEvents="none" style={{ ...StyleSheet.absoluteFillObject as any }}>
-          <SignatureOverlay
-            strokes={item.strokes}
-            currentTimeSeconds={playbackTime}
-            sourceWidth={item.captureWidth}
-            sourceHeight={item.captureHeight}
-            displayWidth={box.width}
-            displayHeight={box.height}
-          />
-        </View>
-      </View>
-      <View style={styles.controlsRow}>
-        <Pressable style={styles.controlButton} onPress={togglePlay}>
-          <Text style={styles.controlButtonText}>{isPlaying ? 'Pause' : 'Play'}</Text>
-        </Pressable>
-        <Pressable style={styles.controlButton} onPress={restart}>
-          <Text style={styles.controlButtonText}>Restart</Text>
-        </Pressable>
-      </View>
-    </>
+    <PublicVideoThumbnail
+      videoUrl={item.videoUri}
+      strokes={item.strokes}
+      captureWidth={item.captureWidth}
+      captureHeight={item.captureHeight}
+      strokeColor={item.strokeColor}
+    />
   );
 }
 
 export default function MarketplaceScreen() {
   const [listings, setListings] = useState<ListingItem[]>([]);
+  const [recommendedIds, setRecommendedIds] = useState<string[]>([]);
   const [watchedIds, setWatchedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<'browse' | 'saved'>('browse');
-  const [purchasing, setPurchasing] = useState<string | null>(null);
-  const [bidding, setBidding] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState(false);
+  const lastFetchedAt = useRef<number | null>(null);
+  const STALE_MS = 30_000; // re-fetch only if data is older than 30 seconds
+  const [filterVisible, setFilterVisible] = useState(false);
+  const [filters, setFilters] = useState<MarketplaceFilters>(defaultFilters);
+  const [draftFilters, setDraftFilters] = useState<MarketplaceFilters>(defaultFilters);
+  const [sort, setSort] = useState<MarketplaceSort>('newest');
+  const [draftSort, setDraftSort] = useState<MarketplaceSort>('newest');
   const [previewItem, setPreviewItem] = useState<ListingItem | null>(null);
-  const [bidInput, setBidInput] = useState('');
-  const [tradeTarget, setTradeTarget] = useState<ListingItem | null>(null);
-  const [myAutographs, setMyAutographs] = useState<MyAutograph[]>([]);
-  const [submittingTrade, setSubmittingTrade] = useState(false);
-  const [tradeOffers, setTradeOffers] = useState<TradeOffer[]>([]);
-  const [viewOffersItem, setViewOffersItem] = useState<ListingItem | null>(null);
-  const [respondingOffer, setRespondingOffer] = useState<string | null>(null);
-  const { user, profile } = useAuth();
+  const [contextMenuVisible, setContextMenuVisible] = useState(false);
+  const [reportItem, setReportItem] = useState<ListingItem | null>(null);
+  const [reportSubmitting, setReportSubmitting] = useState(false);
+  const [certItem, setCertItem] = useState<ListingItem | null>(null);
+  const [offerItem, setOfferItem] = useState<ListingItem | null>(null);
+  const [offerInput, setOfferInput] = useState('');
+  const [offerSubmitting, setOfferSubmitting] = useState(false);
+  const { user } = useAuth();
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const router = useRouter();
 
   const mapRow = (row: any): ListingItem => ({
     id: row.id,
-    celebrityId: row.celebrity_id,
+    visibility: row.visibility ?? 'private',
+    saleState: row.sale_state ?? (row.is_for_sale ? 'fixed' : 'not_for_sale'),
+    creatorId: row.creator_id,
     ownerId: row.owner_id,
+    ownerName: row.owner?.display_name ?? '—',
     certificateId: row.certificate_id,
     createdAt: row.created_at,
     priceCents: row.price_cents ?? null,
-    listingType: row.listing_type ?? 'fixed',
-    reservePriceCents: row.reserve_price_cents ?? null,
-    auctionEndsAt: row.auction_ends_at ?? null,
-    topBidCents: null,
-    topBidderId: null,
     isForSale: row.is_for_sale ?? false,
     openToTrade: row.open_to_trade ?? false,
     videoUri: row.video_url,
     strokes: row.strokes_json ?? [],
     captureWidth: row.capture_width ?? 1,
     captureHeight: row.capture_height ?? 1,
-    celebrity: row.celebrity,
+    creator: row.creator,
+    strokeColor: row.stroke_color ?? '#FA0909',
+    creatorSequenceNumber: row.creator_sequence_number ?? null,
+    seriesName: null,
+    seriesSequenceNumber: row.series_sequence_number ?? null,
+    seriesMaxSize: null,
   });
 
 useFocusEffect(
     useCallback(() => {
       if (!user) return;
+      if (lastFetchedAt.current && Date.now() - lastFetchedAt.current < STALE_MS) return;
       setLoading(true);
 
       const baseQuery = `
-        id, celebrity_id, owner_id, certificate_id, created_at, price_cents,
-        listing_type, reserve_price_cents, auction_ends_at, open_to_trade,
+        id, creator_id, owner_id, certificate_id, created_at, visibility, sale_state, price_cents,
+        open_to_trade, is_for_sale,
         video_url, strokes_json, capture_width, capture_height,
-        celebrity:celebrity_id ( display_name, verified )
+        creator_sequence_number, series_id, series_sequence_number,
+        creator:creator_id ( display_name, verified ),
+        owner:owner_id ( display_name )
       `;
 
-      const applyTopBids = (items: ListingItem[], bids: { autograph_id: string; amount_cents: number; bidder_id: string }[]) => {
-        const topBidMap: Record<string, { amount_cents: number; bidder_id: string }> = {};
-        for (const bid of bids) {
-          if (!topBidMap[bid.autograph_id] || bid.amount_cents > topBidMap[bid.autograph_id].amount_cents) {
-            topBidMap[bid.autograph_id] = { amount_cents: bid.amount_cents, bidder_id: bid.bidder_id };
-          }
-        }
-        return items.map((item) => ({
-          ...item,
-          topBidCents: topBidMap[item.id]?.amount_cents ?? null,
-          topBidderId: topBidMap[item.id]?.bidder_id ?? null,
-        }));
-      };
-
-      Promise.all([
-        supabase.from('autographs').select(baseQuery).or('is_for_sale.eq.true,open_to_trade.eq.true').neq('owner_id', user.id).order('created_at', { ascending: false }),
-        supabase.from('watchlist').select('autograph_id').eq('user_id', user.id),
-        supabase.from('bids').select('autograph_id').eq('bidder_id', user.id),
-        supabase.from('autographs').select('id, created_at, celebrity:celebrity_id ( display_name )').eq('owner_id', user.id).order('created_at', { ascending: false }),
-        supabase.from('trade_offers').select(`
-          id, created_at, target_autograph_id,
-          offered_autograph_id,
-          offerer:offerer_id ( display_name ),
-          offered_autograph:offered_autograph_id ( celebrity:celebrity_id ( display_name ) )
-        `).eq('target_owner_id', user.id).eq('status', 'pending'),
-      ]).then(async ([browseRes, watchRes, bidsRes, myAutographsRes, offersRes]) => {
+      (async () => {
+        return Promise.all([
+          supabase.from('autographs').select(baseQuery).eq('visibility', 'public').eq('sale_state', 'fixed').order('created_at', { ascending: false }),
+          supabase.from('watchlist').select('autograph_id').eq('user_id', user.id),
+          supabase.rpc('get_marketplace_recommendations', { p_limit: 6 }),
+        ]);
+      })().then(async ([browseRes, watchRes, recommendationsRes]) => {
         const browseItems = (browseRes.data ?? []).map(mapRow);
-        // Merge watchlist + bid autograph IDs so all watched/bid-on items show in Watching tab
+
+        // Fetch series names for listings that belong to a series
+        const rawRows = browseRes.data ?? [];
+        const seriesIds = [...new Set(rawRows.map((r: any) => r.series_id).filter(Boolean))] as string[];
+        if (seriesIds.length > 0) {
+          const { data: seriesRows } = await supabase.from('series').select('id, name, max_size').in('id', seriesIds);
+          const seriesMap: Record<string, { name: string; max_size: number }> = {};
+          for (const s of seriesRows ?? []) seriesMap[s.id] = { name: s.name, max_size: s.max_size };
+          browseItems.forEach((item, idx) => {
+            const raw = rawRows[idx] as any;
+            if (raw?.series_id && seriesMap[raw.series_id]) {
+              item.seriesName = seriesMap[raw.series_id].name;
+              item.seriesMaxSize = seriesMap[raw.series_id].max_size;
+            }
+          });
+        }
+
+        // Merge watchlist items
         const watchedFromList = (watchRes.data ?? []).map((w: any) => w.autograph_id);
-        const watchedFromBids = (bidsRes.data ?? []).map((b: any) => b.autograph_id);
-        setWatchedIds(new Set([...watchedFromList, ...watchedFromBids]));
+        setWatchedIds(new Set(watchedFromList));
+        const browseIds = browseItems.map((item) => item.id);
+        const recommendationIds = (recommendationsRes.data ?? []).map((row: any) => row.autograph_id as string);
+        if (browseIds.length > 0) {
+          const nowIso = new Date().toISOString();
+          const { data: lockedOffers } = await supabase
+            .from('autograph_offers')
+            .select('autograph_id, payment_due_at')
+            .in('autograph_id', browseIds)
+            .eq('status', 'accepted')
+            .is('accepted_transfer_id', null)
+            .gt('payment_due_at', nowIso);
 
-        const allIds = browseItems
-          .filter((i) => i.listingType === 'auction' && i.isForSale)
-          .map((i) => i.id);
+          const lockedMap = new Map<string, string | null>();
+          for (const offer of lockedOffers ?? []) {
+            lockedMap.set(offer.autograph_id, offer.payment_due_at ?? null);
+          }
 
-        if (allIds.length > 0) {
-          const { data: bids } = await supabase
-            .from('bids')
-            .select('autograph_id, amount_cents, bidder_id')
-            .in('autograph_id', allIds);
-
-          setListings(applyTopBids(browseItems, bids ?? []));
+          setListings(
+            browseItems
+              .filter((item) => !lockedMap.has(item.id))
+              .map((item) => ({ ...item, offerLockedUntil: lockedMap.get(item.id) ?? null }))
+          );
+          setRecommendedIds(recommendationIds.filter((id) => !lockedMap.has(id)));
         } else {
           setListings(browseItems);
+          setRecommendedIds(recommendationIds);
         }
-        setMyAutographs(
-          (myAutographsRes.data ?? []).map((r: any) => ({
-            id: r.id,
-            celebrityName: r.celebrity?.display_name ?? '—',
-            createdAt: r.created_at,
-          }))
-        );
-        setTradeOffers(
-          (offersRes.data ?? []).map((r: any) => ({
-            id: r.id,
-            createdAt: r.created_at,
-            targetAutographId: r.target_autograph_id,
-            offeredAutographId: r.offered_autograph_id,
-            offererName: r.offerer?.display_name ?? '—',
-            offeredAutographCelebrity: r.offered_autograph?.celebrity?.display_name ?? '—',
-          }))
-        );
+        lastFetchedAt.current = Date.now();
+        setLoading(false);
+      }).catch((error) => {
+        console.log('Load marketplace error:', error);
+        setListings([]);
+        setRecommendedIds([]);
+        setLoadError(true);
         setLoading(false);
       });
     }, [user])
   );
 
+  const openPreview = (item: ListingItem) => {
+    setPreviewItem(item);
+    void logInterestEvent('view_autograph', {
+      autographId: item.id,
+      creatorId: item.creatorId,
+    });
+  };
+
   const closePreview = () => {
     setPreviewItem(null);
-    ScreenOrientation.unlockAsync().catch(() => {});
+  };
+
+  const handleReport = async (reason: string) => {
+    if (!reportItem || !user) return;
+    setReportSubmitting(true);
+    try {
+      const { error } = await supabase.from('reports').insert({
+        autograph_id: reportItem.id,
+        reporter_id: user.id,
+        reason,
+      });
+      setReportItem(null);
+      if (error?.code === '23505') {
+        Alert.alert('Already Reported', 'You have already reported this autograph.');
+      } else if (error) {
+        Alert.alert('Error', 'Could not submit report. Please try again.');
+      } else {
+        Alert.alert('Report Submitted', 'Thank you. Our team will review this content.');
+      }
+    } finally {
+      setReportSubmitting(false);
+    }
   };
 
   const toggleWatch = async (item: ListingItem) => {
@@ -319,119 +265,38 @@ useFocusEffect(
     }
   };
 
-  const handleBid = async (item: ListingItem) => {
-    if (!user) {
-      Alert.alert('Sign in required', 'Please sign in to place a bid.');
-      return;
-    }
-    const dollars = parseFloat(bidInput);
-    if (isNaN(dollars) || dollars <= 0) {
-      Alert.alert('Invalid bid', 'Please enter a valid bid amount.');
-      return;
-    }
-    const bidCents = Math.round(dollars * 100);
-    const minBid = item.topBidCents
-      ? item.topBidCents + 100
-      : (item.reservePriceCents ?? 100);
-    if (bidCents < minBid) {
-      Alert.alert('Bid too low', `Minimum bid is ${formatPrice(minBid)}.`);
+  const formatCentsInput = (raw: string) => {
+    const digits = raw.replace(/\D/g, '');
+    if (!digits) return '';
+    const cents = Number.parseInt(digits, 10);
+    return (cents / 100).toFixed(2);
+  };
+
+  const handleOfferChange = (text: string) => setOfferInput(formatCentsInput(text));
+
+  const handleCreateOffer = async () => {
+    if (!offerItem) return;
+    const amount = Number.parseFloat(offerInput);
+
+    if (Number.isNaN(amount) || amount <= 0) {
+      Alert.alert('Invalid amount', 'Please enter a valid offer amount greater than $0.');
       return;
     }
 
-    setBidding(item.id);
-
+    setOfferSubmitting(true);
     try {
-      const responseJson = await callEdgeFunction<{
-        client_secret?: string;
-        payment_event_id?: string;
-      }>('create-bid-payment-intent', {
-        autograph_id: item.id,
-        amount_cents: bidCents,
+      await callEdgeFunction('create-autograph-offer', {
+        autograph_id: offerItem.id,
+        amount_cents: Math.round(amount * 100),
       });
-
-      const { client_secret, payment_event_id } = responseJson;
-      if (!client_secret || !payment_event_id) throw new Error('Could not start bid authorization.');
-
-      const { error: initError } = await initPaymentSheet({
-        paymentIntentClientSecret: client_secret,
-        merchantDisplayName: 'TapnSign',
-        style: 'automatic',
-      });
-      if (initError) throw new Error(initError.message);
-
-      await ScreenOrientation.unlockAsync().catch(() => {});
-      const { error: paymentError } = await presentPaymentSheet();
-      await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE_RIGHT).catch(() => {});
-
-      if (paymentError) {
-        if (paymentError.code !== 'Canceled') Alert.alert('Payment Failed', paymentError.message);
-        return;
-      }
-
-      await callEdgeFunction('place-bid', {
-        autograph_id: item.id,
-        payment_event_id,
-      });
-
-      setPreviewItem((prev) => prev ? { ...prev, topBidCents: bidCents } : prev);
-      setListings((prev) => prev.map((l) =>
-        l.id === item.id ? { ...l, topBidCents: bidCents, topBidderId: user.id } : l
-      ));
-      setBidInput('');
-      Alert.alert('Bid Placed!', `Your bid of ${formatPrice(bidCents)} has been authorized. Your card will only be charged if you win.`);
-    } catch (error: any) {
-      Alert.alert('Error', error.message ?? 'Something went wrong.');
+      setOfferItem(null);
+      setOfferInput('');
+      Alert.alert('Offer Sent', 'Your offer was sent and will expire in 24 hours if it is not answered.');
+    } catch {
+      Alert.alert('Offer Failed', 'Could not send offer. Please try again.');
     } finally {
-      setBidding(null);
+      setOfferSubmitting(false);
     }
-  };
-
-  const handleTradeOffer = async (offeredAutographId: string) => {
-    if (!user || !tradeTarget) return;
-    setSubmittingTrade(true);
-    try {
-      await callEdgeFunction('create-trade-offer', {
-        offered_autograph_id: offeredAutographId,
-        target_autograph_id: tradeTarget.id,
-      });
-      setTradeTarget(null);
-      Alert.alert('Trade Offer Sent!', 'The owner will be notified and can accept or decline your offer.');
-    } catch (error: any) {
-      Alert.alert('Error', error.message ?? 'Could not send trade offer.');
-    } finally {
-      setSubmittingTrade(false);
-    }
-  };
-
-  const handleAcceptTrade = async (offer: TradeOffer) => {
-    if (!user) return;
-    setRespondingOffer(offer.id);
-    try {
-      await callEdgeFunction('respond-trade-offer', {
-        trade_offer_id: offer.id,
-        action: 'accept',
-      });
-      setTradeOffers((prev) => prev.filter((o) => o.id !== offer.id));
-      setViewOffersItem(null);
-      Alert.alert('Trade Accepted!', `You now own ${offer.offeredAutographCelebrity}'s autograph.`);
-    } catch (e: any) {
-      Alert.alert('Error', e.message ?? 'Something went wrong.');
-    }
-    setRespondingOffer(null);
-  };
-
-  const handleDeclineTrade = async (offer: TradeOffer) => {
-    setRespondingOffer(offer.id);
-    try {
-      await callEdgeFunction('respond-trade-offer', {
-        trade_offer_id: offer.id,
-        action: 'decline',
-      });
-      setTradeOffers((prev) => prev.filter((o) => o.id !== offer.id));
-    } catch (error: any) {
-      Alert.alert('Error', error.message ?? 'Could not decline trade offer.');
-    }
-    setRespondingOffer(null);
   };
 
   const handlePurchase = async (item: ListingItem) => {
@@ -439,9 +304,6 @@ useFocusEffect(
       Alert.alert('Sign in required', 'Please sign in to purchase autographs.');
       return;
     }
-
-    setPurchasing(item.id);
-
     try {
       const responseJson = await callEdgeFunction<{
         client_secret?: string;
@@ -460,13 +322,10 @@ useFocusEffect(
       });
       if (initError) throw new Error(initError.message);
 
-      await ScreenOrientation.unlockAsync().catch(() => {});
       const { error: paymentError } = await presentPaymentSheet();
-      await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE_RIGHT).catch(() => {});
 
       if (paymentError) {
         if (paymentError.code !== 'Canceled') Alert.alert('Payment Failed', paymentError.message);
-        setPurchasing(null);
         return;
       }
 
@@ -478,16 +337,58 @@ useFocusEffect(
       closePreview();
       Alert.alert(
         'Purchase Complete!',
-        `You now own this autograph by ${item.celebrity.display_name}.`,
+        `You now own this autograph by ${item.creator.display_name}.`,
         [{ text: 'View My Autographs', onPress: () => router.push('/autographs') }]
       );
       setListings((prev) => prev.filter((l) => l.id !== item.id));
-    } catch (error: any) {
-      Alert.alert('Error', error.message ?? 'Something went wrong.');
-    } finally {
-      setPurchasing(null);
+    } catch {
+      Alert.alert('Error', 'Could not complete purchase. Please try again.');
     }
   };
+
+  const activeListings = useMemo(() => {
+    let items = listings;
+    if (filters.savedOnly) items = items.filter((l) => watchedIds.has(l.id));
+    if (filters.buyNow) items = items.filter((l) => l.isForSale);
+    if (filters.creator.trim()) {
+      const q = filters.creator.trim().toLowerCase();
+      items = items.filter((l) => l.creator.display_name.toLowerCase().includes(q));
+    }
+    if (filters.series.trim()) {
+      const q = filters.series.trim().toLowerCase();
+      items = items.filter((l) => l.seriesName?.toLowerCase().includes(q));
+    }
+    if (filters.minPrice.trim()) {
+      const min = parseFloat(filters.minPrice) * 100;
+      if (!isNaN(min)) items = items.filter((l) => (l.priceCents ?? 0) >= min);
+    }
+    if (filters.maxPrice.trim()) {
+      const max = parseFloat(filters.maxPrice) * 100;
+      if (!isNaN(max)) items = items.filter((l) => (l.priceCents ?? 0) <= max);
+    }
+    if (sort === 'newest') items = [...items].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    if (sort === 'oldest') items = [...items].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    if (sort === 'price_asc') items = [...items].sort((a, b) => (a.priceCents ?? 0) - (b.priceCents ?? 0));
+    if (sort === 'price_desc') items = [...items].sort((a, b) => (b.priceCents ?? 0) - (a.priceCents ?? 0));
+    return items;
+  }, [listings, watchedIds, filters, sort]);
+
+  const isFiltered = filters.savedOnly || filters.buyNow || filters.creator.trim() !== '' || filters.series.trim() !== '' || filters.minPrice !== '' || filters.maxPrice !== '' || sort !== 'newest';
+
+  const recommendedListings = useMemo(() => {
+    if (isFiltered) return [];
+    const listingMap = new Map(activeListings.map((item) => [item.id, item]));
+    return recommendedIds
+      .map((id) => listingMap.get(id))
+      .filter((item): item is ListingItem => !!item)
+      .slice(0, 3);
+  }, [activeListings, recommendedIds, isFiltered]);
+
+  const recommendedIdSet = useMemo(() => new Set(recommendedListings.map((item) => item.id)), [recommendedListings]);
+  const feedListings = useMemo(
+    () => (isFiltered ? activeListings : activeListings.filter((item) => !recommendedIdSet.has(item.id))),
+    [activeListings, isFiltered, recommendedIdSet]
+  );
 
   if (loading) {
     return (
@@ -497,72 +398,75 @@ useFocusEffect(
     );
   }
 
-  const watchedListings = listings.filter((l) => watchedIds.has(l.id));
-  const activeListings = tab === 'browse' ? listings : watchedListings;
-
-  const emptyText = tab === 'browse'
-    ? 'No autographs for sale right now.'
-    : 'You have no saved listings.';
+  if (loadError) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.errorTitle}>Could not load the marketplace.</Text>
+        <Text style={styles.errorSubtitle}>Check your connection and try again.</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
-      <View style={styles.tabRow}>
+      <View style={styles.filterHeaderRow}>
+        <Text style={styles.filterResultCount}>{activeListings.length} listing{activeListings.length !== 1 ? 's' : ''}</Text>
         <Pressable
-          style={[styles.tabButton, tab === 'browse' && styles.tabButtonActive]}
-          onPress={() => setTab('browse')}
+          style={[styles.filterButton, isFiltered && styles.filterButtonActive]}
+          onPress={() => { setDraftFilters(filters); setDraftSort(sort); setFilterVisible(true); }}
         >
-          <Text style={[styles.tabButtonText, tab === 'browse' && styles.tabButtonTextActive]}>
-            Browse
-          </Text>
-        </Pressable>
-        <Pressable
-          style={[styles.tabButton, tab === 'saved' && styles.tabButtonActive]}
-          onPress={() => setTab('saved')}
-        >
-          <Text style={[styles.tabButtonText, tab === 'saved' && styles.tabButtonTextActive]}>
-            Saved
+          <Text style={[styles.filterButtonText, isFiltered && styles.filterButtonTextActive]}>
+            {isFiltered ? 'Filtered ✕' : 'Filter/Sort'}
           </Text>
         </Pressable>
       </View>
 
       <FlatList
-        data={activeListings}
+        data={feedListings}
         keyExtractor={(item) => item.id}
-        ListEmptyComponent={<Text style={styles.emptyText}>{emptyText}</Text>}
-
+        ListEmptyComponent={<Text style={styles.emptyText}>No autographs match your filters.</Text>}
+        ListHeaderComponent={
+          !isFiltered && recommendedListings.length > 0 ? (
+            <View style={styles.recommendationSection}>
+              <Text style={styles.recommendationTitle}>For You</Text>
+              <Text style={styles.recommendationSubtitle}>Based on the creators and videos you have been engaging with.</Text>
+              <View style={styles.recommendationList}>
+                {recommendedListings.map((item) => (
+                  <View key={item.id} style={styles.recommendationCardWrap}>
+                    <PublicVideoCard
+                      name={item.creator.display_name}
+                      sequenceNumber={item.creatorSequenceNumber}
+                      seriesName={item.seriesName}
+                      seriesEdition={item.seriesSequenceNumber != null && item.seriesMaxSize != null ? `${item.seriesSequenceNumber} of ${item.seriesMaxSize}` : null}
+                      date={formatPublicVideoDate(item.createdAt)}
+                      verified={item.creator.verified}
+                      priceLabel="Estimated Value"
+                      priceText={formatPublicVideoPrice(item.priceCents)}
+                      secondaryText={`Listed by ${item.ownerName}`}
+                      onPress={() => openPreview(item)}
+                      renderThumbnail={() => <MarketplaceThumbnail item={item} />}
+                    />
+                  </View>
+                ))}
+              </View>
+            </View>
+          ) : null
+        }
         ItemSeparatorComponent={() => <View style={styles.separator} />}
         renderItem={({ item }) => (
-          <Pressable style={styles.card} onPress={() => { setBidInput(''); setPreviewItem(item); }}>
-            <View style={styles.cardLeft}>
-              <Text style={styles.celebrityName}>{item.celebrity.display_name}</Text>
-              {item.celebrity.verified && (
-                <Text style={styles.verifiedBadge}>Verified</Text>
-              )}
-              <Text style={styles.cardDate}>{formatDate(item.createdAt)}</Text>
-              <Text style={styles.tapHint}>Tap to preview</Text>
-            </View>
-            <View style={styles.cardRight}>
-              {item.listingType === 'fixed' ? (
-                <>
-                  <Text style={styles.price}>{formatPrice(item.priceCents)}</Text>
-                  {item.openToTrade && <Text style={styles.tradeLabel}>Open to Trade</Text>}
-                </>
-              ) : item.openToTrade && !item.isForSale ? (
-                <Text style={styles.tradeLabel}>Trade</Text>
-              ) : (
-                <>
-                  <Text style={styles.auctionLabel}>Auction</Text>
-                  <Text style={styles.price}>
-                    {item.topBidCents ? formatPrice(item.topBidCents) : formatPrice(item.reservePriceCents)}
-                  </Text>
-                  {item.topBidderId === user?.id && (
-                    <Text style={styles.yourBidLabel}>Your bid</Text>
-                  )}
-                  <Text style={styles.timeLeft}>{formatTimeLeft(item.auctionEndsAt)}</Text>
-                </>
-              )}
-            </View>
-          </Pressable>
+          <PublicVideoCard
+            name={item.creator.display_name}
+            sequenceNumber={item.creatorSequenceNumber}
+            seriesName={item.seriesName}
+            seriesEdition={item.seriesSequenceNumber != null && item.seriesMaxSize != null ? `${item.seriesSequenceNumber} of ${item.seriesMaxSize}` : null}
+            date={formatPublicVideoDate(item.createdAt)}
+            verified={item.creator.verified}
+            priceLabel="Estimated Value"
+            priceText={formatPublicVideoPrice(item.priceCents)}
+            secondaryText={`Listed by ${item.ownerName}`}
+            onPress={() => openPreview(item)}
+            renderThumbnail={() => <MarketplaceThumbnail item={item} />}
+          />
         )}
       />
 
@@ -570,13 +474,7 @@ useFocusEffect(
         visible={!!previewItem}
         animationType="none"
         transparent={false}
-        onShow={() => {
-          // Don't lock orientation for auction items — keyboard will crash if locked
-          const isOwnAuction = previewItem?.listingType === 'auction' && previewItem?.ownerId !== user?.id;
-          if (!isOwnAuction) {
-            ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE_RIGHT).catch(() => {});
-          }
-        }}
+        supportedOrientations={['portrait', 'landscape']}
         onRequestClose={closePreview}
       >
         <View style={styles.modalContainer}>
@@ -584,165 +482,310 @@ useFocusEffect(
             <Pressable style={styles.closeButton} onPress={closePreview}>
               <Text style={styles.buttonText}>Close</Text>
             </Pressable>
-            {previewItem && previewItem.ownerId !== user?.id && (
-              <Pressable
-                style={[styles.watchButton, watchedIds.has(previewItem.id) && styles.watchButtonActive]}
-                onPress={() => toggleWatch(previewItem)}
-              >
-                <Text style={[styles.buttonText, watchedIds.has(previewItem.id) && styles.watchButtonTextActive]}>
-                  {watchedIds.has(previewItem.id) ? 'Saved' : 'Save'}
-                </Text>
-              </Pressable>
-            )}
             {previewItem && (
               <View style={styles.modalMeta}>
-                <Text style={styles.modalCelebrity}>{previewItem.celebrity.display_name}</Text>
-                {previewItem.listingType === 'fixed' ? (
-                  <Text style={styles.modalPrice}>{formatPrice(previewItem.priceCents)}</Text>
-                ) : (
-                  <Text style={styles.modalPrice}>
-                    {previewItem.topBidCents ? `Top bid: ${formatPrice(previewItem.topBidCents)}` : `Reserve: ${formatPrice(previewItem.reservePriceCents)}`}
-                    {' · '}{formatTimeLeft(previewItem.auctionEndsAt)}
-                  </Text>
-                )}
-                {previewItem.listingType === 'auction' && previewItem.topBidderId === user?.id && (
-                  <Text style={styles.yourBidLabel}>You're winning</Text>
-                )}
+                <Pressable onPress={() => { closePreview(); router.push(`/profile/${previewItem.creatorId}`); }}>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: 'center', textDecorationLine: 'underline' } as any}>
+                    <NameWithSequence name={previewItem.creator.display_name} sequenceNumber={previewItem.creatorSequenceNumber} style={[styles.modalCelebrity, { textDecorationLine: 'underline' }] as any} />
+                    {previewItem.seriesName ? <Text style={[styles.modalCelebrity, { textDecorationLine: 'underline' }]}>{` · ${previewItem.seriesName}`}</Text> : null}
+                  </View>
+                </Pressable>
+                <Text style={styles.modalPriceLabel}>Estimated Value</Text>
+                <Text style={styles.modalPrice}>{formatPublicVideoPrice(previewItem.priceCents)}</Text>
               </View>
-            )}
-            {previewItem && previewItem.listingType === 'fixed' && previewItem.ownerId !== user?.id && (
-              <Pressable
-                style={[styles.buyButtonLarge, purchasing === previewItem.id && styles.buyButtonDisabled]}
-                onPress={() => handlePurchase(previewItem)}
-                disabled={purchasing === previewItem.id}
-              >
-                {purchasing === previewItem.id
-                  ? <ActivityIndicator size="small" color="#fff" />
-                  : <Text style={styles.buttonText}>Buy</Text>
-                }
-              </Pressable>
-            )}
-            {previewItem && previewItem.openToTrade && previewItem.ownerId !== user?.id && profile?.role === 'verified' && (
-              <Pressable
-                style={styles.tradeButton}
-                onPress={() => setTradeTarget(previewItem)}
-              >
-                <Text style={styles.buttonText}>Trade</Text>
-              </Pressable>
-            )}
-            {previewItem && previewItem.openToTrade && previewItem.ownerId !== user?.id && profile?.role !== 'verified' && (
-              <Pressable
-                style={[styles.tradeButton, { opacity: 0.5 }]}
-                onPress={() => Alert.alert('Verified Members Only', 'Get verified to make trade offers.')}
-              >
-                <Text style={styles.buttonText}>Trade</Text>
-              </Pressable>
             )}
           </View>
 
-          {previewItem?.listingType === 'auction' && previewItem.ownerId !== user?.id && (
-            <View style={styles.bidRowTop}>
-              <TextInput
-                style={styles.bidInputTop}
-                placeholder={`Min: ${formatPrice(previewItem.topBidCents ? previewItem.topBidCents + 100 : previewItem.reservePriceCents)}`}
-                placeholderTextColor="#999"
-                keyboardType="decimal-pad"
-                returnKeyType="done"
-                value={bidInput}
-                onChangeText={setBidInput}
-                editable={bidding !== previewItem.id}
-              />
-              <Pressable
-                style={[styles.bidButtonTop, bidding === previewItem.id && styles.buyButtonDisabled]}
-                onPress={() => handleBid(previewItem)}
-                disabled={bidding === previewItem.id}
-              >
-                {bidding === previewItem.id
-                  ? <ActivityIndicator size="small" color="#fff" />
-                  : <Text style={styles.buttonText}>Bid</Text>
-                }
-              </Pressable>
-            </View>
+          {previewItem && (
+            <AutographPlayer
+              videoUrl={previewItem.videoUri}
+              strokes={previewItem.strokes}
+              strokeColor={previewItem.strokeColor}
+              captureWidth={previewItem.captureWidth}
+              captureHeight={previewItem.captureHeight}
+              onCertificate={() => setCertItem(previewItem)}
+              onLongPress={() => setContextMenuVisible(true)}
+            />
           )}
 
-          {previewItem && <PreviewPlayer item={previewItem} />}
+          {/* Context menu — long press / right-click on video */}
+          {contextMenuVisible && previewItem && (
+            <Pressable style={styles.contextOverlay} onPress={() => setContextMenuVisible(false)}>
+              <View style={styles.contextMenu} onStartShouldSetResponder={() => true}>
+                <Text style={styles.contextMenuTitle}>{previewItem.creator.display_name}</Text>
 
-          {/* Trade offer sheet */}
-          {tradeTarget && (
-            <View style={styles.tradeOverlay}>
-              <View style={styles.tradeSheet}>
-                <Text style={styles.tradeSheetTitle}>Make a Trade Offer</Text>
-                <Text style={styles.tradeSheetSubtitle}>
-                  Pick one of your autographs to offer in exchange for{' '}
-                  {tradeTarget.celebrity.display_name}'s autograph.
-                </Text>
-                {myAutographs.length === 0 ? (
-                  <Text style={styles.tradeEmptyText}>You don't own any autographs to trade.</Text>
-                ) : (
-                  myAutographs.map((a) => (
-                    <Pressable
-                      key={a.id}
-                      style={[styles.tradeAutographRow, submittingTrade && { opacity: 0.5 }]}
-                      onPress={() => handleTradeOffer(a.id)}
-                      disabled={submittingTrade}
-                    >
-                      <Text style={styles.tradeAutographName}>{a.celebrityName}</Text>
-                      <Text style={styles.tradeAutographDate}>{formatDate(a.createdAt)}</Text>
-                    </Pressable>
-                  ))
+                {previewItem.ownerId !== user?.id && (
+                  <Pressable
+                    style={styles.contextMenuItem}
+                    onPress={() => { setContextMenuVisible(false); toggleWatch(previewItem); }}
+                  >
+                    <Text style={styles.contextMenuItemText}>
+                      {watchedIds.has(previewItem.id) ? 'Unsave' : 'Save'}
+                    </Text>
+                  </Pressable>
                 )}
-                <Pressable onPress={() => setTradeTarget(null)} style={{ marginTop: 16 }}>
-                  <Text style={styles.tradeCancelText}>Cancel</Text>
+
+                {previewItem.ownerId !== user?.id && (
+                  <Pressable
+                    style={styles.contextMenuItem}
+                    onPress={() => {
+                      const item = previewItem;
+                      setContextMenuVisible(false);
+                      setOfferItem(item);
+                      setOfferInput('');
+                    }}
+                  >
+                    <Text style={styles.contextMenuItemText}>Make Offer</Text>
+                  </Pressable>
+                )}
+
+                {previewItem.ownerId !== user?.id && (
+                  <Pressable
+                    style={styles.contextMenuItem}
+                    onPress={() => { setContextMenuVisible(false); handlePurchase(previewItem); }}
+                  >
+                    <Text style={styles.contextMenuItemText}>Buy · {formatPublicVideoPrice(previewItem.priceCents)}</Text>
+                  </Pressable>
+                )}
+
+                <Pressable
+                  style={styles.contextMenuItem}
+                  onPress={() => { setContextMenuVisible(false); setCertItem(previewItem); }}
+                >
+                  <Text style={styles.contextMenuItemText}>Certificate of Authenticity</Text>
+                </Pressable>
+
+                {previewItem.ownerId !== previewItem.creatorId && (
+                  <Pressable
+                    style={styles.contextMenuItem}
+                  onPress={() => { const id = previewItem.creatorId; setContextMenuVisible(false); closePreview(); router.push(`/profile/${id}`); }}
+                  >
+                    <Text style={styles.contextMenuItemText}>Creator Profile</Text>
+                  </Pressable>
+                )}
+
+                {previewItem.ownerId !== previewItem.creatorId && (
+                  <Pressable
+                    style={styles.contextMenuItem}
+                    onPress={() => { const id = previewItem.ownerId; setContextMenuVisible(false); closePreview(); router.push(`/profile/${id}`); }}
+                  >
+                    <Text style={styles.contextMenuItemText}>Seller Profile</Text>
+                  </Pressable>
+                )}
+
+                <Pressable
+                  style={styles.contextMenuItem}
+                  onPress={() => { setContextMenuVisible(false); setReportItem(previewItem); }}
+                >
+                  <Text style={[styles.contextMenuItemText, { color: '#FF3B30' }]}>Report</Text>
                 </Pressable>
               </View>
-            </View>
+            </Pressable>
           )}
+
+          {/* Report reason sheet */}
+          {reportItem && (
+            <Pressable style={styles.contextOverlay} onPress={() => setReportItem(null)}>
+              <View style={styles.contextMenu} onStartShouldSetResponder={() => true}>
+                <Text style={styles.contextMenuTitle}>Report Autograph</Text>
+                {[
+                  { reason: 'impersonation', label: 'Impersonation' },
+                  { reason: 'offensive_content', label: 'Offensive Content' },
+                  { reason: 'fraudulent_listing', label: 'Fraudulent Listing' },
+                  { reason: 'copyright_issue', label: 'Copyright / IP Issue' },
+                ].map(({ reason, label }) => (
+                  <Pressable
+                    key={reason}
+                    style={styles.contextMenuItem}
+                    onPress={() => handleReport(reason)}
+                    disabled={reportSubmitting}
+                  >
+                    <Text style={styles.contextMenuItemText}>{label}</Text>
+                  </Pressable>
+                ))}
+                <Pressable style={styles.contextMenuItem} onPress={() => setReportItem(null)}>
+                  <Text style={[styles.contextMenuItemText, { color: '#888' }]}>Cancel</Text>
+                </Pressable>
+              </View>
+            </Pressable>
+          )}
+
+          {/* Certificate sheet */}
+          {certItem && (
+            <CertificateSheet
+              signedBy={certItem.creator.display_name}
+              currentOwner={certItem.ownerName}
+              dateCaptured={formatPublicVideoDate(certItem.createdAt)}
+              edition={certItem.seriesName && certItem.seriesSequenceNumber != null && certItem.seriesMaxSize != null
+                ? `${certItem.seriesName} — #${certItem.seriesSequenceNumber} of ${certItem.seriesMaxSize}`
+                : null}
+              certificateId={certItem.certificateId}
+              primaryActionLabel="Seller Profile"
+              onPrimaryAction={() => {
+                setCertItem(null);
+                router.push(`/profile/${certItem.ownerId}`);
+              }}
+              onClose={() => setCertItem(null)}
+            />
+          )}
+
+          {/* Offer sheet — rendered inside video modal to avoid modal stacking on iOS */}
+          {offerItem && (
+            <>
+              <Pressable
+                style={styles.offerBackdrop}
+                onPress={() => { if (!offerSubmitting) { setOfferItem(null); setOfferInput(''); } }}
+              />
+              <KeyboardAvoidingView
+                style={styles.offerKeyboardView}
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              >
+                <View style={styles.offerSheet} onStartShouldSetResponder={() => true}>
+                  <Text style={styles.offerTitle}>Make Offer</Text>
+                  <Text style={styles.offerSubtitle}>
+                    {offerItem.creator.display_name}
+                    {offerItem.priceCents ? ` · Estimated Value ${formatPublicVideoPrice(offerItem.priceCents)}` : ''}
+                    {' · '}Expires in 24 hours if not accepted
+                  </Text>
+                  <TextInput
+                    style={styles.offerInput}
+                    placeholder="Offer amount in USD"
+                    placeholderTextColor="#999"
+                    keyboardType="decimal-pad"
+                    returnKeyType="done"
+                    value={offerInput}
+                    onChangeText={handleOfferChange}
+                    editable={!offerSubmitting}
+                  />
+                  <Pressable
+                    style={[styles.offerButton, offerSubmitting && { opacity: 0.6 }]}
+                    onPress={handleCreateOffer}
+                    disabled={offerSubmitting}
+                  >
+                    <Text style={styles.offerButtonText}>{offerSubmitting ? 'Sending…' : 'Send Offer'}</Text>
+                  </Pressable>
+                  <Pressable
+                    style={styles.offerCancelButton}
+                    onPress={() => { if (!offerSubmitting) { setOfferItem(null); setOfferInput(''); } }}
+                    disabled={offerSubmitting}
+                  >
+                    <Text style={styles.offerCancelText}>Cancel</Text>
+                  </Pressable>
+                </View>
+              </KeyboardAvoidingView>
+            </>
+          )}
+
         </View>
       </Modal>
 
-      {/* Incoming trade offers sheet */}
+      {/* Filter sheet */}
       <Modal
-        visible={!!viewOffersItem}
+        visible={filterVisible}
         animationType="slide"
         transparent={true}
-        onRequestClose={() => setViewOffersItem(null)}
+        onRequestClose={() => setFilterVisible(false)}
       >
-        <View style={styles.tradeOverlay}>
-          <View style={styles.tradeSheet}>
-            <Text style={styles.tradeSheetTitle}>Trade Offers</Text>
-            <Text style={styles.tradeSheetSubtitle}>
-              {viewOffersItem?.celebrity.display_name} autograph
-            </Text>
-            {tradeOffers.filter((o) => o.targetAutographId === viewOffersItem?.id).map((offer) => (
-              <View key={offer.id} style={styles.offerRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.offerFromText}>{offer.offererName} offers:</Text>
-                  <Text style={styles.offerAutographText}>{offer.offeredAutographCelebrity} autograph</Text>
-                </View>
-                <View style={styles.offerActions}>
-                  <Pressable
-                    style={[styles.acceptButton, respondingOffer === offer.id && { opacity: 0.5 }]}
-                    onPress={() => handleAcceptTrade(offer)}
-                    disabled={!!respondingOffer}
-                  >
-                    <Text style={styles.buttonText}>Accept</Text>
-                  </Pressable>
-                  <Pressable
-                    style={[styles.declineButton, respondingOffer === offer.id && { opacity: 0.5 }]}
-                    onPress={() => handleDeclineTrade(offer)}
-                    disabled={!!respondingOffer}
-                  >
-                    <Text style={styles.declineButtonText}>Decline</Text>
-                  </Pressable>
-                </View>
-              </View>
-            ))}
-            <Pressable onPress={() => setViewOffersItem(null)} style={{ marginTop: 16 }}>
-              <Text style={styles.tradeCancelText}>Close</Text>
+        <View style={styles.filterOverlay}>
+          <ScrollView style={{ width: '100%' }} contentContainerStyle={styles.filterSheet} keyboardShouldPersistTaps="handled">
+            <Text style={styles.filterTitle}>Filter</Text>
+
+            <Text style={styles.filterSectionLabel}>Type</Text>
+            <View style={styles.filterCheckGroup}>
+              {[
+                { key: 'savedOnly', label: 'Saved only' },
+                { key: 'buyNow', label: 'Buy Now' },
+              ].map(({ key, label }) => (
+                <Pressable
+                  key={key}
+                  style={styles.filterCheckRow}
+                  onPress={() => setDraftFilters((prev) => ({ ...prev, [key]: !prev[key as keyof MarketplaceFilters] }))}
+                >
+                  <View style={[styles.filterCheckbox, draftFilters[key as keyof MarketplaceFilters] && styles.filterCheckboxChecked]}>
+                    {draftFilters[key as keyof MarketplaceFilters] && <Text style={styles.filterCheckTick}>✓</Text>}
+                  </View>
+                  <Text style={styles.filterCheckLabel}>{label}</Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <Text style={styles.filterSectionLabel}>Celebrity / Autographer</Text>
+            <TextInput
+              style={styles.filterInput}
+              placeholder="e.g. Taylor Swift"
+              placeholderTextColor="#aaa"
+              value={draftFilters.creator}
+              onChangeText={(v) => setDraftFilters((prev) => ({ ...prev, creator: v }))}
+              autoCorrect={false}
+            />
+
+            <Text style={styles.filterSectionLabel}>Series</Text>
+            <TextInput
+              style={styles.filterInput}
+              placeholder="e.g. Hawaii Trip"
+              placeholderTextColor="#aaa"
+              value={draftFilters.series}
+              onChangeText={(v) => setDraftFilters((prev) => ({ ...prev, series: v }))}
+              autoCorrect={false}
+            />
+
+            <Text style={styles.filterSectionLabel}>Price Range ($)</Text>
+            <View style={styles.filterRangeRow}>
+              <TextInput
+                style={[styles.filterInput, { flex: 1 }]}
+                placeholder="Min"
+                placeholderTextColor="#aaa"
+                keyboardType="decimal-pad"
+                value={draftFilters.minPrice}
+                onChangeText={(v) => setDraftFilters((prev) => ({ ...prev, minPrice: v }))}
+              />
+              <Text style={styles.filterRangeSep}>–</Text>
+              <TextInput
+                style={[styles.filterInput, { flex: 1 }]}
+                placeholder="Max"
+                placeholderTextColor="#aaa"
+                keyboardType="decimal-pad"
+                value={draftFilters.maxPrice}
+                onChangeText={(v) => setDraftFilters((prev) => ({ ...prev, maxPrice: v }))}
+              />
+            </View>
+
+            <Text style={styles.filterSectionLabel}>Sort By</Text>
+            <View style={styles.filterCheckGroup}>
+              {([
+                { key: 'newest', label: 'Newest first' },
+                { key: 'oldest', label: 'Oldest first' },
+                { key: 'price_asc', label: 'Price: Low to High' },
+                { key: 'price_desc', label: 'Price: High to Low' },
+              ] as { key: MarketplaceSort; label: string }[]).map(({ key, label }) => (
+                <Pressable key={key} style={styles.filterCheckRow} onPress={() => setDraftSort(key)}>
+                  <View style={[styles.filterCheckbox, draftSort === key && styles.filterCheckboxChecked]}>
+                    {draftSort === key && <Text style={styles.filterCheckTick}>✓</Text>}
+                  </View>
+                  <Text style={styles.filterCheckLabel}>{label}</Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <Pressable
+              style={styles.filterApplyButton}
+              onPress={() => { setFilters(draftFilters); setSort(draftSort); setFilterVisible(false); }}
+            >
+              <Text style={styles.filterApplyText}>Apply</Text>
             </Pressable>
-          </View>
+            <Pressable
+              style={styles.filterClearButton}
+              onPress={() => { setFilters(defaultFilters); setDraftFilters(defaultFilters); setSort('newest'); setDraftSort('newest'); setFilterVisible(false); }}
+            >
+              <Text style={styles.filterClearText}>Clear All</Text>
+            </Pressable>
+            <Pressable style={{ marginTop: 8, marginBottom: 16 }} onPress={() => setFilterVisible(false)}>
+              <Text style={styles.tradeCancelText}>Cancel</Text>
+            </Pressable>
+          </ScrollView>
         </View>
       </Modal>
+
     </View>
   );
 }
@@ -759,6 +802,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: BrandColors.background,
   },
+  errorTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    fontFamily: BrandFonts.primary,
+    textAlign: 'center',
+    marginBottom: 6,
+  },
+  errorSubtitle: {
+    fontSize: 14,
+    color: '#888',
+    fontFamily: BrandFonts.primary,
+    textAlign: 'center',
+  },
   emptyText: {
     textAlign: 'center',
     marginTop: 40,
@@ -767,52 +824,29 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   separator: {
-    height: 1,
-    backgroundColor: '#ccc',
+    height: 14,
   },
-  card: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 14,
+  recommendationSection: {
+    marginBottom: 18,
   },
-  cardLeft: {
-    flex: 1,
-  },
-  celebrityName: {
-    fontSize: 18,
-    fontWeight: '600',
+  recommendationTitle: {
+    fontSize: 28,
     color: '#111',
-    fontFamily: BrandFonts.primary,
+    fontFamily: BrandFonts.script,
   },
-  verifiedBadge: {
-    fontSize: 11,
-    color: '#fff',
-    backgroundColor: '#111',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    alignSelf: 'flex-start',
-    marginTop: 2,
-    overflow: 'hidden',
-  },
-  cardDate: {
-    fontSize: 13,
-    color: '#666',
+  recommendationSubtitle: {
     marginTop: 4,
-  },
-  auctionLabel: {
-    fontSize: 11,
-    color: '#111',
-    fontWeight: '600',
+    marginBottom: 12,
+    fontSize: 14,
+    lineHeight: 20,
+    color: '#6e6454',
     fontFamily: BrandFonts.primary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
   },
-  timeLeft: {
-    fontSize: 12,
-    color: '#666',
-    marginTop: 2,
+  recommendationList: {
+    gap: 12,
+  },
+  recommendationCardWrap: {
+    marginBottom: 12,
   },
   watchButton: {
     paddingVertical: 8,
@@ -827,78 +861,15 @@ const styles = StyleSheet.create({
   watchButtonTextActive: {
     color: '#111',
   },
-  yourBidLabel: {
-    fontSize: 11,
-    color: '#fff',
-    backgroundColor: '#2e7d32',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    alignSelf: 'flex-end',
-    marginTop: 2,
-    overflow: 'hidden',
-    fontFamily: BrandFonts.primary,
-  },
-  bidRow: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    backgroundColor: 'black',
-  },
-  bidInput: {
-    flex: 1,
-    backgroundColor: '#222',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 16,
-    color: '#fff',
-  },
-  bidButton: {
-    backgroundColor: '#111',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 8,
-    justifyContent: 'center',
-  },
-  bidRowTop: {
-    flexDirection: 'row',
-    gap: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: 'black',
-  },
-  bidInputTop: {
-    width: 110,
-    backgroundColor: '#222',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    fontSize: 14,
-    color: '#fff',
-  },
-  bidButtonTop: {
-    backgroundColor: '#111',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    justifyContent: 'center',
-  },
   tapHint: {
     fontSize: 12,
-    color: '#999',
-    marginTop: 2,
-    fontStyle: 'italic',
-  },
-  cardRight: {
-    alignItems: 'flex-end',
+    color: '#8A7D67',
+    marginTop: 4,
   },
   price: {
-    fontSize: 20,
-    fontWeight: '700',
+    fontSize: 28,
+    lineHeight: 32,
+    fontWeight: '800',
     color: '#111',
     fontFamily: BrandFonts.primary,
   },
@@ -921,8 +892,16 @@ const styles = StyleSheet.create({
   modalCelebrity: {
     color: '#fff',
     fontFamily: BrandFonts.primary,
-    fontSize: 16,
+    fontSize: 19,
     fontWeight: '600',
+  },
+  modalPriceLabel: {
+    color: 'rgba(255,255,255,0.6)',
+    fontFamily: BrandFonts.primary,
+    fontSize: 10,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   modalPrice: {
     color: '#fff',
@@ -945,122 +924,6 @@ const styles = StyleSheet.create({
   },
   buyButtonDisabled: {
     opacity: 0.6,
-  },
-  offerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-  },
-  offerFromText: {
-    fontSize: 13,
-    color: '#666',
-    fontFamily: BrandFonts.primary,
-  },
-  offerAutographText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#111',
-    fontFamily: BrandFonts.primary,
-  },
-  offerActions: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  acceptButton: {
-    backgroundColor: '#2e7d32',
-    borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  declineButton: {
-    borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderWidth: 1,
-    borderColor: '#ccc',
-  },
-  declineButtonText: {
-    color: '#666',
-    fontSize: 14,
-    fontWeight: '600',
-    fontFamily: BrandFonts.primary,
-  },
-  offersButton: {
-    backgroundColor: '#1565C0',
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    alignSelf: 'flex-start',
-    marginBottom: 6,
-  },
-  offersButtonText: {
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: '600',
-    fontFamily: BrandFonts.primary,
-  },
-  tradeLabel: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1565C0',
-    fontFamily: BrandFonts.primary,
-  },
-  tradeButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    backgroundColor: '#1565C0',
-    borderRadius: 8,
-    minWidth: 64,
-    alignItems: 'center',
-  },
-  tradeOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'flex-end',
-  },
-  tradeSheet: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 28,
-    maxHeight: '70%',
-  },
-  tradeSheetTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#111',
-    fontFamily: BrandFonts.primary,
-    marginBottom: 8,
-  },
-  tradeSheetSubtitle: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 20,
-    lineHeight: 20,
-  },
-  tradeEmptyText: {
-    fontSize: 14,
-    color: '#999',
-    textAlign: 'center',
-    marginVertical: 16,
-  },
-  tradeAutographRow: {
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-  },
-  tradeAutographName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111',
-    fontFamily: BrandFonts.primary,
-  },
-  tradeAutographDate: {
-    fontSize: 13,
-    color: '#999',
-    marginTop: 2,
   },
   tradeCancelText: {
     textAlign: 'center',
@@ -1126,10 +989,317 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 16,
     borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: '#fff',
   },
   controlButtonText: {
     color: '#fff',
     fontFamily: BrandFonts.primary,
     fontWeight: '600',
+  },
+  certOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-start',
+    paddingTop: 80,
+  },
+  certSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 24,
+    alignItems: 'center',
+  },
+  certTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    fontFamily: BrandFonts.primary,
+    color: '#111',
+    marginBottom: 16,
+  },
+  certRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  certLabel: {
+    fontSize: 13,
+    color: '#666',
+    fontFamily: BrandFonts.primary,
+  },
+  certValue: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#111',
+    fontFamily: BrandFonts.primary,
+    maxWidth: '60%',
+    textAlign: 'right',
+  },
+  certIdValue: {
+    fontSize: 11,
+    color: '#333',
+    fontFamily: 'monospace',
+    maxWidth: '60%',
+    textAlign: 'right',
+  },
+  certButton: {
+    marginTop: 20,
+    backgroundColor: '#111',
+    borderRadius: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 40,
+    borderWidth: 1.5,
+    borderColor: '#fff',
+  },
+  certButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontFamily: BrandFonts.primary,
+  },
+  certCloseText: {
+    fontSize: 15,
+    color: '#666',
+    fontFamily: BrandFonts.primary,
+    marginTop: 4,
+  },
+  offerBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  offerKeyboardView: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  offerSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 24,
+  },
+  offerTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#111',
+    textAlign: 'center',
+    fontFamily: BrandFonts.primary,
+  },
+  offerSubtitle: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+    marginTop: 8,
+    marginBottom: 18,
+    fontFamily: BrandFonts.primary,
+  },
+  offerInput: {
+    backgroundColor: '#f5f5f5',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    fontSize: 18,
+    color: '#111',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    fontFamily: BrandFonts.primary,
+  },
+  offerButton: {
+    backgroundColor: '#111',
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 18,
+  },
+  offerButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+    fontFamily: BrandFonts.primary,
+  },
+  offerCancelButton: {
+    marginTop: 12,
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  offerCancelText: {
+    color: '#666',
+    fontSize: 15,
+    fontFamily: BrandFonts.primary,
+  },
+  filterHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  filterResultCount: {
+    fontSize: 13,
+    color: '#666',
+    fontFamily: BrandFonts.primary,
+  },
+  filterButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#666',
+  },
+  filterButtonActive: {
+    backgroundColor: '#666',
+  },
+  filterButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    fontFamily: BrandFonts.primary,
+    color: '#666',
+  },
+  filterButtonTextActive: {
+    color: '#fff',
+  },
+  filterOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  filterSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 24,
+  },
+  filterTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#111',
+    fontFamily: BrandFonts.primary,
+    marginBottom: 20,
+  },
+  filterSectionLabel: {
+    fontSize: 11,
+    color: '#999',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 8,
+    marginTop: 16,
+  },
+  filterCheckGroup: {
+    gap: 4,
+  },
+  filterCheckRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    gap: 10,
+  },
+  filterCheckbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 5,
+    borderWidth: 2,
+    borderColor: '#111',
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  filterCheckboxChecked: {
+    backgroundColor: '#111',
+  },
+  filterCheckTick: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  filterCheckLabel: {
+    fontSize: 15,
+    color: '#111',
+    fontFamily: BrandFonts.primary,
+  },
+  filterInput: {
+    backgroundColor: '#f5f5f5',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: '#111',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    fontFamily: BrandFonts.primary,
+  },
+  filterRangeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  filterRangeSep: {
+    fontSize: 16,
+    color: '#999',
+  },
+  filterApplyButton: {
+    backgroundColor: '#111',
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 24,
+  },
+  filterApplyText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    fontFamily: BrandFonts.primary,
+  },
+  filterClearButton: {
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginTop: 8,
+    borderWidth: 1.5,
+    borderColor: '#111',
+  },
+  filterClearText: {
+    color: '#111',
+    fontSize: 15,
+    fontWeight: '600',
+    fontFamily: BrandFonts.primary,
+  },
+  contextOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  contextMenu: {
+    backgroundColor: '#1c1c1e',
+    borderRadius: 16,
+    width: 260,
+    overflow: 'hidden',
+  },
+  contextMenuTitle: {
+    color: '#888',
+    fontSize: 13,
+    fontFamily: BrandFonts.primary,
+    textAlign: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#333',
+  },
+  contextMenuItem: {
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#333',
+  },
+  contextMenuItemText: {
+    color: '#fff',
+    fontSize: 17,
+    fontFamily: BrandFonts.primary,
+    textAlign: 'center',
   },
 });

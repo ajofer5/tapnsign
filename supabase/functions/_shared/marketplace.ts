@@ -16,20 +16,22 @@ export async function requireActiveOwnedAutograph(autographId: string, ownerId: 
 
 export async function updateAutographListing(params: {
   autographId: string;
+  visibility?: 'private' | 'public';
+  saleState?: 'not_for_sale' | 'fixed';
   isForSale: boolean;
-  listingType: 'fixed' | 'auction' | null;
   priceCents?: number | null;
-  reservePriceCents?: number | null;
-  auctionEndsAt?: string | null;
   openToTrade?: boolean;
+  autoDeclineBelow?: boolean;
+  autoAcceptAbove?: boolean;
 }) {
   const payload = {
+    visibility: params.visibility,
+    sale_state: params.saleState,
     is_for_sale: params.isForSale,
-    listing_type: params.listingType,
     price_cents: params.priceCents ?? null,
-    reserve_price_cents: params.reservePriceCents ?? null,
-    auction_ends_at: params.auctionEndsAt ?? null,
     open_to_trade: params.openToTrade ?? false,
+    auto_decline_below: params.autoDeclineBelow ?? false,
+    auto_accept_above: params.autoAcceptAbove ?? false,
   };
 
   const { data, error } = await supabaseAdmin
@@ -70,12 +72,13 @@ export async function transferAutographOwnership(params: {
       owner_id: params.toUserId,
       ownership_source: params.ownershipSource,
       latest_transfer_id: transferId,
+      visibility: 'private',
+      sale_state: 'not_for_sale',
       is_for_sale: false,
-      listing_type: null,
       price_cents: null,
-      reserve_price_cents: null,
-      auction_ends_at: null,
       open_to_trade: false,
+      auto_decline_below: false,
+      auto_accept_above: false,
     })
     .eq('id', params.autographId)
     .eq('owner_id', params.fromUserId)

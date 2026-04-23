@@ -8,6 +8,7 @@ import { callEdgeFunction } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { logInterestEvent } from '@/lib/interest';
 import { supabase } from '@/lib/supabase';
+import { useStripe } from '@stripe/stripe-react-native';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -151,6 +152,7 @@ export default function ProfileScreen() {
   const [reportItem, setReportItem] = useState<Listing | null>(null);
   const [reportSubmitting, setReportSubmitting] = useState(false);
 
+  const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const appUrl = process.env.EXPO_PUBLIC_APP_URL ?? 'https://tapnsign.app';
   const isOwnProfile = user?.id === id;
 
@@ -236,6 +238,46 @@ export default function ProfileScreen() {
       Alert.alert('Offer Failed', 'Could not send offer. Please try again.');
     } finally {
       setOfferSubmitting(false);
+    }
+  };
+
+  const handleBuyNow = async (item: Listing) => {
+    if (!user) {
+      Alert.alert('Sign in required', 'Please sign in to purchase autographs.');
+      return;
+    }
+    try {
+      const responseJson = await callEdgeFunction<{
+        client_secret?: string;
+        payment_event_id?: string;
+      }>('create-payment-intent', { autograph_id: item.id });
+
+      const { client_secret, payment_event_id } = responseJson;
+      if (!client_secret || !payment_event_id) throw new Error('Could not start purchase.');
+
+      const { error: initError } = await initPaymentSheet({
+        paymentIntentClientSecret: client_secret,
+        merchantDisplayName: 'TapnSign',
+      });
+      if (initError) throw new Error(initError.message);
+
+      const { error: paymentError } = await presentPaymentSheet();
+      if (paymentError) {
+        if (paymentError.code !== 'Canceled') Alert.alert('Payment Failed', paymentError.message);
+        return;
+      }
+
+      await callEdgeFunction('purchase-autograph', {
+        autograph_id: item.id,
+        payment_event_id,
+      });
+
+      Alert.alert('Purchase Complete', 'This autograph is now in your collection.', [
+        { text: 'OK' },
+      ]);
+      setPreviewItem(null);
+    } catch {
+      Alert.alert('Error', 'Could not complete purchase. Please try again.');
     }
   };
 
@@ -393,6 +435,7 @@ export default function ProfileScreen() {
                 gold={listing.stroke_color === '#C9A84C'}
                 seriesName={listing.series_name}
                 seriesEdition={listing.series_sequence_number != null && listing.series_max_size != null ? `${listing.series_sequence_number} of ${listing.series_max_size}` : null}
+                priceLabel={listing.sale_state === 'fixed' ? 'Estimated Value' : undefined}
                 priceText={listing.sale_state === 'fixed' ? formatPublicVideoPrice(listing.price_cents) : 'Not for Sale'}
                 secondaryText={listing.sale_state === 'fixed' && listing.owner_name ? `Listed by ${listing.owner_name}` : null}
                 onPress={() => openPreview(listing)}
@@ -552,7 +595,7 @@ export default function ProfileScreen() {
                   <Text style={styles.contextMenuItemText}>Share</Text>
                 </Pressable>
 
-                {!isOwnProfile && previewItem.sale_state === 'not_for_sale' && (
+                {!isOwnProfile && (
                   <Pressable
                     style={styles.contextMenuItem}
                     onPress={() => {
@@ -564,6 +607,19 @@ export default function ProfileScreen() {
                     }}
                   >
                     <Text style={styles.contextMenuItemText}>Make Offer</Text>
+                  </Pressable>
+                )}
+
+                {!isOwnProfile && previewItem.sale_state === 'fixed' && (
+                  <Pressable
+                    style={styles.contextMenuItem}
+                    onPress={() => {
+                      const item = previewItem;
+                      setContextMenuVisible(false);
+                      handleBuyNow(item);
+                    }}
+                  >
+                    <Text style={styles.contextMenuItemText}>Buy Now · {formatPublicVideoPrice(previewItem.price_cents)}</Text>
                   </Pressable>
                 )}
 
@@ -659,7 +715,12 @@ export default function ProfileScreen() {
           <View style={styles.offerSheet} onStartShouldSetResponder={() => true}>
             <Text style={styles.offerTitle}>Make Offer</Text>
             <Text style={styles.offerSubtitle}>
-              {offerItem?.creator_name ?? 'Autograph'} · Expires in 24 hours if not accepted
+              {offerItem?.creator_name ?? 'Autograph'}
+              {offerItem?.sale_state === 'fixed' && offerItem.price_cents
+                ? ` · Estimated Value ${formatPublicVideoPrice(offerItem.price_cents)}`
+                : ''
+              }
+              {' · '}Expires in 24 hours if not accepted
             </Text>
             <TextInput
               style={styles.offerInput}

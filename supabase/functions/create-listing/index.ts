@@ -5,13 +5,13 @@ import {
   handleRequest,
   json,
   parseBoolean,
-  parseIsoDate,
   parseJson,
   requirePositiveInteger,
   requireString,
   requireUser,
-  supabaseAdmin,
 } from '../_shared/utils.ts';
+
+const MIN_PRICE_CENTS = 1000; // $10.00
 
 Deno.serve((req) =>
   handleRequest(async (request) => {
@@ -19,10 +19,9 @@ Deno.serve((req) =>
     const body = await parseJson(request);
 
     const autographId = requireString(body.autograph_id, 'autograph_id');
-    const listingType = requireString(body.listing_type, 'listing_type');
     const openToTrade = parseBoolean(body.open_to_trade, false);
-
-    assert(listingType === 'fixed' || listingType === 'auction', 400, 'listing_type must be fixed or auction.');
+    const autoDeclineBelow = parseBoolean(body.auto_decline_below, false);
+    const autoAcceptAbove = parseBoolean(body.auto_accept_above, false);
 
     const profile = await getProfile(user.id);
     assert(!profile.suspended_at, 403, 'Account is suspended.');
@@ -30,53 +29,27 @@ Deno.serve((req) =>
     const autograph = await requireActiveOwnedAutograph(autographId, user.id);
     assert(autograph.owner_id === user.id, 403, 'You do not own this autograph.');
 
-    const { count: activeBidCount } = await supabaseAdmin
-      .from('bids')
-      .select('id', { count: 'exact', head: true })
-      .eq('autograph_id', autographId)
-      .eq('status', 'active');
-
-    assert(!activeBidCount, 409, 'Cannot change listing state while active bids exist.');
-
-    if (listingType === 'fixed') {
-      const priceCents = requirePositiveInteger(body.price_cents, 'price_cents');
-      await updateAutographListing({
-        autographId,
-        isForSale: true,
-        listingType: 'fixed',
-        priceCents,
-        openToTrade,
-      });
-
-      return json({
-        listing: {
-          autograph_id: autographId,
-          listing_type: 'fixed',
-          price_cents: priceCents,
-          open_to_trade: openToTrade,
-        },
-      });
-    }
-
-    const reservePriceCents = requirePositiveInteger(body.reserve_price_cents, 'reserve_price_cents');
-    const auctionEndsAt = parseIsoDate(body.auction_ends_at, 'auction_ends_at');
-    assert(auctionEndsAt.getTime() > Date.now(), 400, 'auction_ends_at must be in the future.');
+    const priceCents = requirePositiveInteger(body.price_cents, 'price_cents');
+    assert(priceCents >= MIN_PRICE_CENTS, 400, `Estimated value must be at least $${(MIN_PRICE_CENTS / 100).toFixed(2)}.`);
 
     await updateAutographListing({
       autographId,
+      visibility: 'public',
+      saleState: 'fixed',
       isForSale: true,
-      listingType: 'auction',
-      reservePriceCents,
-      auctionEndsAt: auctionEndsAt.toISOString(),
-      openToTrade: false,
+      priceCents,
+      openToTrade,
+      autoDeclineBelow,
+      autoAcceptAbove,
     });
 
     return json({
       listing: {
         autograph_id: autographId,
-        listing_type: 'auction',
-        reserve_price_cents: reservePriceCents,
-        auction_ends_at: auctionEndsAt.toISOString(),
+        price_cents: priceCents,
+        open_to_trade: openToTrade,
+        auto_decline_below: autoDeclineBelow,
+        auto_accept_above: autoAcceptAbove,
       },
     });
   }, req)
