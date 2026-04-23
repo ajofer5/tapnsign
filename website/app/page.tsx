@@ -4,7 +4,7 @@ export default function HomePage() {
   return (
     <main>
       {/* Nav */}
-      <nav className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-6 py-4 bg-white border-b border-gray-200">
+      <nav className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-6 py-4 bg-[#F2F2F4] border-b border-gray-200">
         <img src="/logo.png" alt="TapnSign" className="h-9" />
         <a
           href="#download"
