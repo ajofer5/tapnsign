@@ -12,7 +12,7 @@ export function AppleSignInButton({ next }: { next: string }) {
     await supabase.auth.signInWithOAuth({
       provider: 'apple',
       options: {
-        redirectTo: `${window.location.origin}/auth/google/callback?next=${encodeURIComponent(next)}`,
+        redirectTo: `${window.location.origin}/auth/apple/callback?next=${encodeURIComponent(next)}`,
       },
     });
   };
