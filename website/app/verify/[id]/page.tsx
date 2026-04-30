@@ -18,11 +18,12 @@ type Certificate = {
 export async function generateMetadata({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }): Promise<Metadata> {
+  const { id } = await params;
   return {
     title: `Certificate of Authenticity — TapnSign`,
-    description: `Verify this TapnSign autograph certificate at tapnsign.com/verify/${params.id}`,
+    description: `Verify this TapnSign autograph certificate at tapnsign.com/verify/${id}`,
   };
 }
 
@@ -37,8 +38,9 @@ async function getCertificate(id: string): Promise<Certificate | null> {
   return (data as Certificate) ?? null;
 }
 
-export default async function VerifyPage({ params }: { params: { id: string } }) {
-  const cert = await getCertificate(params.id);
+export default async function VerifyPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const cert = await getCertificate(id);
 
   return (
     <main className="min-h-screen bg-[#F2F2F4]">

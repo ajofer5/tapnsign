@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 
 export default function TermsPage() {
   const content = fs.readFileSync(
-    path.join(process.cwd(), '..', 'legal', 'terms-of-service.md'),
+    path.join(process.cwd(), 'legal', 'terms-of-service.md'),
     'utf-8'
   );
   const html = String(marked.parse(content));

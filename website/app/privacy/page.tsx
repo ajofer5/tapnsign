@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 
 export default function PrivacyPage() {
   const content = fs.readFileSync(
-    path.join(process.cwd(), '..', 'legal', 'privacy-policy.md'),
+    path.join(process.cwd(), 'legal', 'privacy-policy.md'),
     'utf-8'
   );
   const html = String(marked.parse(content));
