@@ -4,7 +4,6 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { createWebsiteAdminSupabaseClient } from '../../../lib/supabase';
 import { requireWebSessionUser } from '../../../lib/web-auth';
-import { refreshWebSessionCookie } from '../../../lib/web-session';
 
 function redirectAccount(status: string) {
   redirect(`/app/account?status=${encodeURIComponent(status)}`);
@@ -29,7 +28,6 @@ export async function updateDisplayNameAction(formData: FormData) {
     redirectAccount('name_error');
   }
 
-  await refreshWebSessionCookie(user.id, user.email);
   revalidatePath('/app');
   revalidatePath('/app/account');
   revalidatePath(`/profile/${user.id}`);

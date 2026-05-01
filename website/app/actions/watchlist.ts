@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { createWebsiteAdminSupabaseClient } from '../../lib/supabase';
-import { getWebSessionUser } from '../../lib/web-session';
+import { getWebSessionUser } from '../../lib/web-auth';
 
 function sanitizeNextPath(value: string) {
   if (!value.startsWith('/') || value.startsWith('//')) return '/marketplace';

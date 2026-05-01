@@ -8,7 +8,7 @@ import {
   getWebsiteListing,
 } from '../../../../lib/listings';
 import { toggleWatchlistAction } from '../../../../app/actions/watchlist';
-import { getWebSessionUser } from '../../../../lib/web-session';
+import { getWebSessionUser } from '../../../../lib/web-auth';
 import { getSavedAutographIds } from '../../../../lib/watchlist';
 
 export default async function ListingPage({ params }: { params: Promise<{ id: string }> }) {

@@ -1,13 +1,7 @@
 'use server';
 
-import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { createWebsiteSupabaseClient } from '../../lib/supabase';
-import {
-  createWebSessionToken,
-  getWebSessionCookieConfig,
-  getWebSessionUserForProfile,
-} from '../../lib/web-session';
+import { createWebsiteMutableServerSupabaseClient } from '../../lib/supabase';
 
 function sanitizeNextPath(value: FormDataEntryValue | null) {
   if (typeof value !== 'string' || !value) return '/app';
@@ -32,7 +26,7 @@ export async function createAccountAction(formData: FormData) {
     redirect(`/signup?error=password&next=${encodeURIComponent(next)}`);
   }
 
-  const supabase = createWebsiteSupabaseClient();
+  const supabase = await createWebsiteMutableServerSupabaseClient();
   const { error: signUpError } = await supabase.auth.signUp({
     email,
     password,
@@ -62,12 +56,5 @@ export async function createAccountAction(formData: FormData) {
     redirect(`/login?created=1&email=${encodeURIComponent(email)}&next=${encodeURIComponent(next)}`);
   }
 
-  const sessionUser = await getWebSessionUserForProfile(signInData.user.id, signInData.user.email ?? email);
-  if (!sessionUser) {
-    redirect(`/login?created=1&email=${encodeURIComponent(email)}&next=${encodeURIComponent(next)}`);
-  }
-
-  const cookieStore = await cookies();
-  cookieStore.set(getWebSessionCookieConfig(createWebSessionToken(sessionUser)));
   redirect(next);
 }

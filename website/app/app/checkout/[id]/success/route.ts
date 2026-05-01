@@ -1,15 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { retrieveStripeCheckoutSession } from '../../../../../lib/stripe';
 import { createWebsiteAdminSupabaseClient } from '../../../../../lib/supabase';
-import { verifyWebSessionToken, WEB_SESSION_COOKIE } from '../../../../../lib/web-session';
-
-function getUserFromRequest(request: NextRequest) {
-  const raw = request.cookies.get(WEB_SESSION_COOKIE)?.value;
-  return raw ? verifyWebSessionToken(raw)?.user ?? null : null;
-}
+import { getWebSessionUser } from '../../../../../lib/web-auth';
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const user = getUserFromRequest(request);
+  const user = await getWebSessionUser();
   if (!user) {
     return NextResponse.redirect(new URL('/', request.url));
   }

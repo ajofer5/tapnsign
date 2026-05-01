@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createWebsiteServerSupabaseClient } from '../../../../lib/supabase';
-import {
-  createWebSessionToken,
-  getWebSessionCookieConfig,
-  getWebSessionUserForProfile,
-} from '../../../../lib/web-session';
+import { createWebsiteRouteSupabaseClient } from '../../../../lib/supabase';
+import { getWebSessionUserForProfile } from '../../../../lib/web-session';
 
 function sanitizeNextPath(value: string | null) {
   if (!value) return '/app';
@@ -22,7 +18,8 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const supabase = await createWebsiteServerSupabaseClient();
+  const response = NextResponse.redirect(new URL(next, request.url));
+  const supabase = createWebsiteRouteSupabaseClient(request, response);
   const { data, error } = await supabase.auth.exchangeCodeForSession(code);
   const authData = data as { user?: { id: string; email?: string | null } | null; session?: { user?: { id: string; email?: string | null } | null } | null } | null;
   const authUser = authData?.user ?? authData?.session?.user ?? null;
@@ -44,9 +41,5 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const response = NextResponse.redirect(new URL(next, request.url));
-  response.cookies.set(
-    getWebSessionCookieConfig(createWebSessionToken(sessionUser))
-  );
   return response;
 }

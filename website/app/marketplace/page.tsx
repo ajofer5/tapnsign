@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { WebListingCard } from '../../components/web-listing-card';
 import { getMarketplaceListings } from '../../lib/marketplace';
-import { getWebSessionUser } from '../../lib/web-session';
+import { getWebSessionUser } from '../../lib/web-auth';
 import { getSavedAutographIds } from '../../lib/watchlist';
 
 export const dynamic = 'force-dynamic';

@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { requestLoginLinkAction } from './actions';
-import { getWebSessionUser } from '../../lib/web-session';
+import { getWebSessionUser } from '../../lib/web-auth';
 import { GoogleSignInButton } from '../../components/google-sign-in-button';
 import { AppleSignInButton } from '../../components/apple-sign-in-button';
 

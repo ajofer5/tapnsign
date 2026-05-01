@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { type EmailOtpType } from '@supabase/supabase-js';
-import { createWebsiteSupabaseClient } from '../../../lib/supabase';
-import {
-  createWebSessionToken,
-  getWebSessionCookieConfig,
-  getWebSessionUserForProfile,
-} from '../../../lib/web-session';
+import { createWebsiteRouteSupabaseClient } from '../../../lib/supabase';
+import { getWebSessionUserForProfile } from '../../../lib/web-session';
 
 function sanitizeNextPath(value: string | null) {
   if (!value) return '/app';
@@ -22,7 +18,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL(`/login?error=callback&next=${encodeURIComponent(next)}`, request.url));
   }
 
-  const supabase = createWebsiteSupabaseClient();
+  const response = NextResponse.redirect(new URL(next, request.url));
+  const supabase = createWebsiteRouteSupabaseClient(request, response);
   const { data, error } = await supabase.auth.verifyOtp({
     token_hash: tokenHash,
     type,
@@ -37,7 +34,5 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL(`/login?error=account&next=${encodeURIComponent(next)}`, request.url));
   }
 
-  const response = NextResponse.redirect(new URL(next, request.url));
-  response.cookies.set(getWebSessionCookieConfig(createWebSessionToken(sessionUser)));
   return response;
 }

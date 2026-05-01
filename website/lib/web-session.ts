@@ -73,7 +73,7 @@ export function getWebSessionCookieConfig(value: string) {
     value,
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'none' as const,
+    sameSite: 'lax' as const,
     domain: getCookieDomain(),
     path: '/',
     maxAge: 60 * 60 * 24 * 7,
@@ -103,7 +103,7 @@ export function verifyWebSessionToken(token: string): WebSessionPayload | null {
   }
 }
 
-export async function getWebSessionUser() {
+export async function getLegacyWebSessionUser() {
   const cookieStore = await cookies();
   const raw = cookieStore.get(WEB_SESSION_COOKIE)?.value;
   if (!raw) return null;
@@ -127,13 +127,4 @@ export async function getWebSessionUserForProfile(userId: string, fallbackEmail:
     role: profile.role,
     verification_status: profile.verification_status,
   };
-}
-
-export async function refreshWebSessionCookie(userId: string, fallbackEmail: string | null) {
-  const sessionUser = await getWebSessionUserForProfile(userId, fallbackEmail);
-  if (!sessionUser) return null;
-
-  const cookieStore = await cookies();
-  cookieStore.set(getWebSessionCookieConfig(createWebSessionToken(sessionUser)));
-  return sessionUser;
 }

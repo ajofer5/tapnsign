@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { WebListingCard } from '../../../components/web-listing-card';
 import { getWebsiteProfile } from '../../../lib/profile';
-import { getWebSessionUser } from '../../../lib/web-session';
+import { getWebSessionUser } from '../../../lib/web-auth';
 import { getSavedAutographIds } from '../../../lib/watchlist';
 
 function formatDate(value?: string | null) {

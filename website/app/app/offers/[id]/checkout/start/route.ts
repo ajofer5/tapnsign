@@ -3,20 +3,15 @@ import { usersAreBlocked } from '../../../../../../lib/blocks';
 import { getAcceptedOffer } from '../../../../../../lib/offers';
 import { createStripeCheckoutSession } from '../../../../../../lib/stripe';
 import { createWebsiteAdminSupabaseClient } from '../../../../../../lib/supabase';
-import { verifyWebSessionToken, WEB_SESSION_COOKIE } from '../../../../../../lib/web-session';
+import { getWebSessionUser } from '../../../../../../lib/web-auth';
 
 function getWebsiteBaseUrl(request: NextRequest) {
   return process.env.NEXT_PUBLIC_SITE_URL ?? request.nextUrl.origin;
 }
 
-function getUserFromRequest(request: NextRequest) {
-  const raw = request.cookies.get(WEB_SESSION_COOKIE)?.value;
-  return raw ? verifyWebSessionToken(raw)?.user ?? null : null;
-}
-
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id: offerId } = await params;
-  const user = getUserFromRequest(request);
+  const user = await getWebSessionUser();
   if (!user) {
     return NextResponse.redirect(new URL(`/login?next=${encodeURIComponent(`/app/offers/${offerId}/checkout`)}`, request.url));
   }

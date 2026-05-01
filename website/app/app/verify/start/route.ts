@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createVerificationCheckoutSession } from '../../../../lib/stripe';
 import { createWebsiteAdminSupabaseClient } from '../../../../lib/supabase';
-import { verifyWebSessionToken, WEB_SESSION_COOKIE } from '../../../../lib/web-session';
+import { getWebSessionUser } from '../../../../lib/web-auth';
 
 const VERIFICATION_FEE_CENTS = 499;
 
@@ -9,13 +9,8 @@ function getWebsiteBaseUrl(request: NextRequest) {
   return process.env.NEXT_PUBLIC_SITE_URL ?? request.nextUrl.origin;
 }
 
-function getUserFromRequest(request: NextRequest) {
-  const raw = request.cookies.get(WEB_SESSION_COOKIE)?.value;
-  return raw ? verifyWebSessionToken(raw)?.user ?? null : null;
-}
-
 export async function POST(request: NextRequest) {
-  const user = getUserFromRequest(request);
+  const user = await getWebSessionUser();
   if (!user) {
     return NextResponse.redirect(new URL('/login', request.url));
   }

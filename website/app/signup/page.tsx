@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { createAccountAction } from './actions';
-import { getWebSessionUser } from '../../lib/web-session';
+import { getWebSessionUser } from '../../lib/web-auth';
 
 function sanitizeNextPath(value?: string) {
   if (!value) return '/app';
