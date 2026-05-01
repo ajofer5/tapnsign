@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { requestLoginLinkAction } from './actions';
+import { signInWithPasswordAction } from './actions';
 import { getWebSessionUser } from '../../lib/web-auth';
 import { GoogleSignInButton } from '../../components/google-sign-in-button';
 import { AppleSignInButton } from '../../components/apple-sign-in-button';
@@ -17,6 +17,7 @@ export default async function LoginPage({
     sent?: string;
     email?: string;
     error?: string;
+    detail?: string;
     next?: string;
     logged_out?: string;
     created?: string;
@@ -26,9 +27,9 @@ export default async function LoginPage({
   const existingUser = await getWebSessionUser();
   const next = sanitizeNextPath(resolvedSearch?.next);
 
-  const sent = resolvedSearch?.sent === '1';
   const email = resolvedSearch?.email ?? '';
   const error = resolvedSearch?.error;
+  const detail = resolvedSearch?.detail;
   const loggedOut = resolvedSearch?.logged_out === '1';
 
   return (
@@ -54,7 +55,7 @@ export default async function LoginPage({
             Continue on TapnSign Web
           </h1>
           <p className="mt-4 max-w-xl text-lg leading-8 text-gray-600">
-            Use the same email as your TapnSign account. We&apos;ll send a secure sign-in link and bring you straight into the web app.
+            Sign in with the same TapnSign credentials you use in the app, or continue with Apple or Google.
           </p>
 
           {existingUser ? (
@@ -67,11 +68,6 @@ export default async function LoginPage({
             </div>
           ) : null}
 
-          {sent ? (
-            <div className="mt-6 rounded-2xl bg-[#EFF6EC] px-5 py-4 text-sm font-medium text-[#2B6A1C]">
-              Sign-in link sent to {email || 'your email'}. Open it on this device to continue.
-            </div>
-          ) : null}
           {loggedOut ? (
             <div className="mt-6 rounded-2xl bg-[#F6F6F7] px-5 py-4 text-sm font-medium text-gray-700">
               You have been signed out.
@@ -80,9 +76,11 @@ export default async function LoginPage({
           {error ? (
             <div className="mt-6 rounded-2xl bg-[#FDECEC] px-5 py-4 text-sm font-medium text-[#B3261E]">
               {error === 'missing'
-                ? 'Enter your email to continue.'
+                ? 'Enter your email and password to continue.'
                 : error === 'account'
                   ? 'We could not find a TapnSign account for that email.'
+                  : error === 'password'
+                    ? 'That email or password was incorrect.'
                   : error === 'callback'
                     ? 'That sign-in link is invalid or has expired.'
                     : error === 'google'
@@ -90,6 +88,7 @@ export default async function LoginPage({
                       : error === 'apple'
                         ? 'Apple sign-in failed. Please try again.'
                         : 'Could not send a sign-in link. Please try again.'}
+              {detail ? <div className="mt-2 text-xs font-normal text-[#7D2019]">{detail}</div> : null}
             </div>
           ) : null}
 
@@ -104,7 +103,7 @@ export default async function LoginPage({
             <div className="flex-grow border-t border-gray-200" />
           </div>
 
-          <form action={requestLoginLinkAction} className="space-y-4">
+          <form action={signInWithPasswordAction} className="space-y-4">
             <input type="hidden" name="next" value={next} />
             <label className="block">
               <div className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">
@@ -120,12 +119,25 @@ export default async function LoginPage({
                 required
               />
             </label>
+            <label className="block">
+              <div className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">
+                Password
+              </div>
+              <input
+                type="password"
+                name="password"
+                placeholder="Enter your password"
+                className="mt-2 w-full rounded-2xl border border-gray-200 bg-white px-4 py-4 text-base text-black outline-none transition-colors placeholder:text-gray-400 focus:border-black"
+                autoComplete="current-password"
+                required
+              />
+            </label>
 
             <button
               type="submit"
               className="rounded-full bg-black px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#2A2A2D]"
             >
-              Email Me a Sign-In Link
+              Sign In with Email
             </button>
           </form>
 
@@ -134,7 +146,7 @@ export default async function LoginPage({
             <Link href={`/signup?next=${encodeURIComponent(next)}`} className="font-semibold text-black hover:text-[#E53935]">
               Create one here
             </Link>
-            . Once you have a TapnSign account, this web login will bring you into your browser session without a second password flow.
+            . Once you have a TapnSign account, you can use the same email and password across app and web.
             {resolvedSearch?.created === '1' ? ' Your account was created successfully, so you can sign in now.' : ''}
           </div>
         </div>
