@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { updateDisplayNameAction, updateInstagramAction, updateProfileAvatarAction } from './actions';
 import { requireWebSessionUser } from '../../../lib/web-auth';
 import { createWebsiteAdminSupabaseClient } from '../../../lib/supabase';
@@ -73,12 +72,14 @@ export default async function AccountPage({
             Update your public TapnSign identity on the web. Creator verification and minting remain app-first for now.
           </p>
         </div>
-        <Link
-          href="/logout"
-          className="rounded-full border border-black px-5 py-3 text-sm font-semibold text-black transition-colors hover:bg-black hover:text-white"
-        >
-          Sign Out
-        </Link>
+        <form action="/logout" method="post">
+          <button
+            type="submit"
+            className="rounded-full border border-black px-5 py-3 text-sm font-semibold text-black transition-colors hover:bg-black hover:text-white"
+          >
+            Sign Out
+          </button>
+        </form>
       </div>
 
       {status ? (

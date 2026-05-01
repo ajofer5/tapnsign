@@ -29,9 +29,14 @@ export default async function WebAppLayout({ children }: { children: ReactNode }
           <div className="text-right">
             <div className="text-[11px] uppercase tracking-[0.22em] text-gray-500">TapnSign Account</div>
             <div className="text-sm font-semibold text-black">{user?.display_name ?? 'Web Visitor'}</div>
-            <Link href="/logout" className="text-xs font-semibold text-gray-500 transition-colors hover:text-black">
-              Sign Out
-            </Link>
+            <form action="/logout" method="post">
+              <button
+                type="submit"
+                className="text-xs font-semibold text-gray-500 transition-colors hover:text-black"
+              >
+                Sign Out
+              </button>
+            </form>
           </div>
         </div>
       </nav>
