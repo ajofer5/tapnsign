@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createWebsiteSupabaseClient } from '../../../../lib/supabase';
+import { createWebsiteServerSupabaseClient } from '../../../../lib/supabase';
 import {
   createWebSessionToken,
   getWebSessionCookieConfig,
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const supabase = createWebsiteSupabaseClient();
+  const supabase = await createWebsiteServerSupabaseClient();
   const { data, error } = await supabase.auth.exchangeCodeForSession(code);
   const authData = data as { user?: { id: string; email?: string | null } | null; session?: { user?: { id: string; email?: string | null } | null } | null } | null;
   const authUser = authData?.user ?? authData?.session?.user ?? null;
