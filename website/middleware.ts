@@ -14,8 +14,11 @@ function getSupabaseAnonKey() {
 }
 
 export async function middleware(request: NextRequest) {
+  const requestHeaders = new Headers(request.headers);
   let response = NextResponse.next({
-    request,
+    request: {
+      headers: requestHeaders,
+    },
   });
 
   const supabase = createServerClient(getSupabaseUrl(), getSupabaseAnonKey(), {
@@ -29,7 +32,9 @@ export async function middleware(request: NextRequest) {
         });
 
         response = NextResponse.next({
-          request,
+          request: {
+            headers: requestHeaders,
+          },
         });
 
         cookiesToSet.forEach(({ name, value, options }) => {
@@ -39,7 +44,23 @@ export async function middleware(request: NextRequest) {
     },
   });
 
-  await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (user) {
+    requestHeaders.set('x-tapnsign-auth-user-id', user.id);
+    requestHeaders.set('x-tapnsign-auth-user-email', user.email ?? '');
+    const rawDisplayName =
+      typeof user.user_metadata?.display_name === 'string'
+        ? user.user_metadata.display_name.trim()
+        : '';
+    requestHeaders.set('x-tapnsign-auth-display-name', rawDisplayName);
+  } else {
+    requestHeaders.delete('x-tapnsign-auth-user-id');
+    requestHeaders.delete('x-tapnsign-auth-user-email');
+    requestHeaders.delete('x-tapnsign-auth-display-name');
+  }
 
   return response;
 }

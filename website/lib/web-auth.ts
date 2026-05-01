@@ -5,6 +5,40 @@ import { createWebsiteAdminSupabaseClient, createWebsiteServerSupabaseClient } f
 import { getLegacyWebSessionUser, type WebSessionUser } from './web-session';
 
 const getCachedWebSessionUser = cache(async (): Promise<WebSessionUser | null> => {
+  const headerStore = await headers();
+  const headerUserId = headerStore.get('x-tapnsign-auth-user-id');
+  const headerUserEmail = headerStore.get('x-tapnsign-auth-user-email');
+  const headerDisplayName = headerStore.get('x-tapnsign-auth-display-name');
+
+  if (headerUserId) {
+    const admin = createWebsiteAdminSupabaseClient();
+    const { data: profile } = await admin
+      .from('profiles')
+      .select('id, display_name, role, verification_status')
+      .eq('id', headerUserId)
+      .maybeSingle();
+
+    if (profile) {
+      return {
+        id: profile.id,
+        email: headerUserEmail || null,
+        display_name: profile.display_name,
+        role: profile.role,
+        verification_status: profile.verification_status,
+      };
+    }
+
+    return {
+      id: headerUserId,
+      email: headerUserEmail || null,
+      display_name:
+        (headerDisplayName && headerDisplayName.trim()) ||
+        (headerUserEmail ? headerUserEmail.split('@')[0] : 'TapnSign Member'),
+      role: 'member',
+      verification_status: 'none',
+    };
+  }
+
   const supabase = await createWebsiteServerSupabaseClient();
   const {
     data: { user },
