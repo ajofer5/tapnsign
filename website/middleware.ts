@@ -62,7 +62,17 @@ export async function middleware(request: NextRequest) {
     requestHeaders.delete('x-tapnsign-auth-display-name');
   }
 
-  return response;
+  const finalResponse = NextResponse.next({
+    request: {
+      headers: requestHeaders,
+    },
+  });
+
+  response.cookies.getAll().forEach((cookie) => {
+    finalResponse.cookies.set(cookie);
+  });
+
+  return finalResponse;
 }
 
 export const config = {
