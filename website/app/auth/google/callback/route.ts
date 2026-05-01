@@ -27,8 +27,9 @@ export async function GET(request: NextRequest) {
   const authData = data as { user?: { id: string; email?: string | null } | null; session?: { user?: { id: string; email?: string | null } | null } | null } | null;
   const authUser = authData?.user ?? authData?.session?.user ?? null;
   if (error || !authUser) {
+    const msg = error ? encodeURIComponent(error.message) : 'no_user';
     return NextResponse.redirect(
-      new URL(`/login?error=google&next=${encodeURIComponent(next)}`, request.url)
+      new URL(`/login?error=google&detail=${msg}&next=${encodeURIComponent(next)}`, request.url)
     );
   }
 
