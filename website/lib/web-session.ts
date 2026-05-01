@@ -16,7 +16,7 @@ type WebSessionPayload = {
   exp: number;
 };
 
-export const WEB_SESSION_COOKIE = 'tapnsign_web_session';
+export const WEB_SESSION_COOKIE = 'tapnsign_web_session_v2';
 
 function getSecret() {
   const secret = process.env.WEB_HANDOFF_SECRET;
@@ -51,27 +51,7 @@ function sign(value: string) {
 
 function getCookieDomain() {
   const explicit = process.env.WEB_SESSION_COOKIE_DOMAIN?.trim();
-  if (explicit) return explicit.replace(/^\./, '');
-
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim();
-  if (!siteUrl) return undefined;
-
-  try {
-    const hostname = new URL(siteUrl).hostname.toLowerCase();
-    if (
-      hostname === 'localhost' ||
-      hostname.endsWith('.localhost') ||
-      /^\d{1,3}(\.\d{1,3}){3}$/.test(hostname)
-    ) {
-      return undefined;
-    }
-    if (hostname === 'tapnsign.com' || hostname === 'www.tapnsign.com') {
-      return 'tapnsign.com';
-    }
-    return undefined;
-  } catch {
-    return undefined;
-  }
+  return explicit ? explicit.replace(/^\./, '') : undefined;
 }
 
 export function createWebSessionToken(user: WebSessionUser, maxAgeSeconds = 60 * 60 * 24 * 7) {

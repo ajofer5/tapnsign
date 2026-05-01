@@ -1,5 +1,4 @@
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
 import { requestLoginLinkAction } from './actions';
 import { getWebSessionUser } from '../../lib/web-session';
 import { GoogleSignInButton } from '../../components/google-sign-in-button';
@@ -26,9 +25,6 @@ export default async function LoginPage({
   const resolvedSearch = await searchParams;
   const existingUser = await getWebSessionUser();
   const next = sanitizeNextPath(resolvedSearch?.next);
-  if (existingUser) {
-    redirect(next);
-  }
 
   const sent = resolvedSearch?.sent === '1';
   const email = resolvedSearch?.email ?? '';
@@ -60,6 +56,16 @@ export default async function LoginPage({
           <p className="mt-4 max-w-xl text-lg leading-8 text-gray-600">
             Use the same email as your TapnSign account. We&apos;ll send a secure sign-in link and bring you straight into the web app.
           </p>
+
+          {existingUser ? (
+            <div className="mt-6 rounded-2xl bg-[#F6F6F7] px-5 py-4 text-sm font-medium text-gray-700">
+              You&apos;re already signed in as {existingUser.display_name}.{' '}
+              <Link href={next} className="font-semibold text-black underline">
+                Continue to your account
+              </Link>
+              .
+            </div>
+          ) : null}
 
           {sent ? (
             <div className="mt-6 rounded-2xl bg-[#EFF6EC] px-5 py-4 text-sm font-medium text-[#2B6A1C]">

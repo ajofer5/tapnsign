@@ -1,5 +1,4 @@
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
 import { createAccountAction } from './actions';
 import { getWebSessionUser } from '../../lib/web-session';
 
@@ -20,9 +19,6 @@ export default async function SignupPage({
   const resolvedSearch = await searchParams;
   const existingUser = await getWebSessionUser();
   const next = sanitizeNextPath(resolvedSearch?.next);
-  if (existingUser) {
-    redirect(next);
-  }
 
   const error = resolvedSearch?.error;
 
@@ -51,6 +47,16 @@ export default async function SignupPage({
           <p className="mt-4 max-w-xl text-lg leading-8 text-gray-600">
             Create your TapnSign account here, then browse listings, save autographs, make offers, and complete purchases on the web.
           </p>
+
+          {existingUser ? (
+            <div className="mt-6 rounded-2xl bg-[#F6F6F7] px-5 py-4 text-sm font-medium text-gray-700">
+              You&apos;re already signed in as {existingUser.display_name}.{' '}
+              <Link href={next} className="font-semibold text-black underline">
+                Continue to your account
+              </Link>
+              .
+            </div>
+          ) : null}
 
           {error ? (
             <div className="mt-6 rounded-2xl bg-[#FDECEC] px-5 py-4 text-sm font-medium text-[#B3261E]">
