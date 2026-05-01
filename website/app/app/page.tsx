@@ -7,70 +7,39 @@ export default async function WebAppHomePage() {
   const user = await getWebSessionUser();
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-10">
-      <div className="grid gap-6 lg:grid-cols-[1.3fr_0.9fr]">
-        <section className="rounded-[2rem] bg-white p-8 shadow-sm">
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
-            TapnSign
-          </p>
-          <h1 className="mt-3 text-4xl font-black tracking-tight text-black md:text-5xl">
-            Browse, collect, and manage your autographs online.
-          </h1>
-          <p className="mt-5 max-w-2xl text-lg leading-8 text-gray-600">
-            TapnSign on the web gives buyers and collectors a clean place to browse listings, manage saved items, review offers, and complete secure checkout.
-          </p>
-          <div className="mt-8 flex flex-wrap gap-3">
-            <Link
-              href="/marketplace"
-              className="rounded-full border border-black px-5 py-3 text-sm font-semibold text-black transition-colors hover:bg-black hover:text-white"
-            >
-              Browse Listings
-            </Link>
-            <Link
-              href="/app/me/listings"
-              className="rounded-full border border-gray-300 px-5 py-3 text-sm font-semibold text-gray-700 transition-colors hover:border-black hover:text-black"
-            >
-              My Listings
-            </Link>
-            <Link
-              href="/app/collection"
-              className="rounded-full border border-gray-300 px-5 py-3 text-sm font-semibold text-gray-700 transition-colors hover:border-black hover:text-black"
-            >
-              Collection
-            </Link>
-            <Link
-              href="/app/saved"
-              className="rounded-full border border-gray-300 px-5 py-3 text-sm font-semibold text-gray-700 transition-colors hover:border-black hover:text-black"
-            >
-              Saved
-            </Link>
-            <Link
-              href="/app/me/offers"
-              className="rounded-full border border-gray-300 px-5 py-3 text-sm font-semibold text-gray-700 transition-colors hover:border-black hover:text-black"
-            >
-              Offer Queue
-            </Link>
-            <Link
-              href="/verify/demo"
-              className="rounded-full border border-gray-300 px-5 py-3 text-sm font-semibold text-gray-700 transition-colors hover:border-black hover:text-black"
-            >
-              Certificate Example
-            </Link>
-          </div>
-        </section>
+    <div className="mx-auto max-w-5xl px-6 py-10">
+      <section className="rounded-[2rem] bg-white p-8 shadow-sm">
+        <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
+          TapnSign Web
+        </p>
+        <h1 className="mt-3 text-4xl font-black tracking-tight text-black md:text-5xl">
+          Welcome back, {user?.display_name ?? 'TapnSign Member'}.
+        </h1>
+        <p className="mt-4 max-w-3xl text-base leading-7 text-gray-600">
+          Browse, collect, manage listings, and stay on top of your offers from the same TapnSign account you use in the app.
+        </p>
 
-        <aside className="rounded-[2rem] bg-[#18181A] p-8 text-white shadow-sm">
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-white/60">
-            Your Account
-          </p>
-          <div className="mt-5 space-y-4 text-sm">
-            <Detail label="Display Name" value={user?.display_name ?? '—'} />
-            <Detail label="Email" value={user?.email ?? '—'} />
-            <Detail label="Role" value={user?.role ?? '—'} />
-            <Detail label="Verification" value={user?.verification_status ?? '—'} />
-          </div>
-        </aside>
-      </div>
+        <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <QuickLink href="/marketplace" label="Browse Listings" tone="primary" />
+          <QuickLink href="/app/collection" label="Collection" />
+          <QuickLink href="/app/saved" label="Saved" />
+          <QuickLink href="/app/me/listings" label="My Listings" />
+          <QuickLink href="/app/me/offers" label="Offer Queue" />
+          <QuickLink href="/verify/demo" label="Certificate Example" />
+        </div>
+      </section>
+
+      <section className="mt-8 rounded-[2rem] bg-white p-7 shadow-sm">
+        <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
+          Account Snapshot
+        </p>
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <DetailCard label="Display Name" value={user?.display_name ?? '—'} />
+          <DetailCard label="Email" value={user?.email ?? '—'} />
+          <DetailCard label="Role" value={user?.role ?? '—'} />
+          <DetailCard label="Verification" value={user?.verification_status ?? '—'} />
+        </div>
+      </section>
 
       <section className="mt-8 grid gap-6 md:grid-cols-2">
         <FeatureCard
@@ -98,11 +67,34 @@ export default async function WebAppHomePage() {
   );
 }
 
-function Detail({ label, value }: { label: string; value: string }) {
+function QuickLink({
+  href,
+  label,
+  tone = 'default',
+}: {
+  href: string;
+  label: string;
+  tone?: 'default' | 'primary';
+}) {
   return (
-    <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-3">
-      <span className="text-white/60">{label}</span>
-      <span className="max-w-[65%] text-right font-medium">{value}</span>
+    <Link
+      href={href}
+      className={`rounded-xl px-5 py-4 text-sm font-semibold transition-colors ${
+        tone === 'primary'
+          ? 'bg-[#E53935] text-white hover:bg-[#cf302d]'
+          : 'border border-gray-200 bg-[#F7F7F8] text-black hover:border-black hover:bg-white'
+      }`}
+    >
+      {label}
+    </Link>
+  );
+}
+
+function DetailCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl bg-[#F7F7F8] px-4 py-4">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">{label}</div>
+      <div className="mt-2 text-sm font-semibold text-black">{value}</div>
     </div>
   );
 }

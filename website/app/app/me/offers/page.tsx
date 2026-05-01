@@ -33,7 +33,7 @@ export default async function MyOffersPage({ searchParams }: MyOffersPageProps) 
   const { groups: offerQueue, nextCursor } = await getMyOfferQueue(user.id, 24, cursor);
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-10">
+    <div className="mx-auto max-w-5xl px-6 py-10">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
@@ -46,7 +46,7 @@ export default async function MyOffersPage({ searchParams }: MyOffersPageProps) 
             Review incoming offers by autograph. Highest active offers lead, and backup offers remain on hold while accepted buyers complete payment.
           </p>
         </div>
-        <div className="rounded-full bg-white px-5 py-3 text-sm font-semibold text-black shadow-sm">
+        <div className="rounded-xl bg-white px-5 py-3 text-sm font-semibold text-black shadow-sm">
           Showing {offerQueue.length} autograph{offerQueue.length !== 1 ? 's' : ''}
         </div>
       </div>
@@ -142,7 +142,7 @@ export default async function MyOffersPage({ searchParams }: MyOffersPageProps) 
                     </div>
 
                     {group.accepted ? (
-                      <div className="mt-6 rounded-[1.5rem] bg-[#F6F6F7] px-5 py-4 text-sm leading-7 text-gray-600">
+                      <div className="mt-6 rounded-[1.5rem] bg-[#F7F7F8] px-5 py-4 text-sm leading-7 text-gray-600">
                         Backup offers are being held. If the accepted buyer does not complete payment within 24 hours, those offers will become active again automatically.
                       </div>
                     ) : group.pending[0] ? (
@@ -150,7 +150,7 @@ export default async function MyOffersPage({ searchParams }: MyOffersPageProps) 
                         <form action={respondOfferAction.bind(null, group.pending[0].id, 'accept')}>
                           <button
                             type="submit"
-                            className="rounded-full bg-black px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#2A2A2D]"
+                            className="rounded-xl bg-[#E53935] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#cf302d]"
                           >
                             Accept
                           </button>
@@ -158,7 +158,7 @@ export default async function MyOffersPage({ searchParams }: MyOffersPageProps) 
                         <form action={respondOfferAction.bind(null, group.pending[0].id, 'decline')}>
                           <button
                             type="submit"
-                            className="rounded-full border border-black px-5 py-3 text-sm font-semibold text-black transition-colors hover:bg-black hover:text-white"
+                            className="rounded-xl border border-black px-5 py-3 text-sm font-semibold text-black transition-colors hover:bg-black hover:text-white"
                           >
                             Decline
                           </button>
@@ -167,7 +167,7 @@ export default async function MyOffersPage({ searchParams }: MyOffersPageProps) 
                     ) : null}
 
                     {group.pending.length > 0 ? (
-                      <div className="mt-6 rounded-[1.5rem] border border-gray-200 p-5">
+                      <div className="mt-6 rounded-[1.5rem] bg-[#F7F7F8] p-5">
                         <div className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">
                           Active Offers
                         </div>
@@ -185,7 +185,7 @@ export default async function MyOffersPage({ searchParams }: MyOffersPageProps) 
                     ) : null}
 
                     {group.on_hold.length > 0 ? (
-                      <div className="mt-5 rounded-[1.5rem] border border-gray-200 p-5">
+                      <div className="mt-5 rounded-[1.5rem] bg-[#F7F7F8] p-5">
                         <div className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">
                           Backup Offers
                         </div>
@@ -209,7 +209,7 @@ export default async function MyOffersPage({ searchParams }: MyOffersPageProps) 
             <div className="flex justify-center pt-2">
               <Link
                 href={`/app/me/offers?before_headline_amount=${encodeURIComponent(String(nextCursor.beforeHeadlineAmount))}&before_headline_created_at=${encodeURIComponent(nextCursor.beforeHeadlineCreatedAt)}&before_autograph_id=${encodeURIComponent(nextCursor.beforeAutographId)}`}
-                className="rounded-full border border-black px-5 py-3 text-sm font-semibold text-black transition-colors hover:bg-black hover:text-white"
+                className="rounded-xl border border-black px-5 py-3 text-sm font-semibold text-black transition-colors hover:bg-black hover:text-white"
               >
                 Load More
               </Link>

@@ -29,7 +29,7 @@ export default async function CollectionPage({ searchParams }: CollectionPagePro
   const { listings: autographs, nextCursor } = await getMyListings(user.id, 24, cursor);
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-10">
+    <div className="mx-auto max-w-5xl px-6 py-10">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
@@ -42,13 +42,13 @@ export default async function CollectionPage({ searchParams }: CollectionPagePro
             Browse everything you own in one place, then jump into listing management whenever you want to sell.
           </p>
         </div>
-        <div className="rounded-full bg-white px-5 py-3 text-sm font-semibold text-black shadow-sm">
+        <div className="rounded-xl bg-white px-5 py-3 text-sm font-semibold text-black shadow-sm">
           Showing {autographs.length} autograph{autographs.length !== 1 ? 's' : ''}
         </div>
       </div>
 
       {autographs.length > 0 ? (
-        <section className="mt-8 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+        <section className="mt-8 grid gap-6 md:grid-cols-2">
           {autographs.map((item) => (
             <article key={item.id} className="overflow-hidden rounded-[1.75rem] bg-white shadow-sm">
               <Link href={`/app/listings/${item.id}`} className="block">
@@ -84,7 +84,7 @@ export default async function CollectionPage({ searchParams }: CollectionPagePro
                       </div>
                     ) : null}
                   </div>
-                  <div className="rounded-full border border-gray-200 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500">
+                  <div className="rounded-xl border border-gray-200 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500">
                     {getStatusLabel(item.is_for_sale, item.listing_mode)}
                   </div>
                 </div>
@@ -104,7 +104,11 @@ export default async function CollectionPage({ searchParams }: CollectionPagePro
                   </div>
                   <Link
                     href="/app/me/listings"
-                    className="rounded-full border border-black px-4 py-2 text-sm font-semibold text-black transition-colors hover:bg-black hover:text-white"
+                    className={`rounded-xl px-4 py-3 text-sm font-semibold transition-colors ${
+                      item.is_for_sale
+                        ? 'border border-black text-black hover:bg-black hover:text-white'
+                        : 'bg-[#E53935] text-white hover:bg-[#cf302d]'
+                    }`}
                   >
                     {item.is_for_sale ? 'Edit Listing' : 'List'}
                   </Link>
@@ -126,7 +130,7 @@ export default async function CollectionPage({ searchParams }: CollectionPagePro
         <div className="mt-8 flex justify-center">
           <Link
             href={`/app/collection?before_created_at=${encodeURIComponent(nextCursor.beforeCreatedAt)}&before_id=${encodeURIComponent(nextCursor.beforeId)}`}
-            className="rounded-full border border-black px-5 py-3 text-sm font-semibold text-black transition-colors hover:bg-black hover:text-white"
+            className="rounded-xl border border-black px-5 py-3 text-sm font-semibold text-black transition-colors hover:bg-black hover:text-white"
           >
             Load More
           </Link>

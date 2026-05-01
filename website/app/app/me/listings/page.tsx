@@ -25,7 +25,7 @@ export default async function MyListingsPage({ searchParams }: MyListingsPagePro
   const { listings, nextCursor } = await getMyListings(user.id, 24, cursor);
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-10">
+    <div className="mx-auto max-w-5xl px-6 py-10">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
@@ -38,7 +38,7 @@ export default async function MyListingsPage({ searchParams }: MyListingsPagePro
             Review every autograph you own, update its listing mode and price, or remove it from sale.
           </p>
         </div>
-        <div className="rounded-full bg-white px-5 py-3 text-sm font-semibold text-black shadow-sm">
+        <div className="rounded-xl bg-white px-5 py-3 text-sm font-semibold text-black shadow-sm">
           Showing {listings.length} autograph{listings.length !== 1 ? 's' : ''}
         </div>
       </div>
@@ -51,7 +51,7 @@ export default async function MyListingsPage({ searchParams }: MyListingsPagePro
         <div className="mt-8 space-y-6">
           {listings.map((listing) => (
             <article key={listing.id} className="overflow-hidden rounded-[2rem] bg-white shadow-sm">
-              <div className="grid gap-0 lg:grid-cols-[280px_1fr]">
+              <div className="grid gap-0 lg:grid-cols-[240px_1fr]">
                 <div className="bg-[#1C1C1F]">
                   <Link href={`/app/listings/${listing.id}`} className="block">
                     {listing.thumbnail_url ? (
@@ -89,7 +89,7 @@ export default async function MyListingsPage({ searchParams }: MyListingsPagePro
                         <div className="mt-2 text-sm text-transparent">Series</div>
                       )}
                     </div>
-                    <div className="rounded-full border border-gray-200 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">
+                    <div className="rounded-xl border border-gray-200 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">
                       {listing.is_for_sale ? getListingModeLabel(listing.listing_mode) : 'Not Listed'}
                     </div>
                   </div>
@@ -115,7 +115,7 @@ export default async function MyListingsPage({ searchParams }: MyListingsPagePro
                         <select
                           name="listing_mode"
                           defaultValue={listing.listing_mode}
-                          className="mt-2 w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-black outline-none transition-colors focus:border-black"
+                          className="mt-2 w-full rounded-xl border border-transparent bg-[#F7F7F8] px-4 py-4 text-sm font-medium text-black outline-none transition-colors focus:border-[#E53935] focus:bg-white"
                         >
                           <option value="buy_now">Fixed Price</option>
                           <option value="make_offer">Estimated Value</option>
@@ -131,13 +131,13 @@ export default async function MyListingsPage({ searchParams }: MyListingsPagePro
                           name="price"
                           defaultValue={typeof listing.price_cents === 'number' ? (listing.price_cents / 100).toFixed(2) : ''}
                           placeholder="25.00"
-                          className="mt-2 w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-black outline-none transition-colors placeholder:text-gray-400 focus:border-black"
+                          className="mt-2 w-full rounded-xl border border-transparent bg-[#F7F7F8] px-4 py-4 text-sm font-medium text-black outline-none transition-colors placeholder:text-gray-400 focus:border-[#E53935] focus:bg-white"
                         />
                       </label>
                     </div>
 
                     <div className="grid gap-3 md:grid-cols-2">
-                      <label className="flex items-start gap-3 rounded-2xl border border-gray-200 px-4 py-4 text-sm text-gray-700">
+                      <label className="flex items-start gap-3 rounded-xl bg-[#F7F7F8] px-4 py-4 text-sm text-gray-700">
                         <input
                           type="checkbox"
                           name="auto_decline_below"
@@ -147,7 +147,7 @@ export default async function MyListingsPage({ searchParams }: MyListingsPagePro
                         <span>Automatically decline offers below this estimated value.</span>
                       </label>
 
-                      <label className="flex items-start gap-3 rounded-2xl border border-gray-200 px-4 py-4 text-sm text-gray-700">
+                      <label className="flex items-start gap-3 rounded-xl bg-[#F7F7F8] px-4 py-4 text-sm text-gray-700">
                         <input
                           type="checkbox"
                           name="auto_accept_above"
@@ -161,7 +161,7 @@ export default async function MyListingsPage({ searchParams }: MyListingsPagePro
                     <div className="flex flex-wrap gap-3">
                       <button
                         type="submit"
-                        className="rounded-full bg-black px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#2A2A2D]"
+                        className="rounded-xl bg-[#E53935] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#cf302d]"
                       >
                         {listing.is_for_sale ? 'Update Listing' : 'Create Listing'}
                       </button>
@@ -169,14 +169,14 @@ export default async function MyListingsPage({ searchParams }: MyListingsPagePro
                         <button
                           type="submit"
                           formAction={removeListingAction.bind(null, listing.id)}
-                          className="rounded-full border border-black px-5 py-3 text-sm font-semibold text-black transition-colors hover:bg-black hover:text-white"
+                          className="rounded-xl border border-black px-5 py-3 text-sm font-semibold text-black transition-colors hover:bg-black hover:text-white"
                         >
                           Remove Listing
                         </button>
                       ) : null}
                       <Link
                         href={`/app/listings/${listing.id}`}
-                        className="rounded-full border border-gray-300 px-5 py-3 text-sm font-semibold text-gray-700 transition-colors hover:border-black hover:text-black"
+                        className="rounded-xl border border-gray-300 px-5 py-3 text-sm font-semibold text-gray-700 transition-colors hover:border-black hover:text-black"
                       >
                         View Listing
                       </Link>
@@ -191,7 +191,7 @@ export default async function MyListingsPage({ searchParams }: MyListingsPagePro
             <div className="flex justify-center pt-2">
               <Link
                 href={`/app/me/listings?before_created_at=${encodeURIComponent(nextCursor.beforeCreatedAt)}&before_id=${encodeURIComponent(nextCursor.beforeId)}`}
-                className="rounded-full border border-black px-5 py-3 text-sm font-semibold text-black transition-colors hover:bg-black hover:text-white"
+                className="rounded-xl border border-black px-5 py-3 text-sm font-semibold text-black transition-colors hover:bg-black hover:text-white"
               >
                 Load More
               </Link>

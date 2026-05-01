@@ -25,7 +25,7 @@ export default async function SavedPage({ searchParams }: SavedPageProps) {
   const { listings, nextCursor } = await getSavedListings(user.id, 24, cursor);
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-10">
+    <div className="mx-auto max-w-5xl px-6 py-10">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
@@ -38,7 +38,7 @@ export default async function SavedPage({ searchParams }: SavedPageProps) {
             Revisit listings you want to watch closely, then jump back into a purchase or offer flow when you are ready.
           </p>
         </div>
-        <div className="rounded-full bg-white px-5 py-3 text-sm font-semibold text-black shadow-sm">
+        <div className="rounded-xl bg-white px-5 py-3 text-sm font-semibold text-black shadow-sm">
           Showing {listings.length} saved item{listings.length !== 1 ? 's' : ''}
         </div>
       </div>
@@ -60,7 +60,7 @@ export default async function SavedPage({ searchParams }: SavedPageProps) {
             <div className="mt-8 flex justify-center">
               <Link
                 href={`/app/saved?before_saved_at=${encodeURIComponent(nextCursor.beforeSavedAt)}&before_autograph_id=${encodeURIComponent(nextCursor.beforeAutographId)}`}
-                className="rounded-full border border-black px-5 py-3 text-sm font-semibold text-black transition-colors hover:bg-black hover:text-white"
+                className="rounded-xl border border-black px-5 py-3 text-sm font-semibold text-black transition-colors hover:bg-black hover:text-white"
               >
                 Load More
               </Link>
