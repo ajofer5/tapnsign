@@ -19,6 +19,7 @@ export default async function WebAppLayout({ children }: { children: ReactNode }
             <div className="hidden items-center gap-4 text-sm text-gray-600 md:flex">
               <Link href="/app" prefetch={false} className="hover:text-black">Home</Link>
               <Link href="/app/account" prefetch={false} className="hover:text-black">Account</Link>
+              <Link href="/app/activity" prefetch={false} className="hover:text-black">Activity</Link>
               <Link href="/app/collection" prefetch={false} className="hover:text-black">Collection</Link>
               <Link href="/app/saved" prefetch={false} className="hover:text-black">Saved</Link>
               <Link href="/app/me/listings" prefetch={false} className="hover:text-black">My Listings</Link>

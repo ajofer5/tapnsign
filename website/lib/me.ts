@@ -67,6 +67,31 @@ export type WebsiteOfferQueuePage = {
   nextCursor: WebsiteOfferQueueCursor | null;
 };
 
+export type WebsiteActivityEntry = {
+  id: string;
+  type:
+    | 'sold'
+    | 'purchased'
+    | 'offer_received'
+    | 'offer_sent'
+    | 'offer_on_hold'
+    | 'offer_accepted'
+    | 'offer_declined'
+    | 'offer_withdrawn'
+    | 'offer_expired';
+  autograph_id: string;
+  creator_name: string;
+  creator_sequence_number: number | null;
+  series_name: string | null;
+  amount_cents: number;
+  date: string;
+  status?: 'pending' | 'accepted' | 'on_hold' | 'declined' | 'withdrawn' | 'expired';
+  offer_role?: 'owner' | 'buyer';
+  expires_at?: string | null;
+  payment_due_at?: string | null;
+  accepted_transfer_id?: string | null;
+};
+
 function mapMyListingRow(row: any): WebsiteMyListing {
   const base = mapWebsiteListingRow(row);
   return {
@@ -212,4 +237,100 @@ export async function getMyOfferQueue(
     : (groupCursorMap.get(lastGroup.autograph_id) ?? null);
 
   return { groups, nextCursor };
+}
+
+function parseAutographLabel(autograph: any) {
+  return {
+    creatorName: autograph?.creator?.display_name ?? 'Unknown',
+    creatorSequenceNumber: autograph?.creator_sequence_number ?? null,
+    seriesName: autograph?.series?.name ?? null,
+  };
+}
+
+export async function getMyActivity(userId: string): Promise<WebsiteActivityEntry[]> {
+  const supabase = createWebsiteAdminSupabaseClient();
+  const [transfersRes, offersRes] = await Promise.all([
+    supabase
+      .from('transfers')
+      .select(
+        'id, autograph_id, from_user_id, to_user_id, price_cents, transferred_at, autograph:autograph_id ( creator_sequence_number, creator:creator_id ( display_name ), series:series_id ( name ) )'
+      )
+      .or(`from_user_id.eq.${userId},to_user_id.eq.${userId}`)
+      .order('transferred_at', { ascending: false }),
+    supabase
+      .from('autograph_offers')
+      .select(
+        'id, autograph_id, buyer_id, owner_id, amount_cents, status, created_at, responded_at, expires_at, payment_due_at, accepted_transfer_id, autograph:autograph_id ( creator_sequence_number, creator:creator_id ( display_name ), series:series_id ( name ) )'
+      )
+      .or(`buyer_id.eq.${userId},owner_id.eq.${userId}`)
+      .order('created_at', { ascending: false }),
+  ]);
+
+  const results: WebsiteActivityEntry[] = [];
+
+  for (const transfer of transfersRes.data ?? []) {
+    const { creatorName, creatorSequenceNumber, seriesName } = parseAutographLabel(transfer.autograph);
+    if (transfer.from_user_id === userId) {
+      results.push({
+        id: `transfer-sold-${transfer.id}`,
+        type: 'sold',
+        autograph_id: transfer.autograph_id,
+        creator_name: creatorName,
+        creator_sequence_number: creatorSequenceNumber,
+        series_name: seriesName,
+        amount_cents: transfer.price_cents,
+        date: transfer.transferred_at,
+      });
+    } else {
+      results.push({
+        id: `transfer-purchased-${transfer.id}`,
+        type: 'purchased',
+        autograph_id: transfer.autograph_id,
+        creator_name: creatorName,
+        creator_sequence_number: creatorSequenceNumber,
+        series_name: seriesName,
+        amount_cents: transfer.price_cents,
+        date: transfer.transferred_at,
+      });
+    }
+  }
+
+  for (const offer of offersRes.data ?? []) {
+    const { creatorName, creatorSequenceNumber, seriesName } = parseAutographLabel(offer.autograph);
+    const isOwner = offer.owner_id === userId;
+    let type: WebsiteActivityEntry['type'];
+
+    if (offer.status === 'pending') {
+      type = isOwner ? 'offer_received' : 'offer_sent';
+    } else if (offer.status === 'accepted') {
+      type = 'offer_accepted';
+    } else if (offer.status === 'on_hold') {
+      type = 'offer_on_hold';
+    } else if (offer.status === 'declined') {
+      type = 'offer_declined';
+    } else if (offer.status === 'withdrawn') {
+      type = 'offer_withdrawn';
+    } else {
+      type = 'offer_expired';
+    }
+
+    results.push({
+      id: `offer-${offer.id}`,
+      type,
+      autograph_id: offer.autograph_id,
+      creator_name: creatorName,
+      creator_sequence_number: creatorSequenceNumber,
+      series_name: seriesName,
+      amount_cents: offer.amount_cents,
+      date: offer.responded_at ?? offer.created_at,
+      status: offer.status,
+      offer_role: isOwner ? 'owner' : 'buyer',
+      expires_at: offer.expires_at,
+      payment_due_at: offer.payment_due_at,
+      accepted_transfer_id: offer.accepted_transfer_id,
+    });
+  }
+
+  results.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  return results;
 }
