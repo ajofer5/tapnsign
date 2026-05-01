@@ -20,6 +20,33 @@ function getServiceRoleKey() {
   return value;
 }
 
+function getWebsiteCookieOptions() {
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+  let domain: string | undefined;
+
+  if (siteUrl) {
+    try {
+      const hostname = new URL(siteUrl).hostname.toLowerCase();
+      if (
+        hostname !== 'localhost' &&
+        !hostname.endsWith('.localhost') &&
+        !/^\d{1,3}(\.\d{1,3}){3}$/.test(hostname)
+      ) {
+        domain = hostname;
+      }
+    } catch {
+      domain = undefined;
+    }
+  }
+
+  return {
+    path: '/',
+    sameSite: 'lax' as const,
+    secure: process.env.NODE_ENV === 'production',
+    ...(domain ? { domain } : {}),
+  };
+}
+
 export function createWebsiteSupabaseClient() {
   return createClient(getSupabaseUrl(), getSupabaseAnonKey(), {
     auth: {
@@ -33,6 +60,7 @@ export async function createWebsiteServerSupabaseClient() {
   const { cookies } = await import('next/headers');
   const cookieStore = await cookies();
   return createServerClient(getSupabaseUrl(), getSupabaseAnonKey(), {
+    cookieOptions: getWebsiteCookieOptions(),
     cookies: {
       getAll() {
         return cookieStore.getAll();
@@ -56,6 +84,7 @@ export async function createWebsiteMutableServerSupabaseClient() {
   const { cookies } = await import('next/headers');
   const cookieStore = await cookies();
   return createServerClient(getSupabaseUrl(), getSupabaseAnonKey(), {
+    cookieOptions: getWebsiteCookieOptions(),
     cookies: {
       getAll() {
         return cookieStore.getAll();
@@ -74,12 +103,14 @@ export function createWebsiteRouteSupabaseClient(
   response: NextResponse
 ) {
   return createServerClient(getSupabaseUrl(), getSupabaseAnonKey(), {
+    cookieOptions: getWebsiteCookieOptions(),
     cookies: {
       getAll() {
         return request.cookies.getAll();
       },
       setAll(cookiesToSet) {
         cookiesToSet.forEach(({ name, value, options }) => {
+          request.cookies.set(name, value);
           response.cookies.set(name, value, options);
         });
       },
@@ -88,7 +119,9 @@ export function createWebsiteRouteSupabaseClient(
 }
 
 export function createBrowserSupabaseClient() {
-  return createBrowserClient(getSupabaseUrl(), getSupabaseAnonKey());
+  return createBrowserClient(getSupabaseUrl(), getSupabaseAnonKey(), {
+    cookieOptions: getWebsiteCookieOptions(),
+  });
 }
 
 export function createWebsiteAdminSupabaseClient() {
