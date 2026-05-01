@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { createServerClient } from '@supabase/ssr';
+import { createBrowserClient, createServerClient } from '@supabase/ssr';
 
 function getSupabaseUrl() {
   const value = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -46,7 +46,7 @@ export async function createWebsiteServerSupabaseClient() {
 }
 
 export function createBrowserSupabaseClient() {
-  return createClient(getSupabaseUrl(), getSupabaseAnonKey());
+  return createBrowserClient(getSupabaseUrl(), getSupabaseAnonKey());
 }
 
 export function createWebsiteAdminSupabaseClient() {
