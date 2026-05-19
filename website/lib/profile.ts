@@ -7,6 +7,8 @@ export type WebsiteProfile = {
   avatar_url?: string | null;
   instagram_handle?: string | null;
   verified: boolean;
+  personalized_requests_enabled: boolean;
+  personalized_min_price_cents: number | null;
   verification_status?: 'none' | 'pending' | 'verified' | 'failed' | 'expired';
   member_since: string;
   creator_since?: string | null;
@@ -36,6 +38,8 @@ export async function getWebsiteProfile(id: string): Promise<WebsiteProfile | nu
     avatar_url: profile.avatar_url ?? null,
     instagram_handle: profile.instagram_handle ?? null,
     verified: !!profile.verified,
+    personalized_requests_enabled: !!profile.personalized_requests_enabled,
+    personalized_min_price_cents: profile.personalized_min_price_cents ?? null,
     verification_status: profile.verification_status ?? 'none',
     member_since: profile.member_since,
     creator_since: profile.creator_since ?? null,

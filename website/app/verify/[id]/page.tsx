@@ -22,8 +22,8 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { id } = await params;
   return {
-    title: `Certificate of Authenticity — TapnSign`,
-    description: `Verify this TapnSign autograph certificate at tapnsign.com/verify/${id}`,
+    title: `Certificate of Authenticity — Ophinia`,
+    description: `Verify this Ophinia autograph certificate at tapnsign.com/verify/${id}`,
   };
 }
 
@@ -47,7 +47,7 @@ export default async function VerifyPage({ params }: { params: Promise<{ id: str
       {/* Nav */}
       <nav className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
         <Link href="/">
-          <img src="/logo.png" alt="TapnSign" className="h-[4.5rem]" />
+          <img src="/logo.png" alt="Ophinia" className="h-[4.5rem]" />
         </Link>
         <span className="text-sm text-gray-500">Certificate of Authenticity</span>
       </nav>
@@ -82,7 +82,7 @@ export default async function VerifyPage({ params }: { params: Promise<{ id: str
                 <span className="text-white font-bold text-sm tracking-wide uppercase">
                   Certificate of Authenticity
                 </span>
-                <img src="/logo.png" alt="TapnSign" className="h-12 brightness-0 invert" />
+                <img src="/logo.png" alt="Ophinia" className="h-12 brightness-0 invert" />
               </div>
               <div className="px-6 py-5 space-y-4">
                 <CertRow
@@ -117,8 +117,8 @@ export default async function VerifyPage({ params }: { params: Promise<{ id: str
             </div>
 
             <p className="text-center text-xs text-gray-400 mt-6 leading-relaxed">
-              This Certificate of Authenticity is maintained by TapnSign and cannot be altered.<br />
-              Ownership transfers are permanently recorded on the TapnSign platform.
+              This Certificate of Authenticity is maintained by Ophinia and cannot be altered.<br />
+              Ownership transfers are permanently recorded on the Ophinia platform.
             </p>
           </>
         ) : (
@@ -132,7 +132,7 @@ export default async function VerifyPage({ params }: { params: Promise<{ id: str
               href="/"
               className="inline-block mt-8 bg-[#E53935] text-white px-6 py-3 rounded-full font-semibold text-sm hover:bg-red-700 transition-colors"
             >
-              Go to TapnSign
+              Go to Ophinia
             </Link>
           </div>
         )}

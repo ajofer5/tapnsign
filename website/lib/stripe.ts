@@ -38,6 +38,19 @@ export type StripeCheckoutSession = {
   status: 'open' | 'complete' | 'expired';
 };
 
+export type StripePaymentIntent = {
+  id: string;
+  status:
+    | 'requires_payment_method'
+    | 'requires_confirmation'
+    | 'requires_action'
+    | 'processing'
+    | 'requires_capture'
+    | 'canceled'
+    | 'succeeded';
+  client_secret: string | null;
+};
+
 export async function createStripeCheckoutSession(input: {
   autographId: string;
   certificateId: string;
@@ -48,7 +61,13 @@ export async function createStripeCheckoutSession(input: {
   paymentEventId: string;
   buyerId: string;
   sellerId: string;
+  purpose?: string;
+  description?: string;
+  extraMetadata?: Record<string, string>;
+  captureMethod?: 'manual' | 'automatic';
 }) {
+  const purpose = input.purpose ?? 'fixed_price_purchase';
+  const captureMethod = input.captureMethod ?? 'automatic';
   return stripeRequest<StripeCheckoutSession>('/checkout/sessions', {
     method: 'POST',
     form: {
@@ -57,14 +76,18 @@ export async function createStripeCheckoutSession(input: {
       cancel_url: input.cancelUrl,
       'line_items[0][price_data][currency]': 'usd',
       'line_items[0][price_data][unit_amount]': String(input.amountCents),
-      'line_items[0][price_data][product_data][name]': `${input.creatorName} · TapnSign autograph`,
-      'line_items[0][price_data][product_data][description]': `Certificate ${input.certificateId}`,
+      'line_items[0][price_data][product_data][name]': `${input.creatorName} · Ophinia autograph`,
+      'line_items[0][price_data][product_data][description]': input.description ?? `Certificate ${input.certificateId}`,
       'line_items[0][quantity]': '1',
-      'metadata[purpose]': 'fixed_price_purchase',
+      'metadata[purpose]': purpose,
       'metadata[autograph_id]': input.autographId,
       'metadata[payment_event_id]': input.paymentEventId,
       'metadata[buyer_id]': input.buyerId,
       'metadata[seller_id]': input.sellerId,
+      'payment_intent_data[capture_method]': captureMethod,
+      ...Object.fromEntries(
+        Object.entries(input.extraMetadata ?? {}).map(([key, value]) => [`metadata[${key}]`, value])
+      ),
     },
   });
 }
@@ -72,6 +95,12 @@ export async function createStripeCheckoutSession(input: {
 export async function retrieveStripeCheckoutSession(sessionId: string) {
   return stripeRequest<StripeCheckoutSession>(
     `/checkout/sessions/${encodeURIComponent(sessionId)}`
+  );
+}
+
+export async function retrieveStripePaymentIntent(paymentIntentId: string) {
+  return stripeRequest<StripePaymentIntent>(
+    `/payment_intents/${encodeURIComponent(paymentIntentId)}`
   );
 }
 
@@ -111,7 +140,7 @@ export async function createVerificationCheckoutSession(input: {
       cancel_url: input.cancelUrl,
       'line_items[0][price_data][currency]': 'usd',
       'line_items[0][price_data][unit_amount]': '499',
-      'line_items[0][price_data][product_data][name]': 'TapnSign Creator Verification',
+      'line_items[0][price_data][product_data][name]': 'Ophinia Creator Verification',
       'line_items[0][price_data][product_data][description]': 'One-time identity verification fee',
       'line_items[0][quantity]': '1',
       allow_promotion_codes: 'true',

@@ -39,7 +39,7 @@ export default async function LoginPage({
         <Link href="/" className="mb-8">
           <Image
             src="/logo.png"
-            alt="TapnSign"
+            alt="Ophinia"
             width={260}
             height={110}
             className="h-auto w-[220px] md:w-[260px]"
@@ -67,7 +67,7 @@ export default async function LoginPage({
             {error === 'missing'
               ? 'Enter your email and password to continue.'
               : error === 'account'
-                ? 'We could not find a TapnSign account for that email.'
+                ? 'We could not find an Ophinia account for that email.'
                 : error === 'password'
                   ? 'That email or password was incorrect.'
                 : error === 'callback'

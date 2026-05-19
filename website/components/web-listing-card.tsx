@@ -16,7 +16,7 @@ export function WebListingCard({
 
   return (
     <article className="overflow-hidden rounded-[1.75rem] bg-white shadow-sm">
-      <Link href={`/app/listings/${listing.id}`} className="block">
+      <Link href={`/autograph/${listing.id}`} className="block">
         {listing.thumbnail_url ? (
           <img
             src={listing.thumbnail_url}

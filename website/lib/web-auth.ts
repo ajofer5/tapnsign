@@ -33,7 +33,7 @@ const getCachedWebSessionUser = cache(async (): Promise<WebSessionUser | null> =
       email: headerUserEmail || null,
       display_name:
         (headerDisplayName && headerDisplayName.trim()) ||
-        (headerUserEmail ? headerUserEmail.split('@')[0] : 'TapnSign Member'),
+        (headerUserEmail ? headerUserEmail.split('@')[0] : 'Ophinia Member'),
       role: 'member',
       verification_status: 'none',
     };
@@ -50,7 +50,7 @@ const getCachedWebSessionUser = cache(async (): Promise<WebSessionUser | null> =
       email: user.email ?? null,
       display_name:
         (typeof user.user_metadata?.display_name === 'string' && user.user_metadata.display_name.trim()) ||
-        (user.email ? user.email.split('@')[0] : 'TapnSign Member'),
+        (user.email ? user.email.split('@')[0] : 'Ophinia Member'),
       role: 'member',
       verification_status: 'none',
     };
@@ -87,7 +87,7 @@ export async function requireWebSessionUser() {
   if (!user) {
     const headersList = await headers();
     const path = headersList.get('x-invoke-path') ?? headersList.get('referer') ?? '/app';
-    const next = path.startsWith('/') ? path : '/app';
+    const next = path.startsWith('/') ? path : '/home';
     redirect(`/login?next=${encodeURIComponent(next)}`);
   }
   return user;

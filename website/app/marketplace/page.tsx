@@ -32,7 +32,7 @@ export default async function MarketplacePage({
       <nav className="border-b border-gray-200 bg-white px-6 py-4">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-6">
           <Link href="/" className="text-lg font-black text-[#E53935]">
-            TapnSign
+            Ophinia
           </Link>
           <div className="flex items-center gap-4">
             <span className="text-sm text-gray-500">Marketplace</span>
@@ -63,7 +63,7 @@ export default async function MarketplacePage({
             Browse verified digital autographs.
           </h1>
           <p className="mt-4 max-w-3xl text-lg leading-8 text-gray-600">
-            Discover creator listings, inspect their certificates, and buy or make an offer with the same TapnSign account you use in the app.
+            Discover creator listings, inspect their certificates, and buy or make an offer with the same Ophinia account you use in the app.
           </p>
         </section>
 

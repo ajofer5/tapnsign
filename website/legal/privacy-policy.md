@@ -1,36 +1,40 @@
 # Privacy Policy
 
 **Effective Date:** April 19, 2026
-**Last Updated:** April 28, 2026 (rev. 3)
+**Last Updated:** May 19, 2026 (rev. 4)
 
-TAPNSIGN LLC ("TapnSign," "we," "us," or "our") operates the TapnSign mobile application (the "App") and the website at tapnsign.com. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our App or website.
+TAPNSIGN LLC ("TAPNSIGN LLC," "Ophinia," "we," "us," or "our") operates the Ophinia mobile application (the "App") and related website experiences, including tapnsign.com (the "Website"). This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our App or Website.
 
-Please read this policy carefully. By using the App, you agree to the collection and use of information in accordance with this policy.
+Please read this policy carefully. By using the App or Website, you agree to the collection and use of information in accordance with this policy.
 
 ---
 
 ## 1. Information We Collect
 
 ### Information You Provide
-- **Account information:** Display name, email address, and password when you register
-- **Profile information:** Profile photo, Instagram handle, and other optional profile fields
-- **Payment information:** Billing details processed through Stripe on our website (tapnsign.com). We do not store your full card number — Stripe handles payment processing securely
-- **Identity verification:** If you apply for creator verification, we collect identity documents through Stripe Identity
-- **Shipping information:** If you order an Official Print, we collect your name and shipping address to fulfill your order
-- **Damage claim photos:** If you submit a print damage claim, we collect photos of your damaged print and, if applicable, a photo confirming its destruction
+- **Account information:** Display name, email address, password, and sign-in credentials when you register or connect a login method
+- **Profile information:** Profile photo, biography, Instagram handle, personalized-request settings, and other optional profile fields
+- **Payment information:** Billing details processed through Stripe on our Website. We do not store your full card number
+- **Identity verification information:** If you apply for creator verification, identity information and government ID data are processed through Stripe Identity
+- **Shipping information:** If you order an official print, we collect your name and shipping address to fulfill that order
+- **Offer and request information:** Details you submit when making offers, accepting offers, or purchasing personalized requests
+- **Damage claim and reprint materials:** If you report shipping damage, we collect photos of the damaged print and, if applicable, a destruction confirmation photo
+- **Support communications:** Information you provide when contacting us for support or sending us questions or feedback
 
 ### Information Collected Automatically
-- **Autograph content:** Video recordings, digital signature strokes, and metadata captured through the App
-- **Usage data:** How you interact with the App, including pages viewed, features used, listings viewed, and time spent. This includes interest events used to power marketplace recommendations
-- **Device information:** Device type, operating system, and unique device identifiers
+- **Autograph content:** Captured autograph media, including preview frames, thumbnails, digital signature strokes, template selections, and related metadata. Some autographs may also include full video captures
+- **Usage data:** How you interact with the App or Website, including pages viewed, listings viewed, searches, watches, saves, offers, purchases, shares, and other engagement data. This includes interest events used to power marketplace recommendations
+- **Device and browser information:** Device type, operating system, browser type, app version, IP address, and unique device identifiers
 - **Push notification tokens:** If you enable notifications, we store a device token to deliver them
-- **Web session tokens:** When the App opens a web browser session (e.g., for checkout), a short-lived one-time token is generated to authenticate that session. This token expires within 5 minutes and is not stored after use
+- **Short-lived web handoff tokens:** When the App opens a Website session for checkout, account, or verification flows, a short-lived one-time token may be generated to authenticate that session
+- **Public-link interactions:** We may collect technical and usage information relating to public certificate pages, QR scans, shared profile links, and other public Ophinia pages
 
 ### Information from Third Parties
-- **Stripe:** Payment and identity verification data processed under Stripe's privacy policy
-- **Supabase:** Authentication and database services
-- **Prodigi:** Print fulfillment vendor — receives your name and shipping address to fulfill Print Bundle orders, under Prodigi's privacy policy
-- **Expo:** Push notification delivery service
+- **Stripe:** Payment, checkout, and identity verification data processed under Stripe's privacy policy
+- **Supabase:** Authentication, database, and storage services
+- **Expo:** Push notification delivery services
+- **Print fulfillment partners:** Shipping and fulfillment data required to produce and deliver official prints
+- **Social login providers:** If you sign in or connect Apple or Google, we receive the account information those providers make available to us
 
 ---
 
@@ -39,17 +43,19 @@ Please read this policy carefully. By using the App, you agree to the collection
 We use the information we collect to:
 
 - Create and manage your account
-- Process transactions and send related notices
-- Deliver autographs and manage ownership transfers
-- Fulfill Official Print orders and communicate shipping status
-- Review and process print damage claims
-- Send push notifications about activity on your account (offers, purchases, print updates, etc.)
-- Verify creator identity and issue Certificates of Authenticity
-- Power marketplace recommendations based on your browsing and interaction history
-- Improve, personalize, and expand our App
-- Respond to customer support requests
-- Detect and prevent fraud or abuse, including fraudulent print damage claims
-- Comply with legal obligations
+- Authenticate you and support account recovery, login linking, and security
+- Process purchases, offers, creator verification fees, personalized requests, and official print orders
+- Capture, display, deliver, and transfer autograph ownership records
+- Fulfill official print orders and manage shipping, damage claims, and reprints
+- Generate and display Certificates of Authenticity and provenance records
+- Verify creator identity and maintain trust and safety on the platform
+- Operate public certificate pages, public profile pages, QR destinations, and shared links
+- Send push notifications, transactional emails, and account-related notices
+- Power marketplace recommendations and improve ranking, discovery, and personalization
+- Improve, maintain, monitor, and secure the App and Website
+- Respond to support requests
+- Detect, investigate, and prevent fraud, abuse, unauthorized access, and policy violations
+- Comply with legal obligations and enforce our agreements
 
 ---
 
@@ -57,32 +63,37 @@ We use the information we collect to:
 
 We do not sell your personal information. We may share your information in the following circumstances:
 
-- **Service providers:** Stripe (payments and identity verification), Supabase (database and authentication), Bunny CDN (video delivery), Expo (push notifications), and Prodigi (print fulfillment) — each under their own privacy policies
-- **Other users:** Your display name, profile photo, and public autograph listings are visible to other users of the App
-- **Legal requirements:** If required by law, court order, or governmental authority
-- **Business transfers:** In connection with a merger, acquisition, or sale of assets, with notice to you
+- **Service providers:** Stripe, Supabase, Bunny CDN, Expo, print fulfillment partners, and other vendors who help us operate the App or Website
+- **Other users and the public:** Your display name, profile photo, public profile details, public autograph listings, creator verification status, and certificate pages may be visible to other users or the public depending on your settings and the product surface
+- **Transaction counterparties:** When needed to complete an autograph sale, offer, personalized request, or print order
+- **Legal requirements:** If required by law, court order, subpoena, or governmental authority
+- **Business transfers:** In connection with a merger, acquisition, financing, reorganization, or sale of assets, with notice to you where required
 
 ---
 
 ## 4. Data Retention
 
-We retain your account information and autograph content for as long as your account is active. If you delete your account, we will delete your personal information within 30 days, except where retention is required by law or for legitimate business purposes (such as resolving disputes or fraud prevention).
+We retain your account information and autograph records for as long as your account remains active and for as long as needed to operate the platform, maintain authenticity records, resolve disputes, and prevent fraud.
 
-Print order records and damage claim photos are retained for a minimum of 2 years to support authenticity verification, dispute resolution, and fraud prevention. Shipping addresses are retained only as long as necessary to fulfill your order and resolve any related disputes.
+If you delete your account, we will delete or anonymize personal information within a reasonable period, except where retention is required by law or for legitimate business purposes such as fraud prevention, transaction records, dispute resolution, chargeback defense, tax compliance, authenticity verification, or security.
 
-Interest and usage events used for marketplace recommendations are retained for up to 12 months.
+- **Print order records and damage claim photos** are retained for a minimum of 2 years
+- **Shipping addresses** are retained only as long as reasonably necessary to fulfill orders and resolve related disputes
+- **Interest and usage events used for recommendations** are generally retained for up to 12 months unless a longer period is reasonably required for security, fraud prevention, or service integrity
 
 ---
 
 ## 5. Security
 
-We implement industry-standard security measures including encrypted data transmission (HTTPS/TLS), hashed passwords, and row-level security on our database. Damage claim photos are stored in a private, access-controlled storage bucket and are not publicly accessible. However, no method of transmission over the Internet is 100% secure, and we cannot guarantee absolute security.
+We use reasonable administrative, technical, and physical safeguards to protect your information, including encrypted transmission, access controls, hashed passwords, and row-level access policies. Some content, including damage-claim materials, is stored in restricted storage locations and is not publicly accessible by default. However, no method of transmission over the Internet or electronic storage is completely secure, and we cannot guarantee absolute security.
 
 ---
 
 ## 6. Children's Privacy
 
-The App is not directed to individuals under the age of 18. We do not knowingly collect personal information from anyone under 18. If we learn that we have collected such information, we will delete it promptly. If you believe someone under 18 has provided us information, please contact us at hello@tapnsign.com.
+The App and Website are not directed to children under the age of 13, and we do not knowingly collect personal information from children under 13. If we learn that we have collected such information, we will delete it promptly. If you believe a child under 13 has provided us information, please contact us at hello@tapnsign.com.
+
+Users who are at least 13 but under 18 may use collector-facing portions of Ophinia, such as browsing, saving, viewing, and sharing content, but certain features are restricted to adults. Creator verification, selling, buying, making offers, ordering prints, and other paid or payout-related activities are intended only for users age 18 or older.
 
 ---
 
@@ -90,37 +101,34 @@ The App is not directed to individuals under the age of 18. We do not knowingly 
 
 You may:
 
-- **Access or update** your account information through the App settings
-- **Delete your account** directly in the App under Account → Delete Account. Account deletion permanently removes your personal information and cannot be undone. Alternatively, you may contact us at hello@tapnsign.com
+- **Access or update** certain account and profile information through the App or Website
+- **Delete your account** through the App under Account → Delete Account or by contacting us
 - **Opt out of push notifications** through your device settings
-- **Request a copy** of the personal data we hold about you by emailing hello@tapnsign.com
-- **Request deletion of your shipping address** after your print order has been fulfilled by contacting hello@tapnsign.com
-- **Opt out of interest-based recommendations** by contacting hello@tapnsign.com — we will stop using your interaction history to personalize marketplace results
+- **Request a copy** of personal information we hold about you
+- **Request deletion of shipping information** after print fulfillment, subject to our retention obligations
+- **Request that we stop using interaction history for personalized recommendations** by contacting us
+
+To exercise these rights, contact us at hello@tapnsign.com. We may need to verify your identity before completing certain requests.
 
 ---
 
-## 8. California Privacy Rights (CCPA)
+## 8. California Privacy Rights
 
-If you are a California resident, you have additional rights under the California Consumer Privacy Act (CCPA):
+If you are a California resident, you may have additional rights under the California Consumer Privacy Act and related laws, including the right to know, access, correct, delete, and request information about how your personal information is used and disclosed, subject to applicable exceptions. We do not sell your personal information and do not share it for cross-context behavioral advertising as those terms are commonly used in California privacy law.
 
-- **Right to Know:** You may request information about the categories and specific pieces of personal information we have collected about you, and the purposes for which it is used
-- **Right to Delete:** You may request deletion of personal information we have collected from you, subject to certain exceptions
-- **Right to Non-Discrimination:** We will not discriminate against you for exercising any of your CCPA rights
-- **Right to Opt Out of Sale:** We do not sell your personal information
-
-To exercise these rights, contact us at hello@tapnsign.com. We will respond to verifiable requests within 45 days.
+To exercise applicable California rights, contact us at hello@tapnsign.com. We will respond to verifiable requests within the time required by law.
 
 ---
 
 ## 9. Third-Party Links and Services
 
-The App may contain links to third-party websites or services, including Stripe's hosted checkout pages. We are not responsible for the privacy practices of those third parties. We encourage you to review their privacy policies.
+The App and Website may contain links to third-party sites or services, including Stripe-hosted checkout pages, social platforms, or other external destinations. We are not responsible for the privacy practices of those third parties. We encourage you to review their privacy policies.
 
 ---
 
 ## 10. Changes to This Policy
 
-We may update this Privacy Policy from time to time. We will notify you of material changes by updating the "Last Updated" date and, where appropriate, through an in-app notification. Continued use of the App after changes constitutes acceptance of the updated policy.
+We may update this Privacy Policy from time to time. We will notify you of material changes by updating the "Last Updated" date and, where appropriate, by using an in-app notice, Website notice, or email. Continued use of the App or Website after changes take effect constitutes acceptance of the updated policy.
 
 ---
 

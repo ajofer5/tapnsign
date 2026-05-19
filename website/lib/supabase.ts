@@ -21,29 +21,10 @@ function getServiceRoleKey() {
 }
 
 function getWebsiteCookieOptions() {
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim();
-  let domain: string | undefined;
-
-  if (siteUrl) {
-    try {
-      const hostname = new URL(siteUrl).hostname.toLowerCase();
-      if (
-        hostname !== 'localhost' &&
-        !hostname.endsWith('.localhost') &&
-        !/^\d{1,3}(\.\d{1,3}){3}$/.test(hostname)
-      ) {
-        domain = hostname;
-      }
-    } catch {
-      domain = undefined;
-    }
-  }
-
   return {
     path: '/',
     sameSite: 'lax' as const,
     secure: process.env.NODE_ENV === 'production',
-    ...(domain ? { domain } : {}),
   };
 }
 

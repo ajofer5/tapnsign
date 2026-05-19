@@ -1,11 +1,13 @@
 'use server';
 
+import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { createWebsiteMutableServerSupabaseClient, createWebsiteSupabaseClient } from '../../lib/supabase';
+import { createWebSessionToken, getWebSessionCookieConfig, getWebSessionUserForProfile } from '../../lib/web-session';
 
 function sanitizeNextPath(value: FormDataEntryValue | null) {
-  if (typeof value !== 'string' || !value) return '/app';
-  if (!value.startsWith('/') || value.startsWith('//')) return '/app';
+  if (typeof value !== 'string' || !value) return '/home';
+  if (!value.startsWith('/') || value.startsWith('//')) return '/home';
   return value;
 }
 
@@ -32,6 +34,12 @@ export async function signInWithPasswordAction(formData: FormData) {
 
   if (error || !data.user) {
     redirect(`/login?error=password&next=${encodeURIComponent(next)}`);
+  }
+
+  const sessionUser = await getWebSessionUserForProfile(data.user.id, data.user.email ?? null);
+  if (sessionUser) {
+    const cookieStore = await cookies();
+    cookieStore.set(getWebSessionCookieConfig(createWebSessionToken(sessionUser)));
   }
 
   redirect(next);

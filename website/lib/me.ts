@@ -78,8 +78,17 @@ export type WebsiteActivityEntry = {
     | 'offer_accepted'
     | 'offer_declined'
     | 'offer_withdrawn'
-    | 'offer_expired';
-  autograph_id: string;
+    | 'offer_expired'
+    | 'personalized_request_received'
+    | 'personalized_request_sent'
+    | 'personalized_request_countered'
+    | 'personalized_request_accepted'
+    | 'personalized_request_declined'
+    | 'personalized_request_withdrawn'
+    | 'personalized_request_expired'
+    | 'personalized_request_fulfilled'
+    | 'personalized_request_completed';
+  autograph_id: string | null;
   creator_name: string;
   creator_sequence_number: number | null;
   series_name: string | null;
@@ -90,6 +99,11 @@ export type WebsiteActivityEntry = {
   expires_at?: string | null;
   payment_due_at?: string | null;
   accepted_transfer_id?: string | null;
+  personalized_request_id?: string | null;
+  request_role?: 'creator' | 'requester';
+  recipient_name?: string | null;
+  inscription_text?: string | null;
+  completed_transfer_id?: string | null;
 };
 
 function mapMyListingRow(row: any): WebsiteMyListing {
@@ -249,7 +263,7 @@ function parseAutographLabel(autograph: any) {
 
 export async function getMyActivity(userId: string): Promise<WebsiteActivityEntry[]> {
   const supabase = createWebsiteAdminSupabaseClient();
-  const [transfersRes, offersRes] = await Promise.all([
+  const [transfersRes, offersRes, personalizedRes] = await Promise.all([
     supabase
       .from('transfers')
       .select(
@@ -263,6 +277,29 @@ export async function getMyActivity(userId: string): Promise<WebsiteActivityEntr
         'id, autograph_id, buyer_id, owner_id, amount_cents, status, created_at, responded_at, expires_at, payment_due_at, accepted_transfer_id, autograph:autograph_id ( creator_sequence_number, creator:creator_id ( display_name ), series:series_id ( name ) )'
       )
       .or(`buyer_id.eq.${userId},owner_id.eq.${userId}`)
+      .order('created_at', { ascending: false }),
+    supabase
+      .from('personalized_autograph_requests')
+      .select(`
+        id,
+        creator_id,
+        requester_id,
+        minted_autograph_id,
+        recipient_name,
+        inscription_text,
+        amount_cents,
+        status,
+        created_at,
+        responded_at,
+        fulfilled_at,
+        completed_at,
+        expires_at,
+        payment_due_at,
+        completed_transfer_id,
+        creator:creator_id ( display_name ),
+        autograph:minted_autograph_id ( creator_sequence_number )
+      `)
+      .or(`creator_id.eq.${userId},requester_id.eq.${userId}`)
       .order('created_at', { ascending: false }),
   ]);
 
@@ -328,6 +365,59 @@ export async function getMyActivity(userId: string): Promise<WebsiteActivityEntr
       expires_at: offer.expires_at,
       payment_due_at: offer.payment_due_at,
       accepted_transfer_id: offer.accepted_transfer_id,
+    });
+  }
+
+  for (const request of personalizedRes.data ?? []) {
+    const isCreator = request.creator_id === userId;
+    const creatorRow = Array.isArray(request.creator)
+      ? (request.creator[0] as { display_name?: string | null } | undefined)
+      : (request.creator as { display_name?: string | null } | null | undefined);
+    const autographRow = Array.isArray(request.autograph)
+      ? (request.autograph[0] as { creator_sequence_number?: number | null } | undefined)
+      : (request.autograph as { creator_sequence_number?: number | null } | null | undefined);
+    let type: WebsiteActivityEntry['type'];
+
+    if (request.status === 'pending') {
+      type = isCreator ? 'personalized_request_received' : 'personalized_request_sent';
+    } else if (request.status === 'countered') {
+      type = 'personalized_request_countered';
+    } else if (request.status === 'accepted') {
+      type = 'personalized_request_accepted';
+    } else if (request.status === 'declined') {
+      type = 'personalized_request_declined';
+    } else if (request.status === 'withdrawn') {
+      type = 'personalized_request_withdrawn';
+    } else if (request.status === 'expired') {
+      type = 'personalized_request_expired';
+    } else if (request.status === 'fulfilled') {
+      type = 'personalized_request_fulfilled';
+    } else {
+      type = 'personalized_request_completed';
+    }
+
+    const requestDate =
+      request.completed_at ??
+      request.fulfilled_at ??
+      request.responded_at ??
+      request.created_at;
+
+    results.push({
+      id: `personalized-${request.id}`,
+      type,
+      autograph_id: request.minted_autograph_id ?? null,
+      creator_name: creatorRow?.display_name ?? 'Creator',
+      creator_sequence_number: autographRow?.creator_sequence_number ?? null,
+      series_name: null,
+      amount_cents: request.amount_cents,
+      date: requestDate,
+      expires_at: request.expires_at ?? null,
+      payment_due_at: request.payment_due_at ?? null,
+      personalized_request_id: request.id,
+      request_role: isCreator ? 'creator' : 'requester',
+      recipient_name: request.recipient_name,
+      inscription_text: request.inscription_text ?? null,
+      completed_transfer_id: request.completed_transfer_id ?? null,
     });
   }
 

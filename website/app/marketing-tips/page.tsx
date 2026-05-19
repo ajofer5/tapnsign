@@ -5,7 +5,7 @@ import Link from 'next/link';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Creator Marketing Tips — TapnSign',
+  title: 'Creator Marketing Tips — Ophinia',
 };
 
 export default function MarketingTipsPage() {
@@ -19,7 +19,7 @@ export default function MarketingTipsPage() {
     <main className="min-h-screen bg-[#F2F2F4]">
       <nav className="bg-[#F2F2F4] border-b border-gray-200 px-6 py-4">
         <Link href="/">
-          <img src="/logo.png" alt="TapnSign" className="h-9" />
+          <img src="/logo.png" alt="Ophinia" className="h-9" />
         </Link>
       </nav>
       <div className="max-w-3xl mx-auto px-6 py-14">

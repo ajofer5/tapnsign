@@ -2,13 +2,13 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'TapnSign — Digital Autographs',
+  title: 'Ophinia — Digital Autographs',
   description:
     'The platform for verified digital autographs. Creators sign, fans own, everyone wins.',
   openGraph: {
-    title: 'TapnSign',
+    title: 'Ophinia',
     description: 'Sign It. Own It. Print It.',
-    siteName: 'TapnSign',
+    siteName: 'Ophinia',
   },
 };
 

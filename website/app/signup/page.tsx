@@ -28,7 +28,7 @@ export default async function SignupPage({
         <div className="rounded-[2rem] bg-white p-8 shadow-sm md:p-10">
           <div className="flex items-center justify-between gap-4">
             <Link href="/" className="text-lg font-black text-[#E53935]">
-              TapnSign
+              Ophinia
             </Link>
             <Link
               href="/login"
@@ -45,7 +45,7 @@ export default async function SignupPage({
             Start collecting on the web
           </h1>
           <p className="mt-4 max-w-xl text-lg leading-8 text-gray-600">
-            Create your TapnSign account here, then browse listings, save autographs, make offers, and complete purchases on the web.
+            Create your Ophinia account here, then browse listings, save autographs, make offers, and complete purchases on the web.
           </p>
 
           {existingUser ? (
@@ -127,7 +127,7 @@ export default async function SignupPage({
           </form>
 
           <div className="mt-8 border-t border-gray-200 pt-6 text-sm leading-7 text-gray-600">
-            Already have a TapnSign account?{' '}
+            Already have an Ophinia account?{' '}
             <Link href={`/login?next=${encodeURIComponent(next)}`} className="font-semibold text-black hover:text-[#E53935]">
               Sign in here
             </Link>

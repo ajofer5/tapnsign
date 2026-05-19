@@ -14,10 +14,17 @@ function formatDate(value?: string | null) {
   });
 }
 
-export default async function ProfilePage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ProfilePage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams?: Promise<{ request_status?: string; request_error?: string; request_canceled?: string }>;
+}) {
   const { id } = await params;
   const profile = await getWebsiteProfile(id);
   if (!profile) notFound();
+  const resolvedSearch = await searchParams;
   const user = await getWebSessionUser();
   const savedIds = user
     ? await getSavedAutographIds(user.id, profile.active_listings.map((listing) => listing.id))
@@ -25,13 +32,19 @@ export default async function ProfilePage({ params }: { params: Promise<{ id: st
   const hasCreatedAutographs = (profile.stats.autographs_signed ?? 0) > 0;
   const profileStatusLabel = hasCreatedAutographs ? 'Creator / Collector' : 'Collector';
   const verificationLabel = profile.verified ? 'Verified' : 'Member';
+  const canRequestPersonalized =
+    !!user &&
+    user.id !== id &&
+    profile.verified &&
+    profile.personalized_requests_enabled;
+  const requestSent = resolvedSearch?.request_status === 'sent';
 
   return (
     <main className="min-h-screen bg-[#F2F2F4]">
       <nav className="border-b border-gray-200 bg-white px-6 py-4">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-6">
           <Link href="/" className="text-lg font-black text-[#E53935]">
-            TapnSign
+            Ophinia
           </Link>
           <div className="flex items-center gap-4">
             <Link href="/marketplace" className="text-sm text-gray-500 hover:text-black">
@@ -72,7 +85,7 @@ export default async function ProfilePage({ params }: { params: Promise<{ id: st
                 <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-gray-600">
                   {profile.verified ? (
                     <span className="rounded-full bg-[#EFF6EC] px-3 py-1 font-semibold text-[#2B6A1C]">
-                      Verified by TapnSign
+                      Verified by Ophinia
                     </span>
                   ) : null}
                   <span className="rounded-full bg-[#F6F6F7] px-3 py-1 font-semibold text-gray-700">
@@ -90,7 +103,7 @@ export default async function ProfilePage({ params }: { params: Promise<{ id: st
                   ) : null}
                 </div>
                 <p className="mt-4 text-base leading-7 text-gray-600">
-                  TapnSign {verificationLabel.toLowerCase()} member since {formatDate(profile.member_since)}.
+                  Ophinia {verificationLabel.toLowerCase()} member since {formatDate(profile.member_since)}.
                   {profile.creator_since ? ` Creator since ${formatDate(profile.creator_since)}.` : ''}
                 </p>
               </div>
@@ -104,6 +117,22 @@ export default async function ProfilePage({ params }: { params: Promise<{ id: st
             </div>
           </div>
         </section>
+
+        {resolvedSearch?.request_status || resolvedSearch?.request_error || resolvedSearch?.request_canceled === '1' ? (
+          <div
+            className={`mt-8 rounded-2xl px-5 py-4 text-sm font-medium ${
+              resolvedSearch?.request_error
+                ? 'bg-[#FDECEC] text-[#B3261E]'
+                : resolvedSearch?.request_canceled === '1'
+                  ? 'bg-[#FFF5E5] text-[#8A5A00]'
+                  : 'bg-[#EFF6EC] text-[#2B6A1C]'
+            }`}
+          >
+            {resolvedSearch?.request_status === 'sent' && 'Your personalized request was sent and the authorization hold is in place.'}
+            {resolvedSearch?.request_canceled === '1' && 'Authorization was canceled before the personalized request was sent.'}
+            {resolvedSearch?.request_error && 'Could not authorize and send your personalized request. Please try again.'}
+          </div>
+        ) : null}
 
         <section className="mt-8 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
           <div className="rounded-[2rem] bg-white p-8 shadow-sm">
@@ -133,12 +162,121 @@ export default async function ProfilePage({ params }: { params: Promise<{ id: st
               Use this page to confirm who the creator is, review their current listings, and continue into certificate, offer, or checkout flows on the web.
             </p>
             <div className="mt-6 space-y-3 text-sm text-gray-700">
-              <TrustRow label="TapnSign Status" value={profileStatusLabel} />
-              <TrustRow label="Verification" value={profile.verified ? 'Verified by TapnSign' : 'Member account'} />
+              <TrustRow label="Ophinia Status" value={profileStatusLabel} />
+              <TrustRow label="Verification" value={profile.verified ? 'Verified by Ophinia' : 'Member account'} />
               <TrustRow label="Instagram" value={profile.instagram_handle ? `@${profile.instagram_handle}` : 'Not linked'} />
+              {profile.personalized_requests_enabled ? (
+                <TrustRow
+                  label="Personalized"
+                  value={`Requests from ${formatMoney(profile.personalized_min_price_cents)}`}
+                />
+              ) : null}
             </div>
           </div>
         </section>
+
+        {canRequestPersonalized && !requestSent ? (
+          <section className="mt-8 rounded-[2rem] bg-white p-8 shadow-sm">
+            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
+              Personalized Autograph
+            </p>
+            <h2 className="mt-3 text-2xl font-black text-black">
+              Request a private custom autograph
+            </h2>
+            <p className="mt-4 max-w-2xl text-base leading-7 text-gray-600">
+              This request stays private between you and the creator. Ophinia places an authorization hold first, then creates the request once payment authorization succeeds.
+            </p>
+            <div className="mt-4 rounded-[1.5rem] bg-[#F7F7F8] px-5 py-4 text-sm font-medium text-gray-700">
+              Minimum request price: {formatMoney(profile.personalized_min_price_cents)}
+            </div>
+            <form action={`/profile/${id}/personalized-request/start`} method="post" className="mt-6 space-y-4">
+              <input
+                type="text"
+                name="recipient_name"
+                placeholder="Recipient name"
+                className="w-full rounded-xl border border-transparent bg-[#F7F7F8] px-4 py-4 text-base text-black outline-none transition-colors placeholder:text-[#999] focus:border-[#E53935] focus:bg-white"
+                required
+              />
+              <input
+                type="text"
+                name="inscription_text"
+                placeholder="Optional inscription"
+                className="w-full rounded-xl border border-transparent bg-[#F7F7F8] px-4 py-4 text-base text-black outline-none transition-colors placeholder:text-[#999] focus:border-[#E53935] focus:bg-white"
+              />
+              <textarea
+                name="requester_note"
+                placeholder="Optional note for the creator"
+                rows={4}
+                className="w-full rounded-xl border border-transparent bg-[#F7F7F8] px-4 py-4 text-base text-black outline-none transition-colors placeholder:text-[#999] focus:border-[#E53935] focus:bg-white"
+              />
+              <div className="flex items-center rounded-xl border border-transparent bg-[#F7F7F8] px-4 py-4 focus-within:border-[#E53935] focus-within:bg-white">
+                <span className="mr-2 text-base font-semibold text-gray-500">$</span>
+                <input
+                  type="text"
+                  name="amount"
+                  defaultValue={
+                    typeof profile.personalized_min_price_cents === 'number'
+                      ? (profile.personalized_min_price_cents / 100).toFixed(2)
+                      : '10.00'
+                  }
+                  placeholder="0.00"
+                  className="w-full bg-transparent text-base text-black outline-none placeholder:text-[#999]"
+                  required
+                />
+              </div>
+              <button
+                type="submit"
+                className="rounded-xl bg-[#E53935] px-6 py-4 text-base font-semibold text-white transition-colors hover:bg-[#cf302d]"
+              >
+                Authorize and Send Request
+              </button>
+            </form>
+          </section>
+        ) : canRequestPersonalized && requestSent ? (
+          <section className="mt-8 rounded-[2rem] bg-white p-8 shadow-sm">
+            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
+              Personalized Autograph
+            </p>
+            <h2 className="mt-3 text-2xl font-black text-black">
+              Request sent successfully
+            </h2>
+            <p className="mt-4 max-w-2xl text-base leading-7 text-gray-600">
+              Your authorization hold is in place and the creator can now review the request in Ophinia. You can track updates from Activity and your personalized requests inbox after signing in.
+            </p>
+            <div className="mt-6 flex flex-wrap gap-3">
+              <Link
+                href="/personalized-requests"
+                className="rounded-xl bg-[#E53935] px-6 py-4 text-base font-semibold text-white transition-colors hover:bg-[#cf302d]"
+              >
+                View Your Requests
+              </Link>
+              <Link
+                href="/activity"
+                className="rounded-xl border border-gray-300 px-6 py-4 text-base font-semibold text-gray-700 transition-colors hover:border-black hover:text-black"
+              >
+                Open Activity
+              </Link>
+            </div>
+          </section>
+        ) : !user ? (
+          <section className="mt-8 rounded-[2rem] bg-white p-8 shadow-sm">
+            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
+              Personalized Autograph
+            </p>
+            <h2 className="mt-3 text-2xl font-black text-black">
+              Request a private custom autograph
+            </h2>
+            <p className="mt-4 max-w-2xl text-base leading-7 text-gray-600">
+              Sign in to request a personalized autograph from this creator.
+            </p>
+            <Link
+              href={`/login?next=${encodeURIComponent(`/profile/${id}`)}`}
+              className="mt-6 inline-flex rounded-xl bg-[#E53935] px-6 py-4 text-base font-semibold text-white transition-colors hover:bg-[#cf302d]"
+            >
+              Sign In to Request
+            </Link>
+          </section>
+        ) : null}
 
         <section className="mt-8">
           <div className="mb-4 flex items-center justify-between">
@@ -171,6 +309,14 @@ export default async function ProfilePage({ params }: { params: Promise<{ id: st
       </div>
     </main>
   );
+}
+
+function formatMoney(cents?: number | null) {
+  if (typeof cents !== 'number') return '$0.00';
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+  }).format(cents / 100);
 }
 
 function Stat({ label, value }: { label: string; value: string }) {

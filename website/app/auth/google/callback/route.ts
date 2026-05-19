@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createWebsiteRouteSupabaseClient } from '../../../../lib/supabase';
-import { getWebSessionUserForProfile } from '../../../../lib/web-session';
+import { createWebSessionToken, getWebSessionCookieConfig, getWebSessionUserForProfile } from '../../../../lib/web-session';
 
 function sanitizeNextPath(value: string | null) {
   if (!value) return '/app';
@@ -39,6 +39,8 @@ export async function GET(request: NextRequest) {
       new URL(`/login?error=account&next=${encodeURIComponent(next)}`, request.url)
     );
   }
+
+  response.cookies.set(getWebSessionCookieConfig(createWebSessionToken(sessionUser)));
 
   return response;
 }

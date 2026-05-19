@@ -5,7 +5,7 @@ export default function HomePage() {
     <main>
       {/* Nav */}
       <nav className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-6 py-4 bg-[#F2F2F4] border-b border-gray-200">
-        <img src="/logo.png" alt="TapnSign" className="h-9" />
+        <img src="/logo.png" alt="Ophinia" className="h-9" />
         <div className="flex items-center gap-4">
           <Link href="/marketplace" className="text-sm font-semibold text-gray-600 hover:text-black transition-colors">
             Marketplace
@@ -24,7 +24,7 @@ export default function HomePage() {
 
       {/* Hero */}
       <section className="bg-[#F2F2F4] min-h-screen flex flex-col items-center justify-center text-center px-6 pt-20 pb-16">
-        <img src="/logo.png" alt="TapnSign" className="w-[31rem] md:w-[43rem] mb-12" />
+        <img src="/logo.png" alt="Ophinia" className="w-[31rem] md:w-[43rem] mb-12" />
         <h1 className="text-black text-5xl md:text-7xl font-black leading-none tracking-tight">
           Create.<br />
           Collect.<br />
@@ -80,7 +80,7 @@ export default function HomePage() {
             Your name. Your image. Your terms.
           </h2>
           <p className="text-gray-500 text-center text-lg mb-12 max-w-xl mx-auto">
-            TapnSign gives talented individuals direct control over monetizing their name, image, and likeness — no middlemen, no gatekeepers. Capture a video autograph, set your price, and sell directly to fans.
+            Ophinia gives talented individuals direct control over monetizing their name, image, and likeness — no middlemen, no gatekeepers. Capture a video autograph, set your price, and sell directly to fans.
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <BulletCard text="Identity verified through Stripe Identity — fans know it's really you" />
@@ -101,7 +101,7 @@ export default function HomePage() {
             Browse. Collect. Display.
           </h2>
           <p className="text-gray-500 text-center text-lg mb-12 max-w-xl mx-auto">
-            TapnSign autographs are verified digital collectibles, each authenticated with a unique Certificate of Authenticity. Display them on your public profile or order an official print for your wall.
+            Ophinia autographs are verified digital collectibles, each authenticated with a unique Certificate of Authenticity. Display them on your public profile or order an official print for your wall.
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <BulletCard text="Purchase autographs directly from verified creators" />
@@ -129,7 +129,7 @@ export default function HomePage() {
 
       {/* Download CTA */}
       <section className="bg-[#F2F2F4] py-24 px-6 text-center">
-        <img src="/logo.png" alt="TapnSign" className="h-16 mx-auto mb-8" />
+        <img src="/logo.png" alt="Ophinia" className="h-16 mx-auto mb-8" />
         <h2 className="text-black text-3xl md:text-4xl font-black mb-4">
           Ready to browse?
         </h2>
@@ -155,7 +155,7 @@ export default function HomePage() {
       {/* Footer */}
       <footer className="bg-[#F2F2F4] border-t border-gray-200 py-10 px-6">
         <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
-          <img src="/logo.png" alt="TapnSign" className="h-5" />
+          <img src="/logo.png" alt="Ophinia" className="h-5" />
           <div className="flex gap-6 text-sm text-gray-500">
             <Link href="/privacy" className="hover:text-black transition-colors">
               Privacy Policy
