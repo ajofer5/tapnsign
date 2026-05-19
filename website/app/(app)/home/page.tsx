@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { getWebSessionUser } from '../../lib/web-auth';
+import { getWebSessionUser } from '../../../lib/web-auth';
 
 export const dynamic = 'force-dynamic';
 
