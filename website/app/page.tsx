@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { ReactNode } from 'react';
 
 export default function HomePage() {
   return (
@@ -32,7 +33,7 @@ export default function HomePage() {
             Creators win.
           </h1>
           <p className="mt-8 max-w-xl text-lg leading-relaxed text-gray-600 md:text-xl">
-            A luxury-minimal marketplace for authenticated creator autographs, collectible ownership, and official prints.
+            A marketplace for authenticated creator autographs, collectible ownership, and official prints.
           </p>
           <div className="mt-12 flex flex-wrap items-center justify-center gap-3">
             <Link
@@ -51,10 +52,10 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="bg-white px-6 py-20">
+      <section className="bg-white px-6 py-12">
         <div className="mx-auto grid max-w-5xl grid-cols-1 gap-6 md:grid-cols-3">
           <FeatureCard
-            icon="✦"
+            icon={<img src="/ophinia-badge.png" alt="Ophinia Verified" className="h-10 w-10 rounded-xl object-cover" />}
             title="Verified Creators"
             desc="Identity-verified creators sign autographs that fans can trust."
           />
@@ -170,7 +171,7 @@ export default function HomePage() {
   );
 }
 
-function FeatureCard({ icon, title, desc }: { icon: string; title: string; desc: string }) {
+function FeatureCard({ icon, title, desc }: { icon: ReactNode; title: string; desc: string }) {
   return (
     <div className="rounded-[1.5rem] border border-[#D8DDE8] bg-white p-7 shadow-sm">
       <div className="mb-4 text-2xl font-black text-[#001B5C]">{icon}</div>
