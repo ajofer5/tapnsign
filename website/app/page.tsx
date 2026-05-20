@@ -28,9 +28,8 @@ export default function HomePage() {
             Verified Digital Autographs
           </div>
           <h1 className="text-5xl font-black leading-none tracking-tight text-[#111111] md:text-7xl">
-            Create.<br />
-            Collect.<br />
-            Display.
+            Creators win.<br />
+            Collectors win.
           </h1>
           <p className="mt-8 max-w-xl text-lg leading-relaxed text-gray-600 md:text-xl">
             A luxury-minimal marketplace for authenticated creator autographs, collectible ownership, and official prints.
