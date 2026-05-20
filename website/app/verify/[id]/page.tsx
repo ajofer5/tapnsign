@@ -47,7 +47,7 @@ export default async function VerifyPage({ params }: { params: Promise<{ id: str
       {/* Nav */}
       <nav className="flex items-center justify-between border-b border-[#D8DDE8] bg-white px-6 py-4">
         <Link href="/">
-          <img src="/logo.png" alt="Ophinia" className="h-[4.5rem]" />
+          <img src="/ophinia-logo.png" alt="Ophinia" className="h-[4.5rem]" />
         </Link>
         <span className="text-sm text-gray-500">Certificate of Authenticity</span>
       </nav>
@@ -82,7 +82,7 @@ export default async function VerifyPage({ params }: { params: Promise<{ id: str
                 <span className="text-white font-bold text-sm tracking-wide uppercase">
                   Certificate of Authenticity
                 </span>
-                <img src="/logo-white.png" alt="Ophinia" className="h-10" />
+                <img src="/ophinia-logo-white.png" alt="Ophinia" className="h-10" />
               </div>
               <div className="px-6 py-5 space-y-4">
                 <CertRow

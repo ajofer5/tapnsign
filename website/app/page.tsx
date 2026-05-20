@@ -4,7 +4,7 @@ export default function HomePage() {
   return (
     <main>
       <nav className="fixed left-0 right-0 top-0 z-50 flex items-center justify-between border-b border-[#D8DDE8] bg-white/92 px-6 py-4 backdrop-blur">
-        <img src="/logo.png" alt="Ophinia" className="h-8" />
+        <img src="/ophinia-logo.png" alt="Ophinia" className="h-8" />
         <div className="flex items-center gap-4">
           <Link href="/marketplace" className="text-sm font-semibold text-gray-600 transition-colors hover:text-black">
             Marketplace
@@ -23,7 +23,7 @@ export default function HomePage() {
 
       <section className="min-h-screen bg-white px-6 pb-16 pt-20">
         <div className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-6xl flex-col items-center justify-center text-center">
-          <img src="/logo.png" alt="Ophinia" className="mb-10 w-[36rem] md:w-[48rem]" />
+          <img src="/ophinia-logo.png" alt="Ophinia" className="mb-10 w-[36rem] md:w-[48rem]" />
           <div className="mb-4 inline-flex items-center rounded-full border border-[#D8DDE8] bg-white px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.22em] text-[#001B5C]">
             Verified Digital Autographs
           </div>
@@ -127,7 +127,7 @@ export default function HomePage() {
       </section>
 
       <section className="bg-white px-6 py-24 text-center">
-        <img src="/logo.png" alt="Ophinia" className="mx-auto mb-8 h-28" />
+        <img src="/ophinia-logo.png" alt="Ophinia" className="mx-auto mb-8 h-28" />
         <h2 className="mb-4 text-3xl font-black text-black md:text-4xl">
           Ready to browse?
         </h2>
@@ -152,7 +152,7 @@ export default function HomePage() {
 
       <footer className="border-t border-[#D8DDE8] bg-white px-6 py-10">
         <div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-6 md:flex-row">
-          <img src="/logo.png" alt="Ophinia" className="h-10" />
+          <img src="/ophinia-logo.png" alt="Ophinia" className="h-10" />
           <div className="flex gap-6 text-sm text-gray-500">
             <Link href="/privacy" className="transition-colors hover:text-black">
               Privacy Policy

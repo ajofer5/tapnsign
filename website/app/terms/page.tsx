@@ -19,7 +19,7 @@ export default function TermsPage() {
     <main className="min-h-screen bg-[#F2F2F4]">
       <nav className="border-b border-[#D8DDE8] bg-white px-6 py-4">
         <Link href="/">
-          <img src="/logo.png" alt="Ophinia" className="h-9" />
+          <img src="/ophinia-logo.png" alt="Ophinia" className="h-9" />
         </Link>
       </nav>
       <div className="max-w-3xl mx-auto px-6 py-14">

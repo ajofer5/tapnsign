@@ -38,7 +38,7 @@ export default async function LoginPage({
       <div className="mx-auto flex min-h-[80vh] max-w-md flex-col items-center justify-center">
         <Link href="/" className="mb-8">
           <Image
-            src="/logo.png"
+            src="/ophinia-logo.png"
             alt="Ophinia"
             width={260}
             height={110}
