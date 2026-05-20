@@ -44,7 +44,7 @@ export function WebListingCard({
           <div className="min-w-0">
             <Link
               href={`/profile/${listing.creator_id}`}
-              className="text-lg font-black text-black transition-colors hover:text-[#E53935]"
+              className="text-lg font-black text-black transition-colors hover:text-[#001B5C]"
             >
               {creatorName}
               {listing.creator_sequence_number != null ? ` · #${listing.creator_sequence_number}` : ''}

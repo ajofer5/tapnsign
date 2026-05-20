@@ -85,7 +85,7 @@ export default async function MyOffersPage({ searchParams }: MyOffersPageProps) 
                       <div>
                         <Link
                           href={`/autograph/${group.autograph_id}`}
-                          className="text-2xl font-black text-black transition-colors hover:text-[#E53935]"
+                          className="text-2xl font-black text-black transition-colors hover:text-[#001B5C]"
                         >
                           {headline.creator_name}
                           {headline.creator_sequence_number != null ? ` · #${headline.creator_sequence_number}` : ''}
@@ -150,7 +150,7 @@ export default async function MyOffersPage({ searchParams }: MyOffersPageProps) 
                         <form action={respondOfferAction.bind(null, group.pending[0].id, 'accept')}>
                           <button
                             type="submit"
-                            className="rounded-xl bg-[#E53935] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#cf302d]"
+                            className="rounded-xl bg-[#001B5C] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#00144A]"
                           >
                             Accept
                           </button>

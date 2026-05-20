@@ -18,6 +18,23 @@ const config: Config = {
       },
       fontFamily: {
         sans: [
+          'Optima',
+          '"Palatino Linotype"',
+          '"Book Antiqua"',
+          'Palatino',
+          '"Times New Roman"',
+          'serif',
+        ],
+        serif: [
+          'Optima',
+          '"Palatino Linotype"',
+          '"Book Antiqua"',
+          'Palatino',
+          '"Times New Roman"',
+          'serif',
+        ],
+        ui: [
+          'Optima',
           '-apple-system',
           'BlinkMacSystemFont',
           '"Segoe UI"',

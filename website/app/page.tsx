@@ -21,9 +21,9 @@ export default function HomePage() {
         </div>
       </nav>
 
-      <section className="min-h-screen bg-white px-6 pb-16 pt-20">
-        <div className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-6xl flex-col items-center justify-center text-center">
-          <img src="/ophinia-logo.png" alt="Ophinia" className="mb-10 w-[36rem] md:w-[48rem]" />
+      <section className="min-h-screen bg-white px-6 pb-16 pt-14">
+        <div className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-6xl flex-col items-center justify-start pt-10 text-center md:pt-14">
+          <img src="/ophinia-logo.png" alt="Ophinia" className="mb-8 w-[36rem] md:w-[48rem]" />
           <div className="mb-4 inline-flex items-center rounded-full border border-[#D8DDE8] bg-white px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.22em] text-[#001B5C]">
             Verified Digital Autographs
           </div>

@@ -75,7 +75,7 @@ export default async function ProfilePage({
                   className="h-24 w-24 rounded-full object-cover"
                 />
               ) : (
-                <div className="flex h-24 w-24 items-center justify-center rounded-full bg-[#E53935] text-3xl font-black text-white">
+                <div className="flex h-24 w-24 items-center justify-center rounded-full bg-[#001B5C] text-3xl font-black text-white">
                   {profile.display_name.slice(0, 1).toUpperCase()}
                 </div>
               )}
@@ -186,22 +186,22 @@ export default async function ProfilePage({
                 type="text"
                 name="recipient_name"
                 placeholder="Recipient name"
-                className="w-full rounded-xl border border-transparent bg-[#F7F7F8] px-4 py-4 text-base text-black outline-none transition-colors placeholder:text-[#999] focus:border-[#E53935] focus:bg-white"
+                className="w-full rounded-xl border border-transparent bg-[#F7F7F8] px-4 py-4 text-base text-black outline-none transition-colors placeholder:text-[#999] focus:border-[#001B5C] focus:bg-white"
                 required
               />
               <input
                 type="text"
                 name="inscription_text"
                 placeholder="Optional inscription"
-                className="w-full rounded-xl border border-transparent bg-[#F7F7F8] px-4 py-4 text-base text-black outline-none transition-colors placeholder:text-[#999] focus:border-[#E53935] focus:bg-white"
+                className="w-full rounded-xl border border-transparent bg-[#F7F7F8] px-4 py-4 text-base text-black outline-none transition-colors placeholder:text-[#999] focus:border-[#001B5C] focus:bg-white"
               />
               <textarea
                 name="requester_note"
                 placeholder="Optional note for the creator"
                 rows={4}
-                className="w-full rounded-xl border border-transparent bg-[#F7F7F8] px-4 py-4 text-base text-black outline-none transition-colors placeholder:text-[#999] focus:border-[#E53935] focus:bg-white"
+                className="w-full rounded-xl border border-transparent bg-[#F7F7F8] px-4 py-4 text-base text-black outline-none transition-colors placeholder:text-[#999] focus:border-[#001B5C] focus:bg-white"
               />
-              <div className="flex items-center rounded-xl border border-transparent bg-[#F7F7F8] px-4 py-4 focus-within:border-[#E53935] focus-within:bg-white">
+              <div className="flex items-center rounded-xl border border-transparent bg-[#F7F7F8] px-4 py-4 focus-within:border-[#001B5C] focus-within:bg-white">
                 <span className="mr-2 text-base font-semibold text-gray-500">$</span>
                 <input
                   type="text"
@@ -218,7 +218,7 @@ export default async function ProfilePage({
               </div>
               <button
                 type="submit"
-                className="rounded-xl bg-[#E53935] px-6 py-4 text-base font-semibold text-white transition-colors hover:bg-[#cf302d]"
+                className="rounded-xl bg-[#001B5C] px-6 py-4 text-base font-semibold text-white transition-colors hover:bg-[#00144A]"
               >
                 Authorize and Send Request
               </button>
@@ -238,7 +238,7 @@ export default async function ProfilePage({
             <div className="mt-6 flex flex-wrap gap-3">
               <Link
                 href="/personalized-requests"
-                className="rounded-xl bg-[#E53935] px-6 py-4 text-base font-semibold text-white transition-colors hover:bg-[#cf302d]"
+                className="rounded-xl bg-[#001B5C] px-6 py-4 text-base font-semibold text-white transition-colors hover:bg-[#00144A]"
               >
                 View Your Requests
               </Link>
@@ -263,7 +263,7 @@ export default async function ProfilePage({
             </p>
             <Link
               href={`/login?next=${encodeURIComponent(`/profile/${id}`)}`}
-              className="mt-6 inline-flex rounded-xl bg-[#E53935] px-6 py-4 text-base font-semibold text-white transition-colors hover:bg-[#cf302d]"
+              className="mt-6 inline-flex rounded-xl bg-[#001B5C] px-6 py-4 text-base font-semibold text-white transition-colors hover:bg-[#00144A]"
             >
               Sign In to Request
             </Link>

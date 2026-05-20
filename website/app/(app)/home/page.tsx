@@ -81,7 +81,7 @@ function QuickLink({
       href={href}
       className={`rounded-xl px-5 py-4 text-sm font-semibold transition-colors ${
         tone === 'primary'
-          ? 'bg-[#E53935] text-white hover:bg-[#cf302d]'
+          ? 'bg-[#001B5C] text-white hover:bg-[#00144A]'
           : 'border border-gray-200 bg-[#F7F7F8] text-black hover:border-black hover:bg-white'
       }`}
     >

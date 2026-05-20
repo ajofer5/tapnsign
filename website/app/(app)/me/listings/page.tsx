@@ -73,7 +73,7 @@ export default async function MyListingsPage({ searchParams }: MyListingsPagePro
                     <div>
                       <Link
                         href={`/autograph/${listing.id}`}
-                        className="text-2xl font-black text-black transition-colors hover:text-[#E53935]"
+                        className="text-2xl font-black text-black transition-colors hover:text-[#001B5C]"
                       >
                         {listing.creator_name}
                         {listing.creator_sequence_number != null ? ` · #${listing.creator_sequence_number}` : ''}
@@ -115,7 +115,7 @@ export default async function MyListingsPage({ searchParams }: MyListingsPagePro
                         <select
                           name="listing_mode"
                           defaultValue={listing.listing_mode}
-                          className="mt-2 w-full rounded-xl border border-transparent bg-[#F7F7F8] px-4 py-4 text-sm font-medium text-black outline-none transition-colors focus:border-[#E53935] focus:bg-white"
+                          className="mt-2 w-full rounded-xl border border-transparent bg-[#F7F7F8] px-4 py-4 text-sm font-medium text-black outline-none transition-colors focus:border-[#001B5C] focus:bg-white"
                         >
                           <option value="buy_now">Fixed Price</option>
                           <option value="make_offer">Estimated Value</option>
@@ -131,7 +131,7 @@ export default async function MyListingsPage({ searchParams }: MyListingsPagePro
                           name="price"
                           defaultValue={typeof listing.price_cents === 'number' ? (listing.price_cents / 100).toFixed(2) : ''}
                           placeholder="25.00"
-                          className="mt-2 w-full rounded-xl border border-transparent bg-[#F7F7F8] px-4 py-4 text-sm font-medium text-black outline-none transition-colors placeholder:text-gray-400 focus:border-[#E53935] focus:bg-white"
+                          className="mt-2 w-full rounded-xl border border-transparent bg-[#F7F7F8] px-4 py-4 text-sm font-medium text-black outline-none transition-colors placeholder:text-gray-400 focus:border-[#001B5C] focus:bg-white"
                         />
                       </label>
                     </div>
@@ -161,7 +161,7 @@ export default async function MyListingsPage({ searchParams }: MyListingsPagePro
                     <div className="flex flex-wrap gap-3">
                       <button
                         type="submit"
-                        className="rounded-xl bg-[#E53935] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#cf302d]"
+                        className="rounded-xl bg-[#001B5C] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#00144A]"
                       >
                         {listing.is_for_sale ? 'Update Listing' : 'Create Listing'}
                       </button>

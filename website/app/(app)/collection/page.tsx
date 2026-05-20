@@ -70,7 +70,7 @@ export default async function CollectionPage({ searchParams }: CollectionPagePro
                   <div className="min-w-0">
                     <Link
                       href={`/autograph/${item.id}`}
-                      className="text-lg font-black text-black transition-colors hover:text-[#E53935]"
+                      className="text-lg font-black text-black transition-colors hover:text-[#001B5C]"
                     >
                       {item.creator_name}
                       {item.creator_sequence_number != null ? ` · #${item.creator_sequence_number}` : ''}
@@ -107,7 +107,7 @@ export default async function CollectionPage({ searchParams }: CollectionPagePro
                     className={`rounded-xl px-4 py-3 text-sm font-semibold transition-colors ${
                       item.is_for_sale
                         ? 'border border-black text-black hover:bg-black hover:text-white'
-                        : 'bg-[#E53935] text-white hover:bg-[#cf302d]'
+                        : 'bg-[#001B5C] text-white hover:bg-[#00144A]'
                     }`}
                   >
                     {item.is_for_sale ? 'Edit Listing' : 'List'}

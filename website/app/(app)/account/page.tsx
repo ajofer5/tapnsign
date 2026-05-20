@@ -72,7 +72,7 @@ export default async function AccountPage({
             className="h-24 w-24 rounded-full object-cover shadow-sm"
           />
         ) : (
-          <div className="flex h-24 w-24 items-center justify-center rounded-full bg-[#E53935] text-3xl font-black text-white shadow-sm">
+          <div className="flex h-24 w-24 items-center justify-center rounded-full bg-[#001B5C] text-3xl font-black text-white shadow-sm">
             {(profile?.display_name ?? user.display_name).slice(0, 1).toUpperCase()}
           </div>
         )}
@@ -148,10 +148,10 @@ export default async function AccountPage({
                   type="checkbox"
                   name="personalized_requests_enabled"
                   defaultChecked={!!(profile as any)?.personalized_requests_enabled}
-                  className="h-5 w-5 accent-[#E53935]"
+                  className="h-5 w-5 accent-[#001B5C]"
                 />
               </label>
-              <div className="flex items-center rounded-xl border border-transparent bg-[#F7F7F8] px-4 py-4 focus-within:border-[#E53935] focus-within:bg-white">
+              <div className="flex items-center rounded-xl border border-transparent bg-[#F7F7F8] px-4 py-4 focus-within:border-[#001B5C] focus-within:bg-white">
                 <span className="mr-2 text-base font-semibold text-gray-500">$</span>
                 <input
                   type="number"
@@ -168,7 +168,7 @@ export default async function AccountPage({
               </div>
               <button
                 type="submit"
-                className="w-full rounded-xl bg-[#E53935] px-6 py-4 text-base font-semibold text-white transition-colors hover:bg-[#cf302d]"
+                className="w-full rounded-xl bg-[#001B5C] px-6 py-4 text-base font-semibold text-white transition-colors hover:bg-[#00144A]"
               >
                 Save Personalized Settings
               </button>
@@ -220,12 +220,12 @@ export default async function AccountPage({
               name="display_name"
               defaultValue={profile?.display_name ?? user.display_name}
               placeholder="Display name"
-              className="w-full rounded-xl border border-transparent bg-[#F7F7F8] px-4 py-4 text-base text-black outline-none transition-colors placeholder:text-[#999] focus:border-[#E53935] focus:bg-white"
+              className="w-full rounded-xl border border-transparent bg-[#F7F7F8] px-4 py-4 text-base text-black outline-none transition-colors placeholder:text-[#999] focus:border-[#001B5C] focus:bg-white"
               required
             />
             <button
               type="submit"
-              className="w-full rounded-xl bg-[#E53935] px-6 py-4 text-base font-semibold text-white transition-colors hover:bg-[#cf302d]"
+              className="w-full rounded-xl bg-[#001B5C] px-6 py-4 text-base font-semibold text-white transition-colors hover:bg-[#00144A]"
             >
               Save Name
             </button>
@@ -240,7 +240,7 @@ export default async function AccountPage({
             Add your Instagram handle to show a linked social profile on your Ophinia account.
           </p>
           <form action={updateInstagramAction} className="mt-5 space-y-4">
-            <div className="flex items-center rounded-xl border border-transparent bg-[#F7F7F8] px-4 py-4 focus-within:border-[#E53935] focus-within:bg-white">
+            <div className="flex items-center rounded-xl border border-transparent bg-[#F7F7F8] px-4 py-4 focus-within:border-[#001B5C] focus-within:bg-white">
               <span className="mr-2 text-base font-semibold text-gray-500">@</span>
               <input
                 type="text"
@@ -254,7 +254,7 @@ export default async function AccountPage({
             </div>
             <button
               type="submit"
-              className="w-full rounded-xl bg-[#E53935] px-6 py-4 text-base font-semibold text-white transition-colors hover:bg-[#cf302d]"
+              className="w-full rounded-xl bg-[#001B5C] px-6 py-4 text-base font-semibold text-white transition-colors hover:bg-[#00144A]"
             >
               Save Instagram
             </button>
@@ -278,7 +278,7 @@ export default async function AccountPage({
                     key={option.id}
                     action={updateProfileAvatarAction}
                     className={`rounded-[1.5rem] border p-4 transition-colors ${
-                      isSelected ? 'border-[#E53935] bg-[#FFF5F5]' : 'border-gray-200 bg-[#F7F7F8]'
+                      isSelected ? 'border-[#001B5C] bg-[#F3F6FF]' : 'border-gray-200 bg-[#F7F7F8]'
                     }`}
                   >
                     <input type="hidden" name="autograph_id" value={option.id} />
@@ -301,7 +301,7 @@ export default async function AccountPage({
                         type="submit"
                         className={`rounded-xl px-4 py-2 text-sm font-semibold transition-colors ${
                           isSelected
-                            ? 'bg-[#E53935] text-white'
+                            ? 'bg-[#001B5C] text-white'
                             : 'border border-black text-black hover:bg-black hover:text-white'
                         }`}
                       >

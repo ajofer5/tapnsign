@@ -118,7 +118,7 @@ function RequestCard({
         {checkoutHref ? (
           <Link
             href={checkoutHref}
-            className="rounded-xl bg-[#E53935] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#cf302d]"
+            className="rounded-xl bg-[#001B5C] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#00144A]"
           >
             Complete Payment
           </Link>

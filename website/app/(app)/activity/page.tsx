@@ -66,7 +66,7 @@ export default async function ActivityPage() {
                   </div>
                   <Link
                     href={getActivityHref(entry)}
-                    className="mt-2 block text-xl font-black text-black transition-colors hover:text-[#E53935]"
+                    className="mt-2 block text-xl font-black text-black transition-colors hover:text-[#001B5C]"
                   >
                     {entry.creator_name}
                     {entry.creator_sequence_number != null ? ` · #${entry.creator_sequence_number}` : ''}
