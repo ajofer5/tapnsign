@@ -27,9 +27,9 @@ export default function HomePage() {
           <div className="mb-4 inline-flex items-center rounded-full border border-[#D8DDE8] bg-white px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.22em] text-[#001B5C]">
             Verified Digital Autographs
           </div>
-          <h1 className="text-5xl font-black leading-none tracking-tight text-[#111111] md:text-7xl">
-            Creators win.<br />
-            Collectors win.
+          <h1 className="text-4xl font-semibold leading-none tracking-tight text-[#111111] md:text-6xl">
+            Collectors win.<br />
+            Creators win.
           </h1>
           <p className="mt-8 max-w-xl text-lg leading-relaxed text-gray-600 md:text-xl">
             A luxury-minimal marketplace for authenticated creator autographs, collectible ownership, and official prints.
