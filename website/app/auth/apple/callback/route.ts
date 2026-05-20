@@ -3,8 +3,8 @@ import { createWebsiteRouteSupabaseClient } from '../../../../lib/supabase';
 import { createWebSessionToken, getWebSessionCookieConfig, getWebSessionUserForProfile } from '../../../../lib/web-session';
 
 function sanitizeNextPath(value: string | null) {
-  if (!value) return '/app';
-  if (!value.startsWith('/') || value.startsWith('//')) return '/app';
+  if (!value) return '/home';
+  if (!value.startsWith('/') || value.startsWith('//')) return '/home';
   return value;
 }
 

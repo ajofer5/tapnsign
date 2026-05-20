@@ -8,7 +8,7 @@ export function OfferForm({
   suggestedAmount: string;
 }) {
   return (
-    <form action={`/app/offer/${autographId}/start`} method="post" className="mt-8 rounded-[1.75rem] bg-[#F6F6F7] p-6">
+    <form action={`/offer/${autographId}/start`} method="post" className="mt-8 rounded-[1.75rem] bg-[#F6F6F7] p-6">
       <label className="block text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">
         Your Offer
       </label>

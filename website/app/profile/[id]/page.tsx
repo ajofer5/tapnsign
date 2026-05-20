@@ -43,15 +43,13 @@ export default async function ProfilePage({
     <main className="min-h-screen bg-[#F2F2F4]">
       <nav className="border-b border-gray-200 bg-white px-6 py-4">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-6">
-          <Link href="/" className="text-lg font-black text-[#E53935]">
-            Ophinia
-          </Link>
+          <Link href="/" className="text-lg font-black text-black">Ophinia</Link>
           <div className="flex items-center gap-4">
             <Link href="/marketplace" className="text-sm text-gray-500 hover:text-black">
               Marketplace
             </Link>
             {user ? (
-              <Link href="/app" className="text-sm font-semibold text-gray-600 transition-colors hover:text-black">
+              <Link href="/home" className="text-sm font-semibold text-gray-600 transition-colors hover:text-black">
                 My App
               </Link>
             ) : (
@@ -102,7 +100,7 @@ export default async function ProfilePage({
                     </a>
                   ) : null}
                 </div>
-                <p className="mt-4 text-base leading-7 text-gray-600">
+                <p className="mt-4 max-w-xl text-base leading-7 text-gray-600">
                   Ophinia {verificationLabel.toLowerCase()} member since {formatDate(profile.member_since)}.
                   {profile.creator_since ? ` Creator since ${formatDate(profile.creator_since)}.` : ''}
                 </p>
@@ -144,22 +142,13 @@ export default async function ProfilePage({
               <Detail label="Member Since" value={formatDate(profile.member_since)} />
               <Detail label="Creator Since" value={formatDate(profile.creator_since)} />
               <Detail label="Autographs Created" value={String(profile.stats.autographs_signed ?? 0)} />
-              <Detail label="Series Created" value={String(profile.stats.unique_series_signed ?? 0)} />
               <Detail label="Autographs Owned" value={String(profile.stats.autographs_owned ?? 0)} />
-              <Detail label="Unique Creators Collected" value={String(profile.stats.unique_creators ?? 0)} />
-              <Detail label="Unique Series Collected" value={String(profile.stats.unique_series_owned ?? 0)} />
             </div>
           </div>
 
           <div className="rounded-[2rem] bg-white p-8 shadow-sm">
             <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
-              Trust
-            </p>
-            <h2 className="mt-3 text-2xl font-black text-black">
-              Verified digital autograph profile
-            </h2>
-            <p className="mt-4 text-base leading-7 text-gray-600">
-              Use this page to confirm who the creator is, review their current listings, and continue into certificate, offer, or checkout flows on the web.
+              Quick Trust
             </p>
             <div className="mt-6 space-y-3 text-sm text-gray-700">
               <TrustRow label="Ophinia Status" value={profileStatusLabel} />

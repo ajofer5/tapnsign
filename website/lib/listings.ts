@@ -93,6 +93,60 @@ export async function getWebsiteListing(id: string, viewerId?: string | null): P
     p_viewer_id: viewerId ?? null,
   });
 
-  if (error || !rows || rows.length === 0) return null;
-  return mapWebsiteListingRow(rows[0]);
+  if (!error && rows && rows.length > 0) {
+    return mapWebsiteListingRow(rows[0]);
+  }
+
+  if (!viewerId) return null;
+
+  const { data: ownedAutograph, error: ownedError } = await supabase
+    .from('autographs')
+    .select(`
+      id,
+      certificate_id,
+      created_at,
+      creator_id,
+      owner_id,
+      sale_state,
+      listing_mode,
+      price_cents,
+      video_url,
+      thumbnail_url,
+      creator_sequence_number,
+      series_sequence_number,
+      capture_width,
+      capture_height,
+      stroke_color,
+      status,
+      creator:creator_id ( display_name, verified ),
+      owner:owner_id ( display_name ),
+      series:series_id ( name, max_size )
+    `)
+    .eq('id', id)
+    .eq('owner_id', viewerId)
+    .eq('status', 'active')
+    .maybeSingle();
+
+  if (ownedError || !ownedAutograph) return null;
+
+  const { data: lockedOffer } = await supabase
+    .from('autograph_offers')
+    .select('payment_due_at')
+    .eq('autograph_id', id)
+    .eq('status', 'accepted')
+    .is('accepted_transfer_id', null)
+    .gt('payment_due_at', new Date().toISOString())
+    .order('payment_due_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return mapWebsiteListingRow({
+    ...ownedAutograph,
+    creator_display_name: (ownedAutograph as any).creator?.display_name ?? null,
+    creator_verified: !!(ownedAutograph as any).creator?.verified,
+    owner_display_name: (ownedAutograph as any).owner?.display_name ?? null,
+    series_name: (ownedAutograph as any).series?.name ?? null,
+    series_max_size: (ownedAutograph as any).series?.max_size ?? null,
+    offer_locked_until: lockedOffer?.payment_due_at ?? null,
+  });
 }

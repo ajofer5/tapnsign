@@ -6,8 +6,8 @@ import { createWebsiteMutableServerSupabaseClient } from '../../lib/supabase';
 import { createWebSessionToken, getWebSessionCookieConfig, getWebSessionUserForProfile } from '../../lib/web-session';
 
 function sanitizeNextPath(value: FormDataEntryValue | null) {
-  if (typeof value !== 'string' || !value) return '/app';
-  if (!value.startsWith('/') || value.startsWith('//')) return '/app';
+  if (typeof value !== 'string' || !value) return '/home';
+  if (!value.startsWith('/') || value.startsWith('//')) return '/home';
   return value;
 }
 

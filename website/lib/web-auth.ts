@@ -86,7 +86,7 @@ export async function requireWebSessionUser() {
   const user = await getWebSessionUser();
   if (!user) {
     const headersList = await headers();
-    const path = headersList.get('x-invoke-path') ?? headersList.get('referer') ?? '/app';
+    const path = headersList.get('x-invoke-path') ?? headersList.get('referer') ?? '/home';
     const next = path.startsWith('/') ? path : '/home';
     redirect(`/login?next=${encodeURIComponent(next)}`);
   }

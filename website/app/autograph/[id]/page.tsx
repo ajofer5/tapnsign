@@ -35,10 +35,7 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
         </section>
 
         <section className="rounded-[2rem] bg-white p-8 shadow-sm">
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
-            Listing
-          </p>
-          <h1 className="mt-3 text-4xl font-black tracking-tight text-black">
+          <h1 className="text-4xl font-black tracking-tight text-black">
             {listing.creator?.display_name ?? 'Creator'}
             {listing.creator_sequence_number != null ? ` · #${listing.creator_sequence_number}` : ''}
           </h1>
@@ -52,7 +49,7 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
           ) : null}
 
           <div className="mt-8 rounded-[1.5rem] bg-[#F6F6F7] p-6">
-            <div className="flex items-end justify-between gap-6">
+            <div className="flex flex-wrap items-end justify-between gap-6">
               <div>
                 <div className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
                   {listing.offer_locked_until
@@ -65,10 +62,10 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
                   {listing.offer_locked_until ? 'Sale Pending' : formatMoney(listing.price_cents)}
                 </div>
               </div>
-              <div className="flex flex-col gap-3">
+              <div className="flex flex-wrap gap-3">
                 {canBuyNow(listing) ? (
                   <Link
-                    href={`/app/checkout/${listing.id}`}
+                    href={`/checkout/${listing.id}`}
                     className="rounded-full bg-black px-6 py-3 text-center text-sm font-semibold text-white transition-colors hover:bg-[#2A2A2D]"
                   >
                     Buy
@@ -76,46 +73,46 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
                 ) : null}
                 {canMakeOffer(listing) ? (
                   <Link
-                    href={`/app/offer/${listing.id}`}
+                    href={`/offer/${listing.id}`}
                     className="rounded-full bg-black px-6 py-3 text-center text-sm font-semibold text-white transition-colors hover:bg-[#2A2A2D]"
                   >
                     Make Offer
                   </Link>
                 ) : null}
+                <form action={toggleWatchlistAction.bind(null, listing.id, isSaved, `/autograph/${listing.id}`)}>
+                  <button
+                    type="submit"
+                    className="rounded-full border border-gray-300 px-5 py-3 text-sm font-semibold text-gray-700 transition-colors hover:border-black hover:text-black"
+                  >
+                    {isSaved ? 'Saved' : 'Save'}
+                  </button>
+                </form>
               </div>
             </div>
           </div>
 
-          <div className="mt-8 space-y-4 text-sm text-gray-700">
-            <Detail label="Captured" value={formatDate(listing.created_at)} />
-            <Detail label="Certificate" value={listing.certificate_id} />
-            <Detail label="Listed by" value={listing.owner?.display_name ?? '—'} />
-            <Detail label="Creator verified" value={listing.creator?.verified ? 'Yes' : 'No'} />
-          </div>
-
-          <div className="mt-8 flex flex-wrap gap-3">
-            <form action={toggleWatchlistAction.bind(null, listing.id, isSaved, `/autograph/${listing.id}`)}>
-              <button
-                type="submit"
-                className="rounded-full border border-black px-5 py-3 text-sm font-semibold text-black transition-colors hover:bg-black hover:text-white"
-              >
-                {isSaved ? 'Saved' : 'Save'}
-              </button>
-            </form>
-            <Link
-              href={`/verify/${listing.certificate_id}`}
-              className="rounded-full border border-gray-300 px-5 py-3 text-sm font-semibold text-gray-700 transition-colors hover:border-black hover:text-black"
-            >
-              View Certificate
-            </Link>
-            {listing.creator_id ? (
+          <div className="mt-8 grid gap-6 md:grid-cols-2">
+            <div className="space-y-4 text-sm text-gray-700">
+              <Detail label="Captured" value={formatDate(listing.created_at)} />
+              <Detail label="Listed by" value={listing.owner?.display_name ?? '—'} />
+              <Detail label="Creator verified" value={listing.creator?.verified ? 'Yes' : 'No'} />
+            </div>
+            <div className="space-y-3">
               <Link
-                href={`/profile/${listing.creator_id}`}
-                className="rounded-full border border-gray-300 px-5 py-3 text-sm font-semibold text-gray-700 transition-colors hover:border-black hover:text-black"
+                href={`/verify/${listing.certificate_id}`}
+                className="block rounded-full border border-gray-300 px-5 py-3 text-center text-sm font-semibold text-gray-700 transition-colors hover:border-black hover:text-black"
               >
-                Creator Profile
+                View Certificate
               </Link>
-            ) : null}
+              {listing.creator_id ? (
+                <Link
+                  href={`/profile/${listing.creator_id}`}
+                  className="block rounded-full border border-gray-300 px-5 py-3 text-center text-sm font-semibold text-gray-700 transition-colors hover:border-black hover:text-black"
+                >
+                  Creator Profile
+                </Link>
+              ) : null}
+            </div>
           </div>
         </section>
       </div>

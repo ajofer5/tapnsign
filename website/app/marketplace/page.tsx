@@ -31,13 +31,10 @@ export default async function MarketplacePage({
     <main className="min-h-screen bg-[#F2F2F4]">
       <nav className="border-b border-gray-200 bg-white px-6 py-4">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-6">
-          <Link href="/" className="text-lg font-black text-[#E53935]">
-            Ophinia
-          </Link>
+          <Link href="/" className="text-lg font-black text-black">Ophinia</Link>
           <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-500">Marketplace</span>
             {user ? (
-              <Link href="/app" className="text-sm font-semibold text-gray-600 transition-colors hover:text-black">
+              <Link href="/home" className="text-sm font-semibold text-gray-600 transition-colors hover:text-black">
                 My App
               </Link>
             ) : (
@@ -55,15 +52,17 @@ export default async function MarketplacePage({
       </nav>
 
       <div className="mx-auto max-w-6xl px-6 py-10">
-        <section className="rounded-[2rem] bg-white p-8 shadow-sm">
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
-            Marketplace
-          </p>
-          <h1 className="mt-3 text-4xl font-black tracking-tight text-black md:text-5xl">
-            Browse verified digital autographs.
-          </h1>
-          <p className="mt-4 max-w-3xl text-lg leading-8 text-gray-600">
-            Discover creator listings, inspect their certificates, and buy or make an offer with the same Ophinia account you use in the app.
+        <section className="mb-8 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
+              Marketplace
+            </p>
+            <h1 className="mt-3 text-3xl font-black tracking-tight text-black md:text-4xl">
+              Verified digital autographs
+            </h1>
+          </div>
+          <p className="max-w-2xl text-sm leading-7 text-gray-600 md:text-base">
+            Browse available listings, open an autograph, and continue into checkout or offers when you are ready.
           </p>
         </section>
 

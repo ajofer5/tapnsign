@@ -42,6 +42,6 @@ export async function toggleWatchlistAction(
   revalidatePath(safeNextPath);
   revalidatePath('/marketplace');
   revalidatePath(`/autograph/${autographId}`);
-  revalidatePath('/app');
-  revalidatePath('/app/saved');
+  revalidatePath('/home');
+  revalidatePath('/saved');
 }

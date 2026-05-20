@@ -39,7 +39,7 @@ export function WebListingCard({
         )}
       </Link>
 
-      <div className="space-y-3 p-5">
+      <div className="space-y-4 p-5">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <Link
@@ -57,27 +57,22 @@ export function WebListingCard({
                   : ''}
               </div>
             ) : null}
-          </div>
-          <div className="text-right">
-            <div className="text-xs uppercase tracking-[0.2em] text-gray-500">
-              Listed by
+            <div className="mt-2 text-xs font-medium text-gray-500">
+              Listed by {ownerName}
             </div>
-            <div className="mt-1 text-sm font-semibold normal-case tracking-normal text-black">
-              {ownerName}
-            </div>
-            <form action={toggleWatchlistAction.bind(null, listing.id, isSaved, savePath)} className="mt-3">
-              <button
-                type="submit"
-                className="rounded-full border border-black px-3 py-1.5 text-xs font-semibold text-black transition-colors hover:bg-black hover:text-white"
-              >
-                {isSaved ? 'Saved' : 'Save'}
-              </button>
-            </form>
           </div>
+          <form action={toggleWatchlistAction.bind(null, listing.id, isSaved, savePath)}>
+            <button
+              type="submit"
+              className="rounded-full border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:border-black hover:text-black"
+            >
+              {isSaved ? 'Saved' : 'Save'}
+            </button>
+          </form>
         </div>
 
-        <div className="flex items-end justify-between gap-4 pt-1">
-          <div>
+        <div className="flex items-end justify-between gap-4 border-t border-gray-100 pt-4">
+          <div className="min-w-0">
             <div className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">
               {listing.offer_locked_until
                 ? 'Status'
@@ -89,22 +84,24 @@ export function WebListingCard({
               {listing.offer_locked_until ? 'Sale Pending' : formatMoney(listing.price_cents)}
             </div>
           </div>
-          {canBuyNow(listing) ? (
-            <Link
-              href={`/app/checkout/${listing.id}`}
-              className="rounded-full border border-black px-4 py-2 text-sm font-semibold text-black transition-colors hover:bg-black hover:text-white"
-            >
-              Buy
-            </Link>
-          ) : null}
-          {canMakeOffer(listing) ? (
-            <Link
-              href={`/app/offer/${listing.id}`}
-              className="rounded-full border border-black px-4 py-2 text-sm font-semibold text-black transition-colors hover:bg-black hover:text-white"
-            >
-              Make Offer
-            </Link>
-          ) : null}
+          <div className="shrink-0">
+            {canBuyNow(listing) ? (
+              <Link
+                href={`/checkout/${listing.id}`}
+                className="rounded-full bg-black px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#2A2A2D]"
+              >
+                Buy
+              </Link>
+            ) : null}
+            {canMakeOffer(listing) ? (
+              <Link
+                href={`/offer/${listing.id}`}
+                className="rounded-full bg-black px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#2A2A2D]"
+              >
+                Offer
+              </Link>
+            ) : null}
+          </div>
         </div>
       </div>
     </article>
