@@ -47,7 +47,7 @@ export default async function VerifyPage({ params }: { params: Promise<{ id: str
       {/* Nav */}
       <nav className="flex items-center justify-between border-b border-[#D8DDE8] bg-white px-6 py-4">
         <Link href="/">
-          <img src="/ophinia-logo.png" alt="Ophinia" className="h-[4.5rem]" />
+          <img src="/ophinia-logo.png" alt="Ophinia" className="h-8" />
         </Link>
         <span className="text-sm text-gray-500">Certificate of Authenticity</span>
       </nav>

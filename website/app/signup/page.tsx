@@ -29,7 +29,7 @@ export default async function SignupPage({
         <div className="rounded-[2rem] bg-white p-8 shadow-sm md:p-10">
           <div className="flex items-center justify-between gap-4">
             <Link href="/">
-              <Image src="/ophinia-logo.png" alt="Ophinia" width={360} height={88} className="h-16 w-auto" />
+              <Image src="/ophinia-logo.png" alt="Ophinia" width={120} height={32} className="h-8 w-auto" />
             </Link>
             <Link
               href="/login"
