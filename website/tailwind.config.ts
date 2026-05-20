@@ -6,8 +6,14 @@ const config: Config = {
     extend: {
       colors: {
         brand: {
-          red: '#E53935',
           bg: '#F2F2F4',
+          black: '#111111',
+          navy: '#001B5C',
+          blue: '#0066FF',
+          violet: '#6722F7',
+          gold: '#F1C168',
+          ink: '#1F2430',
+          mist: '#EEF1F7',
         },
       },
       fontFamily: {

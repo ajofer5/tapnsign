@@ -1,10 +1,11 @@
+import Image from 'next/image';
 import Link from 'next/link';
 import { createAccountAction } from './actions';
 import { getWebSessionUser } from '../../lib/web-auth';
 
 function sanitizeNextPath(value?: string) {
-  if (!value) return '/app';
-  if (!value.startsWith('/') || value.startsWith('//')) return '/app';
+  if (!value) return '/home';
+  if (!value.startsWith('/') || value.startsWith('//')) return '/home';
   return value;
 }
 
@@ -27,8 +28,8 @@ export default async function SignupPage({
       <div className="mx-auto max-w-2xl">
         <div className="rounded-[2rem] bg-white p-8 shadow-sm md:p-10">
           <div className="flex items-center justify-between gap-4">
-            <Link href="/" className="text-lg font-black text-[#E53935]">
-              Ophinia
+            <Link href="/">
+              <Image src="/logo.png" alt="Ophinia" width={180} height={44} className="h-8 w-auto" />
             </Link>
             <Link
               href="/login"
@@ -128,7 +129,7 @@ export default async function SignupPage({
 
           <div className="mt-8 border-t border-gray-200 pt-6 text-sm leading-7 text-gray-600">
             Already have an Ophinia account?{' '}
-            <Link href={`/login?next=${encodeURIComponent(next)}`} className="font-semibold text-black hover:text-[#E53935]">
+            <Link href={`/login?next=${encodeURIComponent(next)}`} className="font-semibold text-black hover:text-[#6722F7]">
               Sign in here
             </Link>
             .

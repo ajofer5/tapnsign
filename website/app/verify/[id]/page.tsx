@@ -45,7 +45,7 @@ export default async function VerifyPage({ params }: { params: Promise<{ id: str
   return (
     <main className="min-h-screen bg-[#F2F2F4]">
       {/* Nav */}
-      <nav className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+      <nav className="flex items-center justify-between border-b border-[#D8DDE8] bg-white px-6 py-4">
         <Link href="/">
           <img src="/logo.png" alt="Ophinia" className="h-[4.5rem]" />
         </Link>
@@ -78,11 +78,11 @@ export default async function VerifyPage({ params }: { params: Promise<{ id: str
 
             {/* Certificate card */}
             <div className="bg-white rounded-2xl overflow-hidden shadow-sm">
-              <div className="bg-[#E53935] px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center justify-between bg-[#001B5C] px-6 py-4">
                 <span className="text-white font-bold text-sm tracking-wide uppercase">
                   Certificate of Authenticity
                 </span>
-                <img src="/logo.png" alt="Ophinia" className="h-12 brightness-0 invert" />
+                <img src="/logo-white.png" alt="Ophinia" className="h-10" />
               </div>
               <div className="px-6 py-5 space-y-4">
                 <CertRow
@@ -130,7 +130,7 @@ export default async function VerifyPage({ params }: { params: Promise<{ id: str
             </p>
             <Link
               href="/"
-              className="inline-block mt-8 bg-[#E53935] text-white px-6 py-3 rounded-full font-semibold text-sm hover:bg-red-700 transition-colors"
+              className="mt-8 inline-block rounded-full bg-[#001B5C] px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#00144A]"
             >
               Go to Ophinia
             </Link>

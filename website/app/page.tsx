@@ -3,167 +3,164 @@ import Link from 'next/link';
 export default function HomePage() {
   return (
     <main>
-      {/* Nav */}
-      <nav className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-6 py-4 bg-[#F2F2F4] border-b border-gray-200">
-        <img src="/logo.png" alt="Ophinia" className="h-9" />
+      <nav className="fixed left-0 right-0 top-0 z-50 flex items-center justify-between border-b border-[#D8DDE8] bg-white/92 px-6 py-4 backdrop-blur">
+        <img src="/logo.png" alt="Ophinia" className="h-8" />
         <div className="flex items-center gap-4">
-          <Link href="/marketplace" className="text-sm font-semibold text-gray-600 hover:text-black transition-colors">
+          <Link href="/marketplace" className="text-sm font-semibold text-gray-600 transition-colors hover:text-black">
             Marketplace
           </Link>
-          <Link href="/login" className="text-sm font-semibold text-gray-600 hover:text-black transition-colors">
+          <Link href="/login" className="text-sm font-semibold text-gray-600 transition-colors hover:text-black">
             Sign In
           </Link>
           <Link
             href="/signup"
-            className="bg-[#E53935] text-white px-5 py-2 rounded-full text-sm font-semibold hover:bg-red-700 transition-colors"
+            className="rounded-full bg-[#001B5C] px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#00144A]"
           >
             Create Account
           </Link>
         </div>
       </nav>
 
-      {/* Hero */}
-      <section className="bg-[#F2F2F4] min-h-screen flex flex-col items-center justify-center text-center px-6 pt-20 pb-16">
-        <img src="/logo.png" alt="Ophinia" className="w-[31rem] md:w-[43rem] mb-12" />
-        <h1 className="text-black text-5xl md:text-7xl font-black leading-none tracking-tight">
-          Create.<br />
-          Collect.<br />
-          Display.
-        </h1>
-        <p className="text-gray-600 text-lg md:text-xl mt-8 max-w-md leading-relaxed">
-          The marketplace for verified digital autographs.
-        </p>
-        <div className="mt-12 flex flex-wrap items-center justify-center gap-3">
-          <Link
-            href="/marketplace"
-            className="inline-flex items-center gap-3 bg-[#E53935] text-white px-8 py-4 rounded-full text-lg font-bold hover:bg-red-700 transition-colors"
-          >
-            Browse Marketplace
-          </Link>
-          <Link
-            href="/login"
-            className="inline-flex items-center gap-3 border border-black text-black px-8 py-4 rounded-full text-lg font-bold hover:bg-black hover:text-white transition-colors"
-          >
-            Sign In
-          </Link>
+      <section className="min-h-screen bg-[linear-gradient(180deg,#F7F8FB_0%,#EEF1F7_100%)] px-6 pb-16 pt-20">
+        <div className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-6xl flex-col items-center justify-center text-center">
+          <img src="/logo.png" alt="Ophinia" className="mb-10 w-[18rem] md:w-[24rem]" />
+          <div className="mb-4 inline-flex items-center rounded-full border border-[#D8DDE8] bg-white px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.22em] text-[#001B5C]">
+            Verified Digital Autographs
+          </div>
+          <h1 className="text-5xl font-black leading-none tracking-tight text-[#111111] md:text-7xl">
+            Create.<br />
+            Collect.<br />
+            Display.
+          </h1>
+          <p className="mt-8 max-w-xl text-lg leading-relaxed text-gray-600 md:text-xl">
+            A luxury-minimal marketplace for authenticated creator autographs, collectible ownership, and official prints.
+          </p>
+          <div className="mt-12 flex flex-wrap items-center justify-center gap-3">
+            <Link
+              href="/marketplace"
+              className="inline-flex items-center gap-3 rounded-full bg-[#001B5C] px-8 py-4 text-lg font-bold text-white transition-colors hover:bg-[#00144A]"
+            >
+              Browse Marketplace
+            </Link>
+            <Link
+              href="/signup"
+              className="inline-flex items-center gap-3 rounded-full border border-[#001B5C] px-8 py-4 text-lg font-bold text-[#001B5C] transition-colors hover:bg-[#001B5C] hover:text-white"
+            >
+              Create Account
+            </Link>
+          </div>
         </div>
       </section>
 
-      {/* Feature cards */}
-      <section className="bg-[#F2F2F4] py-20 px-6">
-        <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6">
+      <section className="bg-white px-6 py-20">
+        <div className="mx-auto grid max-w-5xl grid-cols-1 gap-6 md:grid-cols-3">
           <FeatureCard
-            icon="✍️"
+            icon="✦"
             title="Verified Creators"
-            desc="Identity-verified creators sign autographs that fans know are 100% authentic."
+            desc="Identity-verified creators sign autographs that fans can trust."
           />
           <FeatureCard
-            icon="🔐"
-            title="Secured Ownership"
-            desc="Every autograph has a Certificate of Authenticity. Ownership is recorded and transferable."
+            icon="◌"
+            title="Recorded Ownership"
+            desc="Every autograph includes a Certificate of Authenticity and persistent ownership history."
           />
           <FeatureCard
-            icon="🖼️"
-            title="Limited Prints"
-            desc="One print per owner, guaranteed exclusive. A physical display of something truly yours."
+            icon="▣"
+            title="Official Prints"
+            desc="Own the digital autograph, then order an official numbered print when you want to display it."
           />
         </div>
       </section>
 
-      {/* For Creators */}
-      <section className="bg-white py-20 px-6">
-        <div className="max-w-4xl mx-auto">
-          <div className="text-[#E53935] text-sm font-bold uppercase tracking-widest text-center mb-3">
+      <section className="bg-[#F7F8FB] px-6 py-20">
+        <div className="mx-auto max-w-4xl">
+          <div className="mb-3 text-center text-sm font-bold uppercase tracking-widest text-[#6722F7]">
             Creators
           </div>
-          <h2 className="text-3xl md:text-4xl font-black text-center mb-4">
+          <h2 className="mb-4 text-center text-3xl font-black md:text-4xl">
             Your name. Your image. Your terms.
           </h2>
-          <p className="text-gray-500 text-center text-lg mb-12 max-w-xl mx-auto">
-            Ophinia gives talented individuals direct control over monetizing their name, image, and likeness — no middlemen, no gatekeepers. Capture a video autograph, set your price, and sell directly to fans.
+          <p className="mx-auto mb-12 max-w-2xl text-center text-lg text-gray-500">
+            Ophinia gives creators direct control over verified autograph capture, pricing, and collectible ownership without compromising presentation.
           </p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <BulletCard text="Identity verified through Stripe Identity — fans know it's really you" />
-            <BulletCard text="Capture a personalized video autograph in seconds" />
-            <BulletCard text="Set your own price and sell to fans directly" />
-            <BulletCard text="Your Certificate of Authenticity stays on record permanently" />
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <BulletCard text="Identity verified through Stripe Identity so fans know it is really you." />
+            <BulletCard text="Capture a personalized video autograph in seconds." />
+            <BulletCard text="Set your own price and sell directly to your audience." />
+            <BulletCard text="Every autograph stays tied to a permanent certificate record." />
           </div>
         </div>
       </section>
 
-      {/* For Collectors */}
-      <section className="bg-[#F2F2F4] py-20 px-6">
-        <div className="max-w-4xl mx-auto">
-          <div className="text-[#E53935] text-sm font-bold uppercase tracking-widest text-center mb-3">
+      <section className="bg-white px-6 py-20">
+        <div className="mx-auto max-w-4xl">
+          <div className="mb-3 text-center text-sm font-bold uppercase tracking-widest text-[#0066FF]">
             Collectors
           </div>
-          <h2 className="text-3xl md:text-4xl font-black text-center mb-4">
+          <h2 className="mb-4 text-center text-3xl font-black md:text-4xl">
             Browse. Collect. Display.
           </h2>
-          <p className="text-gray-500 text-center text-lg mb-12 max-w-xl mx-auto">
-            Ophinia autographs are verified digital collectibles, each authenticated with a unique Certificate of Authenticity. Display them on your public profile or order an official print for your wall.
+          <p className="mx-auto mb-12 max-w-2xl text-center text-lg text-gray-500">
+            Browse authenticated listings, inspect the certificate, and build a collection that can live digitally and on the wall.
           </p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <BulletCard text="Purchase autographs directly from verified creators" />
-            <BulletCard text="Every autograph includes a Certificate of Authenticity with QR verification" />
-            <BulletCard text="Sell your autographs in the marketplace when you're ready" />
-            <BulletCard text="Order an official print — one per owner, guaranteed exclusive" />
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <BulletCard text="Purchase autographs directly from verified creators." />
+            <BulletCard text="Every autograph includes a Certificate of Authenticity with QR verification." />
+            <BulletCard text="Save, share, and resell through the marketplace when you are ready." />
+            <BulletCard text="Order official prints to display the pieces you actually own." />
           </div>
         </div>
       </section>
 
-      {/* Official Prints */}
-      <section className="bg-[#E53935] py-20 px-6 text-white">
-        <div className="max-w-3xl mx-auto text-center">
-          <div className="text-red-200 text-sm font-bold uppercase tracking-widest mb-3">
+      <section className="bg-[#001B5C] px-6 py-20 text-white">
+        <div className="mx-auto max-w-3xl text-center">
+          <div className="mb-3 text-sm font-bold uppercase tracking-widest text-[#F1C168]">
             Official Prints
           </div>
-          <h2 className="text-3xl md:text-4xl font-black mb-6">
-            Hang it on the wall.
+          <h2 className="mb-6 text-3xl font-black md:text-4xl">
+            Bring the autograph into the room.
           </h2>
-          <p className="text-red-100 text-lg max-w-xl mx-auto">
-            One print per owner. Designed to protect the value of every autograph you collect.
+          <p className="mx-auto max-w-xl text-lg text-[#D9E2FF]">
+            Digital ownership stays primary. Official prints give collectors a physical format without losing the certificate-driven provenance.
           </p>
         </div>
       </section>
 
-      {/* Download CTA */}
-      <section className="bg-[#F2F2F4] py-24 px-6 text-center">
-        <img src="/logo.png" alt="Ophinia" className="h-16 mx-auto mb-8" />
-        <h2 className="text-black text-3xl md:text-4xl font-black mb-4">
+      <section className="bg-[#F7F8FB] px-6 py-24 text-center">
+        <img src="/logo.png" alt="Ophinia" className="mx-auto mb-8 h-14" />
+        <h2 className="mb-4 text-3xl font-black text-black md:text-4xl">
           Ready to browse?
         </h2>
-        <p className="text-gray-600 text-lg mb-10">
-          Explore verified creator listings on the web, then use the app to create new autographs.
+        <p className="mb-10 text-lg text-gray-600">
+          Explore verified listings on the web, then use the app to create new autographs.
         </p>
         <div className="flex flex-wrap items-center justify-center gap-3">
           <Link
             href="/marketplace"
-            className="inline-flex items-center gap-3 bg-[#E53935] text-white px-8 py-4 rounded-full text-lg font-bold hover:bg-red-700 transition-colors"
+            className="inline-flex items-center gap-3 rounded-full bg-[#001B5C] px-8 py-4 text-lg font-bold text-white transition-colors hover:bg-[#00144A]"
           >
             Browse Marketplace
           </Link>
           <Link
             href="/signup"
-            className="inline-flex items-center gap-3 border border-black text-black px-8 py-4 rounded-full text-lg font-bold hover:bg-black hover:text-white transition-colors"
+            className="inline-flex items-center gap-3 rounded-full border border-[#001B5C] px-8 py-4 text-lg font-bold text-[#001B5C] transition-colors hover:bg-[#001B5C] hover:text-white"
           >
             Create Account
           </Link>
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="bg-[#F2F2F4] border-t border-gray-200 py-10 px-6">
-        <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
+      <footer className="border-t border-[#D8DDE8] bg-white px-6 py-10">
+        <div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-6 md:flex-row">
           <img src="/logo.png" alt="Ophinia" className="h-5" />
           <div className="flex gap-6 text-sm text-gray-500">
-            <Link href="/privacy" className="hover:text-black transition-colors">
+            <Link href="/privacy" className="transition-colors hover:text-black">
               Privacy Policy
             </Link>
-            <Link href="/terms" className="hover:text-black transition-colors">
+            <Link href="/terms" className="transition-colors hover:text-black">
               Terms of Service
             </Link>
-            <a href="mailto:hello@tapnsign.com" className="hover:text-black transition-colors">
+            <a href="mailto:hello@tapnsign.com" className="transition-colors hover:text-black">
               Contact
             </a>
           </div>
@@ -176,19 +173,19 @@ export default function HomePage() {
 
 function FeatureCard({ icon, title, desc }: { icon: string; title: string; desc: string }) {
   return (
-    <div className="bg-white rounded-2xl p-7">
-      <div className="text-3xl mb-4">{icon}</div>
-      <h3 className="text-lg font-bold mb-2">{title}</h3>
-      <p className="text-gray-500 text-sm leading-relaxed">{desc}</p>
+    <div className="rounded-[1.5rem] border border-[#D8DDE8] bg-white p-7 shadow-sm">
+      <div className="mb-4 text-2xl font-black text-[#001B5C]">{icon}</div>
+      <h3 className="mb-2 text-lg font-bold">{title}</h3>
+      <p className="text-sm leading-relaxed text-gray-500">{desc}</p>
     </div>
   );
 }
 
 function BulletCard({ text }: { text: string }) {
   return (
-    <div className="flex items-start gap-3 p-4 rounded-xl bg-[#F2F2F4]">
-      <span className="text-[#E53935] font-black text-lg leading-snug">✓</span>
-      <p className="text-gray-700 leading-snug">{text}</p>
+    <div className="flex items-start gap-3 rounded-xl border border-[#E1E5EF] bg-white p-4">
+      <span className="text-lg font-black leading-snug text-[#6722F7]">✦</span>
+      <p className="leading-snug text-gray-700">{text}</p>
     </div>
   );
 }

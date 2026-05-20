@@ -6,8 +6,8 @@ import { GoogleSignInButton } from '../../components/google-sign-in-button';
 import { AppleSignInButton } from '../../components/apple-sign-in-button';
 
 function sanitizeNextPath(value?: string) {
-  if (!value) return '/app';
-  if (!value.startsWith('/') || value.startsWith('//')) return '/app';
+  if (!value) return '/home';
+  if (!value.startsWith('/') || value.startsWith('//')) return '/home';
   return value;
 }
 
@@ -88,7 +88,7 @@ export default async function LoginPage({
             name="email"
             defaultValue={email}
             placeholder="Email"
-            className="w-full rounded-xl border border-transparent bg-white px-4 py-4 text-base text-black outline-none transition-colors placeholder:text-[#999] focus:border-[#E53935]"
+            className="w-full rounded-xl border border-transparent bg-white px-4 py-4 text-base text-black outline-none transition-colors placeholder:text-[#999] focus:border-[#001B5C]"
             autoComplete="email"
             required
           />
@@ -96,14 +96,14 @@ export default async function LoginPage({
             type="password"
             name="password"
             placeholder="Password"
-            className="w-full rounded-xl border border-transparent bg-white px-4 py-4 text-base text-black outline-none transition-colors placeholder:text-[#999] focus:border-[#E53935]"
+            className="w-full rounded-xl border border-transparent bg-white px-4 py-4 text-base text-black outline-none transition-colors placeholder:text-[#999] focus:border-[#001B5C]"
             autoComplete="current-password"
             required
           />
 
           <button
             type="submit"
-            className="w-full rounded-xl bg-[#E53935] px-6 py-4 text-base font-semibold text-white transition-colors hover:bg-[#cf302d]"
+            className="w-full rounded-xl bg-[#001B5C] px-6 py-4 text-base font-semibold text-white transition-colors hover:bg-[#00144A]"
           >
             Sign In
           </button>
@@ -124,7 +124,7 @@ export default async function LoginPage({
           Need an account?{' '}
           <Link
             href={`/signup?next=${encodeURIComponent(next)}`}
-            className="font-semibold text-black hover:text-[#E53935]"
+            className="font-semibold text-black hover:text-[#6722F7]"
           >
             Sign up
           </Link>
