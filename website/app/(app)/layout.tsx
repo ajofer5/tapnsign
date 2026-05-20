@@ -14,7 +14,7 @@ export default async function WebAppLayout({ children }: { children: ReactNode }
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-6 px-6 py-4">
           <div className="flex items-center gap-8">
             <Link href="/">
-              <Image src="/logo.png" alt="Ophinia" width={120} height={32} className="h-8 w-auto" />
+              <Image src="/logo.png" alt="Ophinia" width={240} height={64} className="h-16 w-auto" />
             </Link>
             <div className="hidden items-center gap-5 text-sm font-medium text-gray-600 md:flex">
               <Link href="/home" prefetch={false} className="hover:text-black">Home</Link>

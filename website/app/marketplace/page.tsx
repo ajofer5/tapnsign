@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import Image from 'next/image';
 import { WebListingCard } from '../../components/web-listing-card';
 import { getMarketplaceListings } from '../../lib/marketplace';
 import { getWebSessionUser } from '../../lib/web-auth';
@@ -31,7 +32,9 @@ export default async function MarketplacePage({
     <main className="min-h-screen bg-[#F2F2F4]">
       <nav className="border-b border-gray-200 bg-white px-6 py-4">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-6">
-          <Link href="/" className="text-lg font-black text-black">Ophinia</Link>
+          <Link href="/">
+            <Image src="/logo.png" alt="Ophinia" width={240} height={64} className="h-16 w-auto" />
+          </Link>
           <div className="flex items-center gap-4">
             {user ? (
               <Link href="/home" className="text-sm font-semibold text-gray-600 transition-colors hover:text-black">
