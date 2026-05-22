@@ -26,6 +26,7 @@ export type WebsiteListing = {
   series_name?: string | null;
   series_max_size?: number | null;
   offer_locked_until?: string | null;
+  print_count?: number | null;
 };
 
 export function mapWebsiteListingRow(row: any): WebsiteListing {
@@ -59,6 +60,7 @@ export function mapWebsiteListingRow(row: any): WebsiteListing {
     series_name: row.series_name ?? null,
     series_max_size: row.series_max_size ?? null,
     offer_locked_until: row.offer_locked_until ?? null,
+    print_count: row.print_count ?? null,
   };
 }
 

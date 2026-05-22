@@ -34,6 +34,7 @@ export type WebsiteMyListing = {
   auto_decline_below: boolean;
   auto_accept_above: boolean;
   offer_locked_until: string | null;
+  print_count: number | null;
 };
 
 export type WebsiteIncomingOffer = {

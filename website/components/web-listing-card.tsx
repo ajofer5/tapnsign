@@ -12,7 +12,6 @@ export function WebListingCard({
   savePath?: string;
 }) {
   const creatorName = listing.creator?.display_name ?? 'Creator';
-  const ownerName = listing.owner?.display_name ?? '—';
 
   return (
     <article className="overflow-hidden rounded-[6px] bg-white shadow-sm">
@@ -57,9 +56,6 @@ export function WebListingCard({
                   : ''}
               </div>
             ) : null}
-            <div className="mt-1 text-[11px] font-medium leading-4 text-gray-500">
-              Listed by {ownerName}
-            </div>
           </div>
           <form action={toggleWatchlistAction.bind(null, listing.id, isSaved, savePath)}>
             <button
@@ -74,14 +70,12 @@ export function WebListingCard({
         <div className="flex items-end justify-between gap-2 border-t border-gray-100 pt-3">
           <div className="min-w-0">
             <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-500">
-              {listing.offer_locked_until
-                ? 'Status'
-                : listing.listing_mode === 'buy_now'
-                  ? 'Price'
-                  : 'Estimated Value'}
+              {listing.offer_locked_until ? 'Listing' : listing.listing_mode === 'buy_now' ? 'Listing' : 'Listing'}
             </div>
-            <div className="mt-1 truncate text-base font-black text-black">
-              {listing.offer_locked_until ? 'Sale Pending' : formatMoney(listing.price_cents)}
+            <div className="mt-1 text-xs leading-5 text-gray-700">
+              {listing.offer_locked_until
+                ? 'Sale Pending'
+                : `${listing.listing_mode === 'buy_now' ? 'Fixed Price' : 'Estimated Value'}${typeof listing.price_cents === 'number' ? ` · ${formatMoney(listing.price_cents)}` : ''}`}
             </div>
           </div>
           <div className="shrink-0">

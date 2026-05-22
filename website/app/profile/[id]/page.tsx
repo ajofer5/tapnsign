@@ -37,7 +37,7 @@ export default async function ProfilePage({
     ? await getSavedAutographIds(user.id, profile.active_listings.map((listing) => listing.id))
     : new Set<string>();
   const hasCreatedAutographs = (profile.stats.autographs_signed ?? 0) > 0;
-  const profileStatusLabel = hasCreatedAutographs ? 'Creator / Collector' : 'Collector';
+  const profileStatusLabel = hasCreatedAutographs ? 'Creator' : 'Collector';
   const verificationLabel = profile.verified ? 'Verified' : 'Member';
   const canRequestPersonalized =
     !!user &&
@@ -72,30 +72,33 @@ export default async function ProfilePage({
 
       <div className="mx-auto max-w-6xl px-6 py-10">
         <section className="web-panel p-8">
-          <div className="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
+          <div className="flex flex-col gap-7 lg:flex-row lg:items-start lg:justify-between">
             <div className="flex items-start gap-5">
               {profile.avatar_url ? (
                 <img
                   src={profile.avatar_url}
                   alt={profile.display_name}
-                  className="h-40 w-24 rounded-lg object-cover"
+                  className="h-40 w-24 rounded-[6px] object-cover"
                 />
               ) : (
-                <div className="flex h-40 w-24 items-center justify-center rounded-lg bg-[#001B5C] text-3xl font-black text-white">
+                <div className="flex h-40 w-24 items-center justify-center rounded-[6px] bg-[#001B5C] text-3xl font-black text-white">
                   {profile.display_name.slice(0, 1).toUpperCase()}
                 </div>
               )}
               <div className="max-w-2xl">
-                <h1 className="text-4xl font-black tracking-tight text-black">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-500">
+                  Public Profile
+                </p>
+                <h1 className="mt-2 text-4xl font-black tracking-tight text-black">
                   {profile.display_name}
                 </h1>
-                <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-gray-600">
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-gray-600">
                   {profile.verified ? (
-                    <span className="rounded-full bg-[#EFF6EC] px-3 py-1 font-semibold text-[#2B6A1C]">
-                      Verified by Ophinia
+                    <span className="rounded-[4px] bg-[#EFF6EC] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#2B6A1C]">
+                      Verified
                     </span>
                   ) : null}
-                  <span className="rounded-full bg-[#F6F6F7] px-3 py-1 font-semibold text-gray-700">
+                  <span className="rounded-[4px] bg-[#F6F6F7] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-700">
                     {profileStatusLabel}
                   </span>
                   {profile.instagram_handle ? (
@@ -103,20 +106,21 @@ export default async function ProfilePage({
                       href={`https://instagram.com/${profile.instagram_handle}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="font-semibold text-[#E1306C]"
+                      className="text-[12px] font-semibold text-[#001B5C] hover:text-black"
                     >
                       @{profile.instagram_handle}
                     </a>
                   ) : null}
                 </div>
-                <p className="mt-4 max-w-xl text-base leading-7 text-gray-600">
-                  Ophinia {verificationLabel.toLowerCase()} member since {formatDate(profile.member_since)}.
-                  {profile.creator_since ? ` Creator since ${formatDate(profile.creator_since)}.` : ''}
+                <p className="mt-4 max-w-xl text-sm leading-7 text-gray-600 md:text-base">
+                  {verificationLabel} member since {formatDate(profile.member_since)}
+                  {profile.creator_since ? ` · Creating on Ophinia since ${formatDate(profile.creator_since)}` : ''}
+                  .
                 </p>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 lg:min-w-[360px]">
+            <div className="grid grid-cols-2 gap-3 lg:min-w-[320px]">
               <Stat label="Listings" value={String(profile.active_listings.length ?? 0)} />
               <Stat label="Signed" value={String(profile.stats.autographs_signed ?? 0)} />
               <Stat label="Series" value={String(profile.stats.unique_series_signed ?? 0)} />
@@ -319,9 +323,9 @@ function formatMoney(cents?: number | null) {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-[12px] bg-[#F6F6F7] p-4">
-      <div className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">{label}</div>
-      <div className="mt-2 text-lg font-black text-black">{value}</div>
+    <div className="rounded-[6px] border border-gray-200 bg-[#F8F8F9] p-4">
+      <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-500">{label}</div>
+      <div className="mt-2 text-lg font-black leading-none text-black">{value}</div>
     </div>
   );
 }

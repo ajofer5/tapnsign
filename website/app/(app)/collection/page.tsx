@@ -5,7 +5,6 @@ import { requireWebSessionUser } from '../../../lib/web-auth';
 export const dynamic = 'force-dynamic';
 
 function getStatusLabel(isForSale: boolean, listingMode: 'buy_now' | 'make_offer') {
-  if (!isForSale) return 'Collected';
   return getListingModeLabel(listingMode);
 }
 
@@ -99,20 +98,22 @@ export default async function CollectionPage({ searchParams }: CollectionPagePro
                       </div>
                     ) : null}
                   </div>
-                  <div className="shrink-0 rounded-[4px] border border-gray-200 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-500">
-                    {getStatusLabel(item.is_for_sale, item.listing_mode)}
-                  </div>
+                  {item.is_for_sale ? (
+                    <div className="shrink-0 rounded-[4px] border border-gray-200 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-500">
+                      {getStatusLabel(item.is_for_sale, item.listing_mode)}
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="flex items-end justify-between gap-2 border-t border-gray-100 pt-3">
                   <div className="min-w-0">
                     <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-500">
-                      {item.is_for_sale ? 'Listing' : 'Captured'}
+                      {item.is_for_sale ? 'Listing' : 'Autograph'}
                     </div>
                     <div className="mt-1 text-xs leading-5 text-gray-700">
                       {item.is_for_sale
                         ? `${getStatusLabel(item.is_for_sale, item.listing_mode)}${typeof item.price_cents === 'number' ? ` · ${formatMoney(item.price_cents)}` : ''}`
-                        : formatCardDate(item.created_at)}
+                        : [formatCardDate(item.created_at), item.print_count != null ? `Print #${item.print_count + 1}` : null].filter(Boolean).join(' · ')}
                     </div>
                     {item.series_name || formatSeriesEdition(item) ? (
                       <div className="mt-0.5 line-clamp-1 text-[11px] leading-4 text-gray-500">

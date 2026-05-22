@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { getWebSessionUser } from '../../../lib/web-auth';
-import { webRoutes } from '../../../lib/routes';
+import { webRouteToProfile, webRoutes } from '../../../lib/routes';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,6 +22,7 @@ export default async function WebAppHomePage() {
 
         <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <QuickLink href={webRoutes.marketplace} label="Browse Listings" tone="primary" />
+          {user?.id ? <QuickLink href={webRouteToProfile(user.id)} label="View My Profile" /> : null}
           <QuickLink href={webRoutes.collection} label="Collection" />
           <QuickLink href={webRoutes.saved} label="Saved" />
           <QuickLink href={webRoutes.myListings} label="My Listings" />
