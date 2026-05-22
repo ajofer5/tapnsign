@@ -15,7 +15,7 @@ export function WebListingCard({
   const ownerName = listing.owner?.display_name ?? '—';
 
   return (
-    <article className="web-panel-tight overflow-hidden">
+    <article className="overflow-hidden rounded-[6px] bg-white shadow-sm">
       <Link href={`/autograph/${listing.id}`} className="block">
         {listing.thumbnail_url ? (
           <img
@@ -39,48 +39,48 @@ export function WebListingCard({
         )}
       </Link>
 
-      <div className="space-y-4 p-5">
-        <div className="flex items-start justify-between gap-4">
+      <div className="space-y-3 p-3.5">
+        <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <Link
               href={`/profile/${listing.creator_id}`}
-              className="text-lg font-black text-black transition-colors hover:text-[#001B5C]"
+              className="line-clamp-2 text-sm font-black leading-5 text-black transition-colors hover:text-[#001B5C]"
             >
               {creatorName}
               {listing.creator_sequence_number != null ? ` · #${listing.creator_sequence_number}` : ''}
             </Link>
             {listing.series_name ? (
-              <div className="mt-1 text-sm text-gray-600">
+              <div className="mt-1 line-clamp-2 text-xs leading-5 text-gray-600">
                 {listing.series_name}
                 {listing.series_sequence_number != null && listing.series_max_size != null
                   ? ` · ${listing.series_sequence_number} of ${listing.series_max_size}`
                   : ''}
               </div>
             ) : null}
-            <div className="mt-2 text-xs font-medium text-gray-500">
+            <div className="mt-1 text-[11px] font-medium leading-4 text-gray-500">
               Listed by {ownerName}
             </div>
           </div>
           <form action={toggleWatchlistAction.bind(null, listing.id, isSaved, savePath)}>
             <button
               type="submit"
-              className="rounded-full border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:border-black hover:text-black"
+              className="rounded-[4px] border border-gray-300 px-2.5 py-1.5 text-[11px] font-semibold text-gray-700 transition-colors hover:border-black hover:text-black"
             >
               {isSaved ? 'Saved' : 'Save'}
             </button>
           </form>
         </div>
 
-        <div className="flex items-end justify-between gap-4 border-t border-gray-100 pt-4">
+        <div className="flex items-end justify-between gap-2 border-t border-gray-100 pt-3">
           <div className="min-w-0">
-            <div className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-500">
               {listing.offer_locked_until
                 ? 'Status'
                 : listing.listing_mode === 'buy_now'
                   ? 'Price'
                   : 'Estimated Value'}
             </div>
-            <div className="mt-1 text-2xl font-black text-black">
+            <div className="mt-1 truncate text-base font-black text-black">
               {listing.offer_locked_until ? 'Sale Pending' : formatMoney(listing.price_cents)}
             </div>
           </div>
@@ -88,7 +88,7 @@ export function WebListingCard({
             {canBuyNow(listing) ? (
               <Link
                 href={`/checkout/${listing.id}`}
-                className="rounded-full bg-black px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#2A2A2D]"
+                className="rounded-[4px] bg-black px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#2A2A2D]"
               >
                 Buy
               </Link>
@@ -96,7 +96,7 @@ export function WebListingCard({
             {canMakeOffer(listing) ? (
               <Link
                 href={`/offer/${listing.id}`}
-                className="rounded-full bg-black px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#2A2A2D]"
+                className="rounded-[4px] bg-black px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#2A2A2D]"
               >
                 Offer
               </Link>

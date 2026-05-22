@@ -9,6 +9,21 @@ function getStatusLabel(isForSale: boolean, listingMode: 'buy_now' | 'make_offer
   return getListingModeLabel(listingMode);
 }
 
+function formatCardDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return `${date.getMonth() + 1}/${date.getDate()}/${String(date.getFullYear()).slice(-2)}`;
+}
+
+function formatSeriesEdition(item: {
+  series_sequence_number: number | null;
+  series_max_size: number | null;
+}) {
+  if (item.series_sequence_number == null) return null;
+  if (item.series_max_size == null) return `#${item.series_sequence_number}`;
+  return `${item.series_sequence_number} of ${item.series_max_size}`;
+}
+
 type CollectionPageProps = {
   searchParams?: Promise<{
     before_created_at?: string;
@@ -50,7 +65,7 @@ export default async function CollectionPage({ searchParams }: CollectionPagePro
       {autographs.length > 0 ? (
         <section className="mt-8 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
           {autographs.map((item) => (
-            <article key={item.id} className="web-panel-tight overflow-hidden">
+            <article key={item.id} className="overflow-hidden rounded-[6px] bg-white shadow-sm">
               <Link href={`/autograph/${item.id}`} className="block">
                 {item.thumbnail_url ? (
                   <img
@@ -84,7 +99,7 @@ export default async function CollectionPage({ searchParams }: CollectionPagePro
                       </div>
                     ) : null}
                   </div>
-                  <div className="shrink-0 rounded-lg border border-gray-200 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-500">
+                  <div className="shrink-0 rounded-[4px] border border-gray-200 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-500">
                     {getStatusLabel(item.is_for_sale, item.listing_mode)}
                   </div>
                 </div>
@@ -92,19 +107,22 @@ export default async function CollectionPage({ searchParams }: CollectionPagePro
                 <div className="flex items-end justify-between gap-2 border-t border-gray-100 pt-3">
                   <div className="min-w-0">
                     <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-500">
+                      {item.is_for_sale ? 'Listing' : 'Captured'}
+                    </div>
+                    <div className="mt-1 text-xs leading-5 text-gray-700">
                       {item.is_for_sale
-                        ? item.listing_mode === 'buy_now'
-                          ? 'Price'
-                          : 'Estimated Value'
-                        : 'Certificate'}
+                        ? `${getStatusLabel(item.is_for_sale, item.listing_mode)}${typeof item.price_cents === 'number' ? ` · ${formatMoney(item.price_cents)}` : ''}`
+                        : formatCardDate(item.created_at)}
                     </div>
-                    <div className="mt-1 truncate text-base font-black text-black">
-                      {item.is_for_sale ? formatMoney(item.price_cents) : item.certificate_id}
-                    </div>
+                    {item.series_name || formatSeriesEdition(item) ? (
+                      <div className="mt-0.5 line-clamp-1 text-[11px] leading-4 text-gray-500">
+                        {[item.series_name, formatSeriesEdition(item)].filter(Boolean).join(' · ')}
+                      </div>
+                    ) : null}
                   </div>
                   <Link
                     href="/me/listings"
-                    className={`shrink-0 rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
+                    className={`shrink-0 rounded-[4px] px-3 py-2 text-xs font-semibold transition-colors ${
                       item.is_for_sale
                         ? 'border border-black text-black hover:bg-black hover:text-white'
                         : 'bg-[#001B5C] text-white hover:bg-[#00144A]'
