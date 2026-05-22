@@ -23,10 +23,10 @@ export type WebsiteListing = {
   owner: {
     display_name: string;
   } | null;
-  series_name?: string | null;
-  series_max_size?: number | null;
-  offer_locked_until?: string | null;
-  print_count?: number | null;
+  series_name: string | null;
+  series_max_size: number | null;
+  offer_locked_until: string | null;
+  print_count: number | null;
 };
 
 export function mapWebsiteListingRow(row: any): WebsiteListing {

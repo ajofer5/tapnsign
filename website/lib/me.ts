@@ -114,6 +114,7 @@ function mapMyListingRow(row: any): WebsiteMyListing {
     series_name: base.series_name ?? null,
     series_max_size: base.series_max_size ?? null,
     offer_locked_until: base.offer_locked_until ?? null,
+    print_count: base.print_count ?? null,
     creator_name: base.creator?.display_name ?? 'Creator',
     is_for_sale: !!row.is_for_sale,
     auto_decline_below: !!row.auto_decline_below,
