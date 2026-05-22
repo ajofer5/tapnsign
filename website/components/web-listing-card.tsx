@@ -21,7 +21,7 @@ export function WebListingCard({
           <img
             src={listing.thumbnail_url}
             alt={creatorName}
-            className="aspect-[4/5] w-full object-cover"
+            className="aspect-[60/85] w-full object-cover"
           />
         ) : listing.video_url ? (
           <video
@@ -30,10 +30,10 @@ export function WebListingCard({
             muted
             loop
             playsInline
-            className="aspect-[4/5] w-full object-cover"
+            className="aspect-[60/85] w-full object-cover"
           />
         ) : (
-          <div className="flex aspect-[4/5] items-center justify-center bg-[#1C1C1F] text-sm font-semibold uppercase tracking-[0.25em] text-white/50">
+          <div className="flex aspect-[60/85] items-center justify-center bg-[#1C1C1F] text-sm font-semibold uppercase tracking-[0.25em] text-white/50">
             TapnSign
           </div>
         )}

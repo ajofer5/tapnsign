@@ -71,10 +71,10 @@ export default async function CollectionPage({ searchParams }: CollectionPagePro
                   <img
                     src={item.thumbnail_url}
                     alt={item.creator_name}
-                    className="aspect-[4/5] w-full object-cover"
+                    className="aspect-[60/85] w-full object-cover"
                   />
                 ) : (
-                  <div className="flex aspect-[4/5] items-center justify-center bg-[#1C1C1F] text-sm font-semibold uppercase tracking-[0.25em] text-white/50">
+                  <div className="flex aspect-[60/85] items-center justify-center bg-[#1C1C1F] text-sm font-semibold uppercase tracking-[0.25em] text-white/50">
                     Ophinia
                   </div>
                 )}
