@@ -1,5 +1,6 @@
-import Image from 'next/image';
 import Link from 'next/link';
+import { getMyOfferQueue } from '../../../lib/me';
+import { getMyPersonalizedRequests } from '../../../lib/personalized-requests';
 import { getWebsiteProfile } from '../../../lib/profile';
 import { webRouteToProfile, webRoutes } from '../../../lib/routes';
 import { getWebSessionUser } from '../../../lib/web-auth';
@@ -18,12 +19,66 @@ function formatDate(value?: string | null) {
 export default async function WebAppHomePage() {
   const user = await getWebSessionUser();
   const profile = user?.id ? await getWebsiteProfile(user.id) : null;
+  const [{ groups: offerQueue }, personalizedRequests] = user?.id
+    ? await Promise.all([
+        getMyOfferQueue(user.id, 12, null),
+        getMyPersonalizedRequests(user.id),
+      ])
+    : [{ groups: [] }, { incoming: [], outgoing: [] }];
 
   const displayName = profile?.display_name ?? user?.display_name ?? 'Ophinia Member';
   const avatarUrl = profile?.avatar_url ?? null;
   const isVerified = profile?.verified ?? user?.verification_status === 'verified';
   const hasCreatedAutographs = (profile?.stats.autographs_signed ?? 0) > 0;
   const profileStatusLabel = hasCreatedAutographs ? 'Creator' : 'Collector';
+  const acceptedOffers = offerQueue.filter((group) => group.accepted);
+  const pendingOfferGroups = offerQueue.filter((group) => group.pending.length > 0);
+  const incomingPendingRequests = personalizedRequests.incoming.filter((request) => request.status === 'pending');
+  const outgoingReadyRequests = personalizedRequests.outgoing.filter(
+    (request) => request.status === 'fulfilled' && !request.completed_transfer_id
+  );
+  const actionItems = [
+    acceptedOffers.length > 0
+      ? {
+          label: 'Buyer payment due',
+          value: `${acceptedOffers.length} accepted offer${acceptedOffers.length !== 1 ? 's' : ''}`,
+          body: 'A buyer has been accepted and backup offers are on hold until payment clears.',
+          href: webRoutes.myOffers,
+          cta: 'Open Offer Queue',
+          tone: 'primary' as const,
+        }
+      : null,
+    pendingOfferGroups.length > 0
+      ? {
+          label: 'Offers waiting',
+          value: `${pendingOfferGroups.length} autograph${pendingOfferGroups.length !== 1 ? 's' : ''}`,
+          body: 'Incoming offers are waiting on your accept or decline decision.',
+          href: webRoutes.myOffers,
+          cta: 'Review Offers',
+          tone: 'default' as const,
+        }
+      : null,
+    incomingPendingRequests.length > 0
+      ? {
+          label: 'Personalized requests',
+          value: `${incomingPendingRequests.length} request${incomingPendingRequests.length !== 1 ? 's' : ''}`,
+          body: 'Collectors are waiting on your response to private autograph requests.',
+          href: webRoutes.personalizedRequests,
+          cta: 'Open Requests',
+          tone: 'default' as const,
+        }
+      : null,
+    outgoingReadyRequests.length > 0
+      ? {
+          label: 'Payment ready',
+          value: `${outgoingReadyRequests.length} request${outgoingReadyRequests.length !== 1 ? 's' : ''}`,
+          body: 'A personalized autograph is ready and waiting for your final payment.',
+          href: webRoutes.personalizedRequests,
+          cta: 'Complete Payment',
+          tone: 'default' as const,
+        }
+      : null,
+  ].filter(Boolean);
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-10">
@@ -116,16 +171,38 @@ export default async function WebAppHomePage() {
       </section>
 
       <section className="mt-8 grid gap-6 md:grid-cols-2">
-        <FeatureCard
-          icon="profile"
-          title="Public Profile Preview"
-          body="Use your Home tab as a quick check on how your identity and stats read before someone opens your profile link."
-        />
-        <FeatureCard
-          icon="collection"
-          title="Collection First"
-          body="Move between owned autographs, live listings, and saved items without the old dashboard filler."
-        />
+        <div className="web-panel-tight p-7 md:col-span-2">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
+                Action Items
+              </p>
+              <p className="mt-2 text-sm leading-7 text-gray-600">
+                Time-sensitive requests, offers, and payment steps that need your attention.
+              </p>
+            </div>
+          </div>
+
+          {actionItems.length > 0 ? (
+            <div className="mt-6 grid gap-4 lg:grid-cols-2">
+              {actionItems.map((item) => (
+                <ActionItemCard
+                  key={`${item.label}-${item.value}`}
+                  label={item.label}
+                  value={item.value}
+                  body={item.body}
+                  href={item.href}
+                  cta={item.cta}
+                  tone={item.tone}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="mt-6 rounded-[6px] bg-[#F7F7F8] px-5 py-5 text-sm text-gray-600">
+              No urgent action items right now. Your offers, personalized requests, and listings are all caught up.
+            </div>
+          )}
+        </div>
       </section>
     </div>
   );
@@ -163,28 +240,38 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function FeatureCard({
-  title,
+function ActionItemCard({
+  label,
+  value,
   body,
-  icon,
+  href,
+  cta,
+  tone,
 }: {
-  title: string;
+  label: string;
+  value: string;
   body: string;
-  icon: 'profile' | 'collection';
+  href: string;
+  cta: string;
+  tone: 'default' | 'primary';
 }) {
   return (
-    <div className="web-panel-tight p-7">
-      <div className="flex items-center gap-3">
-        <Image
-          src={icon === 'profile' ? '/mark.png' : '/ophinia-badge.png'}
-          alt=""
-          width={20}
-          height={20}
-          className="h-5 w-5"
-        />
-        <h2 className="text-xl font-black text-black">{title}</h2>
+    <div className="rounded-[6px] border border-gray-200 bg-white p-6">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">
+        {label}
       </div>
-      <p className="mt-3 text-base leading-7 text-gray-600">{body}</p>
+      <div className="mt-2 text-2xl font-black text-black">{value}</div>
+      <p className="mt-3 text-sm leading-7 text-gray-600">{body}</p>
+      <Link
+        href={href}
+        className={`mt-5 inline-flex rounded-lg px-4 py-3 text-sm font-semibold transition-colors ${
+          tone === 'primary'
+            ? 'bg-[#001B5C] text-white hover:bg-[#00144A]'
+            : 'border border-gray-300 text-gray-700 hover:border-black hover:text-black'
+        }`}
+      >
+        {cta}
+      </Link>
     </div>
   );
 }
