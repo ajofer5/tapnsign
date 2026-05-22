@@ -16,6 +16,15 @@ function formatDate(value?: string | null) {
   });
 }
 
+type ActionItem = {
+  label: string;
+  value: string;
+  body: string;
+  href: string;
+  cta: string;
+  tone: 'default' | 'primary';
+};
+
 export default async function WebAppHomePage() {
   const user = await getWebSessionUser();
   const profile = user?.id ? await getWebsiteProfile(user.id) : null;
@@ -37,48 +46,51 @@ export default async function WebAppHomePage() {
   const outgoingReadyRequests = personalizedRequests.outgoing.filter(
     (request) => request.status === 'fulfilled' && !request.completed_transfer_id
   );
-  const actionItems = [
-    acceptedOffers.length > 0
-      ? {
-          label: 'Buyer payment due',
-          value: `${acceptedOffers.length} accepted offer${acceptedOffers.length !== 1 ? 's' : ''}`,
-          body: 'A buyer has been accepted and backup offers are on hold until payment clears.',
-          href: webRoutes.myOffers,
-          cta: 'Open Offer Queue',
-          tone: 'primary' as const,
-        }
-      : null,
-    pendingOfferGroups.length > 0
-      ? {
-          label: 'Offers waiting',
-          value: `${pendingOfferGroups.length} autograph${pendingOfferGroups.length !== 1 ? 's' : ''}`,
-          body: 'Incoming offers are waiting on your accept or decline decision.',
-          href: webRoutes.myOffers,
-          cta: 'Review Offers',
-          tone: 'default' as const,
-        }
-      : null,
-    incomingPendingRequests.length > 0
-      ? {
-          label: 'Personalized requests',
-          value: `${incomingPendingRequests.length} request${incomingPendingRequests.length !== 1 ? 's' : ''}`,
-          body: 'Collectors are waiting on your response to private autograph requests.',
-          href: webRoutes.personalizedRequests,
-          cta: 'Open Requests',
-          tone: 'default' as const,
-        }
-      : null,
-    outgoingReadyRequests.length > 0
-      ? {
-          label: 'Payment ready',
-          value: `${outgoingReadyRequests.length} request${outgoingReadyRequests.length !== 1 ? 's' : ''}`,
-          body: 'A personalized autograph is ready and waiting for your final payment.',
-          href: webRoutes.personalizedRequests,
-          cta: 'Complete Payment',
-          tone: 'default' as const,
-        }
-      : null,
-  ].filter(Boolean);
+  const actionItems: ActionItem[] = [];
+
+  if (acceptedOffers.length > 0) {
+    actionItems.push({
+      label: 'Buyer payment due',
+      value: `${acceptedOffers.length} accepted offer${acceptedOffers.length !== 1 ? 's' : ''}`,
+      body: 'A buyer has been accepted and backup offers are on hold until payment clears.',
+      href: webRoutes.myOffers,
+      cta: 'Open Offer Queue',
+      tone: 'primary',
+    });
+  }
+
+  if (pendingOfferGroups.length > 0) {
+    actionItems.push({
+      label: 'Offers waiting',
+      value: `${pendingOfferGroups.length} autograph${pendingOfferGroups.length !== 1 ? 's' : ''}`,
+      body: 'Incoming offers are waiting on your accept or decline decision.',
+      href: webRoutes.myOffers,
+      cta: 'Review Offers',
+      tone: 'default',
+    });
+  }
+
+  if (incomingPendingRequests.length > 0) {
+    actionItems.push({
+      label: 'Personalized requests',
+      value: `${incomingPendingRequests.length} request${incomingPendingRequests.length !== 1 ? 's' : ''}`,
+      body: 'Collectors are waiting on your response to private autograph requests.',
+      href: webRoutes.personalizedRequests,
+      cta: 'Open Requests',
+      tone: 'default',
+    });
+  }
+
+  if (outgoingReadyRequests.length > 0) {
+    actionItems.push({
+      label: 'Payment ready',
+      value: `${outgoingReadyRequests.length} request${outgoingReadyRequests.length !== 1 ? 's' : ''}`,
+      body: 'A personalized autograph is ready and waiting for your final payment.',
+      href: webRoutes.personalizedRequests,
+      cta: 'Complete Payment',
+      tone: 'default',
+    });
+  }
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-10">
