@@ -23,8 +23,8 @@ export const webRoutes = {
 
 export function sanitizeNextPath(
   value: string | FormDataEntryValue | null | undefined,
-  fallback = webRoutes.home,
-) {
+  fallback: string = webRoutes.home,
+): string {
   if (typeof value !== 'string' || !value) return fallback;
   if (!value.startsWith('/') || value.startsWith('//')) return fallback;
   return value;
