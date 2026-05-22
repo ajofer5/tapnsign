@@ -1,20 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createWebsiteRouteSupabaseClient } from '../../../../lib/supabase';
 import { createWebSessionToken, getWebSessionCookieConfig, getWebSessionUserForProfile } from '../../../../lib/web-session';
-
-function sanitizeNextPath(value: string | null) {
-  if (!value) return '/home';
-  if (!value.startsWith('/') || value.startsWith('//')) return '/home';
-  return value;
-}
+import { sanitizeNextPath, webRoutes, withParams } from '../../../../lib/routes';
 
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get('code');
-  const next = sanitizeNextPath(request.nextUrl.searchParams.get('next'));
+  const next = sanitizeNextPath(request.nextUrl.searchParams.get('next'), webRoutes.home);
 
   if (!code) {
     return NextResponse.redirect(
-      new URL(`/login?error=google&next=${encodeURIComponent(next)}`, request.url)
+      new URL(withParams(webRoutes.login, { error: 'google', next }), request.url)
     );
   }
 
@@ -25,7 +20,7 @@ export async function GET(request: NextRequest) {
   const authUser = authData?.user ?? authData?.session?.user ?? null;
   if (error || !authUser) {
     return NextResponse.redirect(
-      new URL(`/login?error=google&next=${encodeURIComponent(next)}`, request.url)
+      new URL(withParams(webRoutes.login, { error: 'google', next }), request.url)
     );
   }
 
@@ -36,7 +31,7 @@ export async function GET(request: NextRequest) {
 
   if (!sessionUser) {
     return NextResponse.redirect(
-      new URL(`/login?error=account&next=${encodeURIComponent(next)}`, request.url)
+      new URL(withParams(webRoutes.login, { error: 'account', next }), request.url)
     );
   }
 

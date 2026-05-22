@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { ReactNode } from 'react';
+import { webRoutes } from '../lib/routes';
 
 export default function HomePage() {
   return (
@@ -7,14 +8,14 @@ export default function HomePage() {
       <nav className="fixed left-0 right-0 top-0 z-50 flex items-center justify-between border-b border-[#D8DDE8] bg-white/92 px-6 py-4 backdrop-blur">
         <img src="/ophinia-logo.png" alt="Ophinia" className="h-8" />
         <div className="flex items-center gap-4">
-          <Link href="/marketplace" className="text-sm font-semibold text-gray-600 transition-colors hover:text-black">
+          <Link href={webRoutes.marketplace} className="text-sm font-semibold text-gray-600 transition-colors hover:text-black">
             Marketplace
           </Link>
-          <Link href="/login" className="text-sm font-semibold text-gray-600 transition-colors hover:text-black">
+          <Link href={webRoutes.login} className="text-sm font-semibold text-gray-600 transition-colors hover:text-black">
             Sign In
           </Link>
           <Link
-            href="/signup"
+            href={webRoutes.signup}
             className="rounded-full bg-[#001B5C] px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#00144A]"
           >
             Create Account
@@ -37,13 +38,13 @@ export default function HomePage() {
           </p>
           <div className="mt-12 flex flex-wrap items-center justify-center gap-3">
             <Link
-              href="/marketplace"
+              href={webRoutes.marketplace}
               className="inline-flex items-center gap-3 rounded-full bg-[#001B5C] px-8 py-4 text-lg font-bold text-white transition-colors hover:bg-[#00144A]"
             >
               Browse Marketplace
             </Link>
             <Link
-              href="/signup"
+              href={webRoutes.signup}
               className="inline-flex items-center gap-3 rounded-full border border-[#001B5C] px-8 py-4 text-lg font-bold text-[#001B5C] transition-colors hover:bg-[#001B5C] hover:text-white"
             >
               Create Account
@@ -136,13 +137,13 @@ export default function HomePage() {
         </p>
         <div className="flex flex-wrap items-center justify-center gap-3">
           <Link
-            href="/marketplace"
+            href={webRoutes.marketplace}
             className="inline-flex items-center gap-3 rounded-full bg-[#001B5C] px-8 py-4 text-lg font-bold text-white transition-colors hover:bg-[#00144A]"
           >
             Browse Marketplace
           </Link>
           <Link
-            href="/signup"
+            href={webRoutes.signup}
             className="inline-flex items-center gap-3 rounded-full border border-[#001B5C] px-8 py-4 text-lg font-bold text-[#001B5C] transition-colors hover:bg-[#001B5C] hover:text-white"
           >
             Create Account
@@ -154,10 +155,10 @@ export default function HomePage() {
         <div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-6 md:flex-row">
           <img src="/ophinia-logo.png" alt="Ophinia" className="h-10" />
           <div className="flex gap-6 text-sm text-gray-500">
-            <Link href="/privacy" className="transition-colors hover:text-black">
+            <Link href={webRoutes.privacy} className="transition-colors hover:text-black">
               Privacy Policy
             </Link>
-            <Link href="/terms" className="transition-colors hover:text-black">
+            <Link href={webRoutes.terms} className="transition-colors hover:text-black">
               Terms of Service
             </Link>
             <a href="mailto:hello@tapnsign.com" className="transition-colors hover:text-black">

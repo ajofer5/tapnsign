@@ -97,7 +97,7 @@ export default async function AccountPage({
 
       {status ? (
         <div
-          className={`mt-8 rounded-2xl px-5 py-4 text-sm font-medium ${
+          className={`mt-8 rounded-lg px-5 py-4 text-sm font-medium ${
             status.includes('error') || status.includes('missing')
               ? 'bg-[#FDECEC] text-[#B3261E]'
               : 'bg-[#EFF6EC] text-[#2B6A1C]'
@@ -120,7 +120,7 @@ export default async function AccountPage({
       ) : null}
 
       <div className="mt-8 space-y-6">
-        <section className="rounded-[2rem] bg-white p-7 shadow-sm">
+        <section className="web-panel p-7">
           <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
             Account Details
           </p>
@@ -133,7 +133,7 @@ export default async function AccountPage({
           </div>
         </section>
 
-        <section className="rounded-[2rem] bg-white p-7 shadow-sm">
+        <section className="web-panel p-7">
           <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
             Personalized Requests
           </p>
@@ -142,7 +142,7 @@ export default async function AccountPage({
           </p>
           {profile?.role === 'verified' ? (
             <form action={updatePersonalizedSettingsAction} className="mt-5 space-y-4">
-              <label className="flex items-center justify-between rounded-xl bg-[#F7F7F8] px-4 py-4 text-sm font-medium text-black">
+              <label className="flex items-center justify-between rounded-lg bg-[#F7F7F8] px-4 py-4 text-sm font-medium text-black">
                 <span>Enable personalized autograph requests</span>
                 <input
                   type="checkbox"
@@ -151,7 +151,7 @@ export default async function AccountPage({
                   className="h-5 w-5 accent-[#001B5C]"
                 />
               </label>
-              <div className="flex items-center rounded-xl border border-transparent bg-[#F7F7F8] px-4 py-4 focus-within:border-[#001B5C] focus-within:bg-white">
+              <div className="flex items-center rounded-lg border border-transparent bg-[#F7F7F8] px-4 py-4 focus-within:border-[#001B5C] focus-within:bg-white">
                 <span className="mr-2 text-base font-semibold text-gray-500">$</span>
                 <input
                   type="number"
@@ -168,7 +168,7 @@ export default async function AccountPage({
               </div>
               <button
                 type="submit"
-                className="w-full rounded-xl bg-[#001B5C] px-6 py-4 text-base font-semibold text-white transition-colors hover:bg-[#00144A]"
+                className="w-full rounded-lg bg-[#001B5C] px-6 py-4 text-base font-semibold text-white transition-colors hover:bg-[#00144A]"
               >
                 Save Personalized Settings
               </button>
@@ -181,7 +181,7 @@ export default async function AccountPage({
         </section>
 
         {(profile as any)?.validated_name ? (
-          <section className="rounded-[2rem] bg-white p-7 shadow-sm">
+          <section className="web-panel p-7">
             <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
               Verified Name Badge
             </p>
@@ -189,7 +189,7 @@ export default async function AccountPage({
               Your identity was verified as <span className="font-semibold text-black">{(profile as any).validated_name}</span>. Using your verified name displays a badge on your autograph cards, letting collectors confirm your identity.
             </p>
             {(profile as any)?.name_verified ? (
-              <div className="mt-5 flex items-center gap-3 rounded-xl bg-[#EFF6EC] px-4 py-4">
+              <div className="mt-5 flex items-center gap-3 rounded-lg bg-[#EFF6EC] px-4 py-4">
                 <span className="text-lg">✓</span>
                 <div>
                   <p className="text-sm font-semibold text-[#2B6A1C]">Badge active</p>
@@ -200,7 +200,7 @@ export default async function AccountPage({
               <form action={useVerifiedNameAction} className="mt-5">
                 <button
                   type="submit"
-                  className="w-full rounded-xl bg-[#001B5C] px-6 py-4 text-base font-semibold text-white transition-colors hover:bg-[#00144a]"
+                  className="w-full rounded-lg bg-[#001B5C] px-6 py-4 text-base font-semibold text-white transition-colors hover:bg-[#00144a]"
                 >
                   Use verified name &amp; show badge
                 </button>
@@ -210,7 +210,7 @@ export default async function AccountPage({
           </section>
         ) : null}
 
-        <section className="rounded-[2rem] bg-white p-7 shadow-sm">
+        <section className="web-panel p-7">
           <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
             Display Name
           </p>
@@ -220,19 +220,19 @@ export default async function AccountPage({
               name="display_name"
               defaultValue={profile?.display_name ?? user.display_name}
               placeholder="Display name"
-              className="w-full rounded-xl border border-transparent bg-[#F7F7F8] px-4 py-4 text-base text-black outline-none transition-colors placeholder:text-[#999] focus:border-[#001B5C] focus:bg-white"
+              className="w-full rounded-lg border border-transparent bg-[#F7F7F8] px-4 py-4 text-base text-black outline-none transition-colors placeholder:text-[#999] focus:border-[#001B5C] focus:bg-white"
               required
             />
             <button
               type="submit"
-              className="w-full rounded-xl bg-[#001B5C] px-6 py-4 text-base font-semibold text-white transition-colors hover:bg-[#00144A]"
+              className="w-full rounded-lg bg-[#001B5C] px-6 py-4 text-base font-semibold text-white transition-colors hover:bg-[#00144A]"
             >
               Save Name
             </button>
           </form>
         </section>
 
-        <section className="rounded-[2rem] bg-white p-7 shadow-sm">
+        <section className="web-panel p-7">
           <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
             Instagram
           </p>
@@ -240,7 +240,7 @@ export default async function AccountPage({
             Add your Instagram handle to show a linked social profile on your Ophinia account.
           </p>
           <form action={updateInstagramAction} className="mt-5 space-y-4">
-            <div className="flex items-center rounded-xl border border-transparent bg-[#F7F7F8] px-4 py-4 focus-within:border-[#001B5C] focus-within:bg-white">
+            <div className="flex items-center rounded-lg border border-transparent bg-[#F7F7F8] px-4 py-4 focus-within:border-[#001B5C] focus-within:bg-white">
               <span className="mr-2 text-base font-semibold text-gray-500">@</span>
               <input
                 type="text"
@@ -254,14 +254,14 @@ export default async function AccountPage({
             </div>
             <button
               type="submit"
-              className="w-full rounded-xl bg-[#001B5C] px-6 py-4 text-base font-semibold text-white transition-colors hover:bg-[#00144A]"
+              className="w-full rounded-lg bg-[#001B5C] px-6 py-4 text-base font-semibold text-white transition-colors hover:bg-[#00144A]"
             >
               Save Instagram
             </button>
           </form>
         </section>
 
-        <section className="rounded-[2rem] bg-white p-7 shadow-sm">
+        <section className="web-panel p-7">
           <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
             Profile Image
           </p>
@@ -277,7 +277,7 @@ export default async function AccountPage({
                   <form
                     key={option.id}
                     action={updateProfileAvatarAction}
-                    className={`rounded-[1.5rem] border p-4 transition-colors ${
+                    className={`rounded-[14px] border p-4 transition-colors ${
                       isSelected ? 'border-[#001B5C] bg-[#F3F6FF]' : 'border-gray-200 bg-[#F7F7F8]'
                     }`}
                   >
@@ -286,10 +286,10 @@ export default async function AccountPage({
                       <img
                         src={option.thumbnail_url}
                         alt={profile?.display_name ?? user.display_name}
-                        className="aspect-[4/5] w-full rounded-[1.1rem] object-cover"
+                        className="aspect-[4/5] w-full rounded-[12px] object-cover"
                       />
                     ) : (
-                      <div className="flex aspect-[4/5] w-full items-center justify-center rounded-[1.1rem] bg-[#1C1C1F] text-sm font-semibold uppercase tracking-[0.25em] text-white/50">
+                      <div className="flex aspect-[4/5] w-full items-center justify-center rounded-[12px] bg-[#1C1C1F] text-sm font-semibold uppercase tracking-[0.25em] text-white/50">
                         Ophinia
                       </div>
                     )}
@@ -299,7 +299,7 @@ export default async function AccountPage({
                       </div>
                       <button
                         type="submit"
-                        className={`rounded-xl px-4 py-2 text-sm font-semibold transition-colors ${
+                        className={`rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
                           isSelected
                             ? 'bg-[#001B5C] text-white'
                             : 'border border-black text-black hover:bg-black hover:text-white'
@@ -330,7 +330,7 @@ export default async function AccountPage({
           ) : null}
         </section>
 
-        <section className="rounded-[2rem] bg-white p-7 shadow-sm">
+        <section className="web-panel p-7">
           <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
             Creator Verification
           </p>
@@ -345,7 +345,7 @@ export default async function AccountPage({
 
 function DetailCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl bg-[#F7F7F8] px-4 py-4">
+    <div className="rounded-lg bg-[#F7F7F8] px-4 py-4">
       <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">{label}</div>
       <div className="mt-2 text-sm font-semibold text-black">{value}</div>
     </div>

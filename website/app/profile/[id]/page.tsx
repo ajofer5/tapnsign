@@ -5,6 +5,12 @@ import { WebListingCard } from '../../../components/web-listing-card';
 import { getWebsiteProfile } from '../../../lib/profile';
 import { getWebSessionUser } from '../../../lib/web-auth';
 import { getSavedAutographIds } from '../../../lib/watchlist';
+import {
+  webRouteToProfile,
+  webRouteToProfilePersonalizedRequestStart,
+  webRoutes,
+  withNext,
+} from '../../../lib/routes';
 
 function formatDate(value?: string | null) {
   if (!value) return '—';
@@ -44,19 +50,19 @@ export default async function ProfilePage({
     <main className="min-h-screen bg-[#F2F2F4]">
       <nav className="border-b border-gray-200 bg-white px-6 py-4">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-6">
-          <Link href="/">
+          <Link href={webRoutes.landing}>
             <Image src="/ophinia-logo.png" alt="Ophinia" width={120} height={32} className="h-8 w-auto" />
           </Link>
           <div className="flex items-center gap-4">
-            <Link href="/marketplace" className="text-sm text-gray-500 hover:text-black">
+            <Link href={webRoutes.marketplace} className="text-sm text-gray-500 hover:text-black">
               Marketplace
             </Link>
             {user ? (
-              <Link href="/home" className="text-sm font-semibold text-gray-600 transition-colors hover:text-black">
+              <Link href={webRoutes.home} className="text-sm font-semibold text-gray-600 transition-colors hover:text-black">
                 My App
               </Link>
             ) : (
-              <Link href={`/login?next=${encodeURIComponent(`/profile/${id}`)}`} className="text-sm font-semibold text-gray-600 transition-colors hover:text-black">
+              <Link href={withNext(webRoutes.login, webRouteToProfile(id))} className="text-sm font-semibold text-gray-600 transition-colors hover:text-black">
                 Sign In
               </Link>
             )}
@@ -65,17 +71,17 @@ export default async function ProfilePage({
       </nav>
 
       <div className="mx-auto max-w-6xl px-6 py-10">
-        <section className="rounded-[2rem] bg-white p-8 shadow-sm">
+        <section className="web-panel p-8">
           <div className="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
             <div className="flex items-start gap-5">
               {profile.avatar_url ? (
                 <img
                   src={profile.avatar_url}
                   alt={profile.display_name}
-                  className="h-24 w-24 rounded-full object-cover"
+                  className="h-40 w-24 rounded-lg object-cover"
                 />
               ) : (
-                <div className="flex h-24 w-24 items-center justify-center rounded-full bg-[#001B5C] text-3xl font-black text-white">
+                <div className="flex h-40 w-24 items-center justify-center rounded-lg bg-[#001B5C] text-3xl font-black text-white">
                   {profile.display_name.slice(0, 1).toUpperCase()}
                 </div>
               )}
@@ -121,7 +127,7 @@ export default async function ProfilePage({
 
         {resolvedSearch?.request_status || resolvedSearch?.request_error || resolvedSearch?.request_canceled === '1' ? (
           <div
-            className={`mt-8 rounded-2xl px-5 py-4 text-sm font-medium ${
+            className={`mt-8 rounded-lg px-5 py-4 text-sm font-medium ${
               resolvedSearch?.request_error
                 ? 'bg-[#FDECEC] text-[#B3261E]'
                 : resolvedSearch?.request_canceled === '1'
@@ -136,7 +142,7 @@ export default async function ProfilePage({
         ) : null}
 
         <section className="mt-8 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-          <div className="rounded-[2rem] bg-white p-8 shadow-sm">
+          <div className="web-panel p-8">
             <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
               Profile Details
             </p>
@@ -149,7 +155,7 @@ export default async function ProfilePage({
             </div>
           </div>
 
-          <div className="rounded-[2rem] bg-white p-8 shadow-sm">
+          <div className="web-panel p-8">
             <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
               Quick Trust
             </p>
@@ -168,7 +174,7 @@ export default async function ProfilePage({
         </section>
 
         {canRequestPersonalized && !requestSent ? (
-          <section className="mt-8 rounded-[2rem] bg-white p-8 shadow-sm">
+          <section className="web-panel mt-8 p-8">
             <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
               Personalized Autograph
             </p>
@@ -178,30 +184,30 @@ export default async function ProfilePage({
             <p className="mt-4 max-w-2xl text-base leading-7 text-gray-600">
               This request stays private between you and the creator. Ophinia places an authorization hold first, then creates the request once payment authorization succeeds.
             </p>
-            <div className="mt-4 rounded-[1.5rem] bg-[#F7F7F8] px-5 py-4 text-sm font-medium text-gray-700">
+            <div className="mt-4 rounded-[14px] bg-[#F7F7F8] px-5 py-4 text-sm font-medium text-gray-700">
               Minimum request price: {formatMoney(profile.personalized_min_price_cents)}
             </div>
-            <form action={`/profile/${id}/personalized-request/start`} method="post" className="mt-6 space-y-4">
+            <form action={webRouteToProfilePersonalizedRequestStart(id)} method="post" className="mt-6 space-y-4">
               <input
                 type="text"
                 name="recipient_name"
                 placeholder="Recipient name"
-                className="w-full rounded-xl border border-transparent bg-[#F7F7F8] px-4 py-4 text-base text-black outline-none transition-colors placeholder:text-[#999] focus:border-[#001B5C] focus:bg-white"
+                className="w-full rounded-lg border border-transparent bg-[#F7F7F8] px-4 py-4 text-base text-black outline-none transition-colors placeholder:text-[#999] focus:border-[#001B5C] focus:bg-white"
                 required
               />
               <input
                 type="text"
                 name="inscription_text"
                 placeholder="Optional inscription"
-                className="w-full rounded-xl border border-transparent bg-[#F7F7F8] px-4 py-4 text-base text-black outline-none transition-colors placeholder:text-[#999] focus:border-[#001B5C] focus:bg-white"
+                className="w-full rounded-lg border border-transparent bg-[#F7F7F8] px-4 py-4 text-base text-black outline-none transition-colors placeholder:text-[#999] focus:border-[#001B5C] focus:bg-white"
               />
               <textarea
                 name="requester_note"
                 placeholder="Optional note for the creator"
                 rows={4}
-                className="w-full rounded-xl border border-transparent bg-[#F7F7F8] px-4 py-4 text-base text-black outline-none transition-colors placeholder:text-[#999] focus:border-[#001B5C] focus:bg-white"
+                className="w-full rounded-lg border border-transparent bg-[#F7F7F8] px-4 py-4 text-base text-black outline-none transition-colors placeholder:text-[#999] focus:border-[#001B5C] focus:bg-white"
               />
-              <div className="flex items-center rounded-xl border border-transparent bg-[#F7F7F8] px-4 py-4 focus-within:border-[#001B5C] focus-within:bg-white">
+              <div className="flex items-center rounded-lg border border-transparent bg-[#F7F7F8] px-4 py-4 focus-within:border-[#001B5C] focus-within:bg-white">
                 <span className="mr-2 text-base font-semibold text-gray-500">$</span>
                 <input
                   type="text"
@@ -218,14 +224,14 @@ export default async function ProfilePage({
               </div>
               <button
                 type="submit"
-                className="rounded-xl bg-[#001B5C] px-6 py-4 text-base font-semibold text-white transition-colors hover:bg-[#00144A]"
+                className="rounded-lg bg-[#001B5C] px-6 py-4 text-base font-semibold text-white transition-colors hover:bg-[#00144A]"
               >
                 Authorize and Send Request
               </button>
             </form>
           </section>
         ) : canRequestPersonalized && requestSent ? (
-          <section className="mt-8 rounded-[2rem] bg-white p-8 shadow-sm">
+          <section className="web-panel mt-8 p-8">
             <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
               Personalized Autograph
             </p>
@@ -237,21 +243,21 @@ export default async function ProfilePage({
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
               <Link
-                href="/personalized-requests"
-                className="rounded-xl bg-[#001B5C] px-6 py-4 text-base font-semibold text-white transition-colors hover:bg-[#00144A]"
+                href={webRoutes.personalizedRequests}
+                className="rounded-lg bg-[#001B5C] px-6 py-4 text-base font-semibold text-white transition-colors hover:bg-[#00144A]"
               >
                 View Your Requests
               </Link>
               <Link
-                href="/activity"
-                className="rounded-xl border border-gray-300 px-6 py-4 text-base font-semibold text-gray-700 transition-colors hover:border-black hover:text-black"
+                href={webRoutes.activity}
+                className="rounded-lg border border-gray-300 px-6 py-4 text-base font-semibold text-gray-700 transition-colors hover:border-black hover:text-black"
               >
                 Open Activity
               </Link>
             </div>
           </section>
         ) : !user ? (
-          <section className="mt-8 rounded-[2rem] bg-white p-8 shadow-sm">
+          <section className="web-panel mt-8 p-8">
             <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
               Personalized Autograph
             </p>
@@ -262,8 +268,8 @@ export default async function ProfilePage({
               Sign in to request a personalized autograph from this creator.
             </p>
             <Link
-              href={`/login?next=${encodeURIComponent(`/profile/${id}`)}`}
-              className="mt-6 inline-flex rounded-xl bg-[#001B5C] px-6 py-4 text-base font-semibold text-white transition-colors hover:bg-[#00144A]"
+              href={withNext(webRoutes.login, webRouteToProfile(id))}
+              className="mt-6 inline-flex rounded-lg bg-[#001B5C] px-6 py-4 text-base font-semibold text-white transition-colors hover:bg-[#00144A]"
             >
               Sign In to Request
             </Link>
@@ -285,12 +291,12 @@ export default async function ProfilePage({
                   key={listing.id}
                   listing={listing}
                   isSaved={savedIds.has(listing.id)}
-                  savePath={`/profile/${id}`}
+                  savePath={webRouteToProfile(id)}
                 />
               ))}
             </div>
           ) : (
-            <div className="rounded-[2rem] bg-white p-10 text-center shadow-sm">
+            <div className="web-panel p-10 text-center">
               <h3 className="text-2xl font-black text-black">No current listings</h3>
               <p className="mt-3 text-base text-gray-600">
                 This creator does not have any public listings available right now.
@@ -313,7 +319,7 @@ function formatMoney(cents?: number | null) {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-[1.25rem] bg-[#F6F6F7] p-4">
+    <div className="rounded-[12px] bg-[#F6F6F7] p-4">
       <div className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">{label}</div>
       <div className="mt-2 text-lg font-black text-black">{value}</div>
     </div>
@@ -331,7 +337,7 @@ function Detail({ label, value }: { label: string; value: string }) {
 
 function TrustRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-start justify-between gap-4 rounded-[1.25rem] bg-[#F6F6F7] px-4 py-3">
+    <div className="flex items-start justify-between gap-4 rounded-[12px] bg-[#F6F6F7] px-4 py-3">
       <span className="text-gray-500">{label}</span>
       <span className="max-w-[62%] text-right font-medium text-black">{value}</span>
     </div>

@@ -2,6 +2,34 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer components {
+  .web-panel {
+    border-radius: 18px;
+    background: #ffffff;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+  }
+
+  .web-panel-tight {
+    border-radius: 16px;
+    background: #ffffff;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+  }
+
+  .web-panel-soft {
+    border-radius: 14px;
+  }
+
+  .web-panel-inset {
+    border-radius: 14px;
+    background: #f6f6f7;
+  }
+
+  .web-panel-inset-tight {
+    border-radius: 12px;
+    background: #f7f7f8;
+  }
+}
+
 html {
   scroll-behavior: smooth;
 }

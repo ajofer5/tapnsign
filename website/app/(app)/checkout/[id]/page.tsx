@@ -19,7 +19,7 @@ export default async function CheckoutPage({
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-10">
-      <div className="rounded-[2rem] bg-white p-8 shadow-sm">
+      <div className="web-panel p-8">
         <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
           Checkout
         </p>
@@ -31,7 +31,7 @@ export default async function CheckoutPage({
           Complete your purchase securely on Ophinia web.
         </p>
 
-        <div className="mt-8 rounded-[1.75rem] bg-[#F6F6F7] p-6">
+        <div className="web-panel-inset mt-8 p-6">
           <div className="flex items-center justify-between gap-4 border-b border-gray-200 pb-4">
             <span className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
               Listing Price
@@ -48,22 +48,22 @@ export default async function CheckoutPage({
         </div>
 
         {status === 'success' ? (
-          <div className="mt-6 rounded-2xl bg-[#EFF6EC] px-5 py-4 text-sm font-medium text-[#2B6A1C]">
+          <div className="mt-6 rounded-lg bg-[#EFF6EC] px-5 py-4 text-sm font-medium text-[#2B6A1C]">
             Purchase complete. Ownership has been transferred to your account.
           </div>
         ) : null}
         {canceled ? (
-          <div className="mt-6 rounded-2xl bg-[#FFF5E5] px-5 py-4 text-sm font-medium text-[#8A5A00]">
+          <div className="mt-6 rounded-lg bg-[#FFF5E5] px-5 py-4 text-sm font-medium text-[#8A5A00]">
             Checkout was canceled before payment completed.
           </div>
         ) : null}
         {error === 'blocked' ? (
-          <div className="mt-6 rounded-2xl bg-[#FDECEC] px-5 py-4 text-sm font-medium text-[#B3261E]">
+          <div className="mt-6 rounded-lg bg-[#FDECEC] px-5 py-4 text-sm font-medium text-[#B3261E]">
             You cannot complete this checkout because one of the accounts has been blocked.
           </div>
         ) : null}
         {error && error !== 'blocked' ? (
-          <div className="mt-6 rounded-2xl bg-[#FDECEC] px-5 py-4 text-sm font-medium text-[#B3261E]">
+          <div className="mt-6 rounded-lg bg-[#FDECEC] px-5 py-4 text-sm font-medium text-[#B3261E]">
             Could not complete checkout. Please try again.
           </div>
         ) : null}

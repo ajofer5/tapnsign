@@ -29,7 +29,7 @@ export default async function CollectionPage({ searchParams }: CollectionPagePro
   const { listings: autographs, nextCursor } = await getMyListings(user.id, 24, cursor);
 
   return (
-    <div className="mx-auto max-w-5xl px-6 py-10">
+    <div className="mx-auto max-w-7xl px-6 py-10">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
@@ -42,15 +42,15 @@ export default async function CollectionPage({ searchParams }: CollectionPagePro
             Browse everything you own in one place, then jump into listing management whenever you want to sell.
           </p>
         </div>
-        <div className="rounded-xl bg-white px-5 py-3 text-sm font-semibold text-black shadow-sm">
+        <div className="rounded-lg bg-white px-5 py-3 text-sm font-semibold text-black shadow-sm">
           Showing {autographs.length} autograph{autographs.length !== 1 ? 's' : ''}
         </div>
       </div>
 
       {autographs.length > 0 ? (
-        <section className="mt-8 grid gap-6 md:grid-cols-2">
+        <section className="mt-8 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
           {autographs.map((item) => (
-            <article key={item.id} className="overflow-hidden rounded-[1.75rem] bg-white shadow-sm">
+            <article key={item.id} className="web-panel-tight overflow-hidden">
               <Link href={`/autograph/${item.id}`} className="block">
                 {item.thumbnail_url ? (
                   <img
@@ -65,18 +65,18 @@ export default async function CollectionPage({ searchParams }: CollectionPagePro
                 )}
               </Link>
 
-              <div className="space-y-4 p-5">
-                <div className="flex items-start justify-between gap-4">
+              <div className="space-y-3 p-3.5">
+                <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <Link
                       href={`/autograph/${item.id}`}
-                      className="text-lg font-black text-black transition-colors hover:text-[#001B5C]"
+                      className="line-clamp-2 text-sm font-black leading-5 text-black transition-colors hover:text-[#001B5C]"
                     >
                       {item.creator_name}
                       {item.creator_sequence_number != null ? ` · #${item.creator_sequence_number}` : ''}
                     </Link>
                     {item.series_name ? (
-                      <div className="mt-1 text-sm text-gray-600">
+                      <div className="mt-1 line-clamp-2 text-xs leading-5 text-gray-600">
                         {item.series_name}
                         {item.series_sequence_number != null && item.series_max_size != null
                           ? ` · ${item.series_sequence_number} of ${item.series_max_size}`
@@ -84,27 +84,27 @@ export default async function CollectionPage({ searchParams }: CollectionPagePro
                       </div>
                     ) : null}
                   </div>
-                  <div className="rounded-xl border border-gray-200 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500">
+                  <div className="shrink-0 rounded-lg border border-gray-200 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-500">
                     {getStatusLabel(item.is_for_sale, item.listing_mode)}
                   </div>
                 </div>
 
-                <div className="flex items-end justify-between gap-4">
-                  <div>
-                    <div className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">
+                <div className="flex items-end justify-between gap-2 border-t border-gray-100 pt-3">
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-500">
                       {item.is_for_sale
                         ? item.listing_mode === 'buy_now'
                           ? 'Price'
                           : 'Estimated Value'
                         : 'Certificate'}
                     </div>
-                    <div className="mt-1 text-2xl font-black text-black">
+                    <div className="mt-1 truncate text-base font-black text-black">
                       {item.is_for_sale ? formatMoney(item.price_cents) : item.certificate_id}
                     </div>
                   </div>
                   <Link
                     href="/me/listings"
-                    className={`rounded-xl px-4 py-3 text-sm font-semibold transition-colors ${
+                    className={`shrink-0 rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
                       item.is_for_sale
                         ? 'border border-black text-black hover:bg-black hover:text-white'
                         : 'bg-[#001B5C] text-white hover:bg-[#00144A]'
@@ -118,7 +118,7 @@ export default async function CollectionPage({ searchParams }: CollectionPagePro
           ))}
         </section>
       ) : (
-        <div className="mt-8 rounded-[2rem] bg-white p-10 text-center shadow-sm">
+        <div className="web-panel mt-8 p-10 text-center">
           <h2 className="text-2xl font-black text-black">No autographs in your collection yet</h2>
           <p className="mt-3 text-base text-gray-600">
             Complete a purchase or offer flow and your collection will start building here.
@@ -130,7 +130,7 @@ export default async function CollectionPage({ searchParams }: CollectionPagePro
         <div className="mt-8 flex justify-center">
           <Link
             href={`/collection?before_created_at=${encodeURIComponent(nextCursor.beforeCreatedAt)}&before_id=${encodeURIComponent(nextCursor.beforeId)}`}
-            className="rounded-xl border border-black px-5 py-3 text-sm font-semibold text-black transition-colors hover:bg-black hover:text-white"
+            className="rounded-lg border border-black px-5 py-3 text-sm font-semibold text-black transition-colors hover:bg-black hover:text-white"
           >
             Load More
           </Link>

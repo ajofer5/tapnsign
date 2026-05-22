@@ -4,12 +4,7 @@ import { signInWithPasswordAction } from './actions';
 import { getWebSessionUser } from '../../lib/web-auth';
 import { GoogleSignInButton } from '../../components/google-sign-in-button';
 import { AppleSignInButton } from '../../components/apple-sign-in-button';
-
-function sanitizeNextPath(value?: string) {
-  if (!value) return '/home';
-  if (!value.startsWith('/') || value.startsWith('//')) return '/home';
-  return value;
-}
+import { sanitizeNextPath, webRoutes, withNext } from '../../lib/routes';
 
 export default async function LoginPage({
   searchParams,
@@ -26,7 +21,7 @@ export default async function LoginPage({
 }) {
   const resolvedSearch = await searchParams;
   const existingUser = await getWebSessionUser();
-  const next = sanitizeNextPath(resolvedSearch?.next);
+  const next = sanitizeNextPath(resolvedSearch?.next, webRoutes.home);
 
   const email = resolvedSearch?.email ?? '';
   const error = resolvedSearch?.error;
@@ -48,7 +43,7 @@ export default async function LoginPage({
         </Link>
 
         {existingUser ? (
-          <div className="mb-4 w-full rounded-2xl bg-[#F6F6F7] px-5 py-4 text-sm font-medium text-gray-700">
+          <div className="mb-4 w-full rounded-lg bg-[#F6F6F7] px-5 py-4 text-sm font-medium text-gray-700">
             You&apos;re already signed in as {existingUser.display_name}.{' '}
             <Link href={next} className="font-semibold text-black underline">
               Continue to your account
@@ -58,12 +53,12 @@ export default async function LoginPage({
         ) : null}
 
         {loggedOut ? (
-          <div className="mb-4 w-full rounded-2xl bg-[#F6F6F7] px-5 py-4 text-sm font-medium text-gray-700">
+          <div className="mb-4 w-full rounded-lg bg-[#F6F6F7] px-5 py-4 text-sm font-medium text-gray-700">
             You have been signed out.
           </div>
         ) : null}
         {error ? (
-          <div className="mb-4 w-full rounded-2xl bg-[#FDECEC] px-5 py-4 text-sm font-medium text-[#B3261E]">
+          <div className="mb-4 w-full rounded-lg bg-[#FDECEC] px-5 py-4 text-sm font-medium text-[#B3261E]">
             {error === 'missing'
               ? 'Enter your email and password to continue.'
               : error === 'account'
@@ -88,7 +83,7 @@ export default async function LoginPage({
             name="email"
             defaultValue={email}
             placeholder="Email"
-            className="w-full rounded-xl border border-transparent bg-white px-4 py-4 text-base text-black outline-none transition-colors placeholder:text-[#999] focus:border-[#001B5C]"
+            className="w-full rounded-lg border border-transparent bg-white px-4 py-4 text-base text-black outline-none transition-colors placeholder:text-[#999] focus:border-[#001B5C]"
             autoComplete="email"
             required
           />
@@ -96,14 +91,14 @@ export default async function LoginPage({
             type="password"
             name="password"
             placeholder="Password"
-            className="w-full rounded-xl border border-transparent bg-white px-4 py-4 text-base text-black outline-none transition-colors placeholder:text-[#999] focus:border-[#001B5C]"
+            className="w-full rounded-lg border border-transparent bg-white px-4 py-4 text-base text-black outline-none transition-colors placeholder:text-[#999] focus:border-[#001B5C]"
             autoComplete="current-password"
             required
           />
 
           <button
             type="submit"
-            className="w-full rounded-xl bg-[#001B5C] px-6 py-4 text-base font-semibold text-white transition-colors hover:bg-[#00144A]"
+            className="w-full rounded-lg bg-[#001B5C] px-6 py-4 text-base font-semibold text-white transition-colors hover:bg-[#00144A]"
           >
             Sign In
           </button>
@@ -122,20 +117,14 @@ export default async function LoginPage({
 
         <div className="mt-6 text-center text-sm text-gray-700">
           Need an account?{' '}
-          <Link
-            href={`/signup?next=${encodeURIComponent(next)}`}
-            className="font-semibold text-black hover:text-[#6722F7]"
-          >
+          <Link href={withNext(webRoutes.signup, next)} className="font-semibold text-black hover:text-[#6722F7]">
             Sign up
           </Link>
           {resolvedSearch?.created === '1' ? ' Your account was created successfully, so you can sign in now.' : ''}
         </div>
 
         <div className="mt-3">
-          <Link
-            href="/marketplace"
-            className="text-sm font-semibold text-gray-600 transition-colors hover:text-black"
-          >
+          <Link href={webRoutes.marketplace} className="text-sm font-semibold text-gray-600 transition-colors hover:text-black">
             Browse Marketplace
           </Link>
         </div>

@@ -22,8 +22,8 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
   return (
     <div className="mx-auto max-w-6xl px-6 py-10">
       <div className="grid gap-8 lg:grid-cols-[1.05fr_0.95fr]">
-        <section className="rounded-[2rem] bg-white p-5 shadow-sm">
-          <div className="overflow-hidden rounded-[1.5rem] bg-black">
+        <section className="web-panel p-5">
+          <div className="overflow-hidden rounded-[14px] bg-black">
             <video
               src={listing.video_url}
               poster={listing.thumbnail_url ?? undefined}
@@ -34,7 +34,7 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
           </div>
         </section>
 
-        <section className="rounded-[2rem] bg-white p-8 shadow-sm">
+        <section className="web-panel p-8">
           <h1 className="text-4xl font-black tracking-tight text-black">
             {listing.creator?.display_name ?? 'Creator'}
             {listing.creator_sequence_number != null ? ` · #${listing.creator_sequence_number}` : ''}
@@ -48,7 +48,7 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
             </p>
           ) : null}
 
-          <div className="mt-8 rounded-[1.5rem] bg-[#F6F6F7] p-6">
+          <div className="web-panel-inset mt-8 p-6">
             <div className="flex flex-wrap items-end justify-between gap-6">
               <div>
                 <div className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">

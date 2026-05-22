@@ -4,6 +4,7 @@ import { WebListingCard } from '../../components/web-listing-card';
 import { getMarketplaceListings } from '../../lib/marketplace';
 import { getWebSessionUser } from '../../lib/web-auth';
 import { getSavedAutographIds } from '../../lib/watchlist';
+import { webRoutes, withNext, withParams } from '../../lib/routes';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,20 +33,20 @@ export default async function MarketplacePage({
     <main className="min-h-screen bg-[#F2F2F4]">
       <nav className="border-b border-gray-200 bg-white px-6 py-4">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-6">
-          <Link href="/">
+          <Link href={webRoutes.landing}>
             <Image src="/ophinia-logo.png" alt="Ophinia" width={120} height={32} className="h-8 w-auto" />
           </Link>
           <div className="flex items-center gap-4">
             {user ? (
-              <Link href="/home" className="text-sm font-semibold text-gray-600 transition-colors hover:text-black">
+              <Link href={webRoutes.home} className="text-sm font-semibold text-gray-600 transition-colors hover:text-black">
                 My App
               </Link>
             ) : (
               <>
-                <Link href="/login?next=%2Fmarketplace" className="text-sm font-semibold text-gray-600 transition-colors hover:text-black">
+                <Link href={withNext(webRoutes.login, webRoutes.marketplace)} className="text-sm font-semibold text-gray-600 transition-colors hover:text-black">
                   Sign In
                 </Link>
-                <Link href="/signup?next=%2Fmarketplace" className="text-sm font-semibold text-gray-600 transition-colors hover:text-black">
+                <Link href={withNext(webRoutes.signup, webRoutes.marketplace)} className="text-sm font-semibold text-gray-600 transition-colors hover:text-black">
                   Create Account
                 </Link>
               </>
@@ -77,15 +78,18 @@ export default async function MarketplacePage({
                   key={listing.id}
                   listing={listing}
                   isSaved={savedIds.has(listing.id)}
-                  savePath="/marketplace"
+                  savePath={webRoutes.marketplace}
                 />
               ))}
             </section>
             {page.nextCursor ? (
               <div className="mt-8 flex justify-center">
                 <Link
-                  href={`/marketplace?before_created_at=${encodeURIComponent(page.nextCursor.beforeCreatedAt)}&before_id=${encodeURIComponent(page.nextCursor.beforeId)}`}
-                  className="rounded-full border border-black px-6 py-3 text-sm font-semibold text-black transition-colors hover:bg-black hover:text-white"
+                  href={withParams(webRoutes.marketplace, {
+                    before_created_at: page.nextCursor.beforeCreatedAt,
+                    before_id: page.nextCursor.beforeId,
+                  })}
+                  className="rounded-lg border border-black px-6 py-3 text-sm font-semibold text-black transition-colors hover:bg-black hover:text-white"
                 >
                   Load More
                 </Link>
@@ -93,7 +97,7 @@ export default async function MarketplacePage({
             ) : null}
           </>
         ) : (
-          <div className="mt-8 rounded-[2rem] bg-white p-10 text-center shadow-sm">
+          <div className="web-panel mt-8 p-10 text-center">
             <h2 className="text-2xl font-black text-black">No active listings</h2>
             <p className="mt-3 text-base text-gray-600">
               Check back soon for newly listed autographs.

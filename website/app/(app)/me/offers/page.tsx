@@ -46,13 +46,13 @@ export default async function MyOffersPage({ searchParams }: MyOffersPageProps) 
             Review incoming offers by autograph. Highest active offers lead, and backup offers remain on hold while accepted buyers complete payment.
           </p>
         </div>
-        <div className="rounded-xl bg-white px-5 py-3 text-sm font-semibold text-black shadow-sm">
+        <div className="rounded-lg bg-white px-5 py-3 text-sm font-semibold text-black shadow-sm">
           Showing {offerQueue.length} autograph{offerQueue.length !== 1 ? 's' : ''}
         </div>
       </div>
 
       {offerQueue.length === 0 ? (
-        <div className="mt-8 rounded-[2rem] bg-white p-8 text-gray-600 shadow-sm">
+        <div className="web-panel mt-8 p-8 text-gray-600">
           No incoming offers right now.
         </div>
       ) : (
@@ -62,7 +62,7 @@ export default async function MyOffersPage({ searchParams }: MyOffersPageProps) 
             if (!headline) return null;
 
             return (
-              <article key={group.autograph_id} className="overflow-hidden rounded-[2rem] bg-white shadow-sm">
+              <article key={group.autograph_id} className="web-panel overflow-hidden">
                 <div className="grid gap-0 lg:grid-cols-[240px_1fr]">
                   <div className="bg-[#1C1C1F]">
                     <Link href={`/autograph/${group.autograph_id}`} className="block">
@@ -142,7 +142,7 @@ export default async function MyOffersPage({ searchParams }: MyOffersPageProps) 
                     </div>
 
                     {group.accepted ? (
-                      <div className="mt-6 rounded-[1.5rem] bg-[#F7F7F8] px-5 py-4 text-sm leading-7 text-gray-600">
+                      <div className="mt-6 rounded-[14px] bg-[#F7F7F8] px-5 py-4 text-sm leading-7 text-gray-600">
                         Backup offers are being held. If the accepted buyer does not complete payment within 24 hours, those offers will become active again automatically.
                       </div>
                     ) : group.pending[0] ? (
@@ -150,7 +150,7 @@ export default async function MyOffersPage({ searchParams }: MyOffersPageProps) 
                         <form action={respondOfferAction.bind(null, group.pending[0].id, 'accept')}>
                           <button
                             type="submit"
-                            className="rounded-xl bg-[#001B5C] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#00144A]"
+                            className="rounded-lg bg-[#001B5C] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#00144A]"
                           >
                             Accept
                           </button>
@@ -158,7 +158,7 @@ export default async function MyOffersPage({ searchParams }: MyOffersPageProps) 
                         <form action={respondOfferAction.bind(null, group.pending[0].id, 'decline')}>
                           <button
                             type="submit"
-                            className="rounded-xl border border-black px-5 py-3 text-sm font-semibold text-black transition-colors hover:bg-black hover:text-white"
+                            className="rounded-lg border border-black px-5 py-3 text-sm font-semibold text-black transition-colors hover:bg-black hover:text-white"
                           >
                             Decline
                           </button>
@@ -167,7 +167,7 @@ export default async function MyOffersPage({ searchParams }: MyOffersPageProps) 
                     ) : null}
 
                     {group.pending.length > 0 ? (
-                      <div className="mt-6 rounded-[1.5rem] bg-[#F7F7F8] p-5">
+                      <div className="mt-6 rounded-[14px] bg-[#F7F7F8] p-5">
                         <div className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">
                           Active Offers
                         </div>
@@ -185,7 +185,7 @@ export default async function MyOffersPage({ searchParams }: MyOffersPageProps) 
                     ) : null}
 
                     {group.on_hold.length > 0 ? (
-                      <div className="mt-5 rounded-[1.5rem] bg-[#F7F7F8] p-5">
+                      <div className="mt-5 rounded-[14px] bg-[#F7F7F8] p-5">
                         <div className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">
                           Backup Offers
                         </div>
@@ -209,7 +209,7 @@ export default async function MyOffersPage({ searchParams }: MyOffersPageProps) 
             <div className="flex justify-center pt-2">
               <Link
                 href={`/me/offers?before_headline_amount=${encodeURIComponent(String(nextCursor.beforeHeadlineAmount))}&before_headline_created_at=${encodeURIComponent(nextCursor.beforeHeadlineCreatedAt)}&before_autograph_id=${encodeURIComponent(nextCursor.beforeAutographId)}`}
-                className="rounded-xl border border-black px-5 py-3 text-sm font-semibold text-black transition-colors hover:bg-black hover:text-white"
+                className="rounded-lg border border-black px-5 py-3 text-sm font-semibold text-black transition-colors hover:bg-black hover:text-white"
               >
                 Load More
               </Link>

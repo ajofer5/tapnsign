@@ -4,26 +4,17 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { createWebsiteMutableServerSupabaseClient, createWebsiteSupabaseClient } from '../../lib/supabase';
 import { createWebSessionToken, getWebSessionCookieConfig, getWebSessionUserForProfile } from '../../lib/web-session';
-
-function sanitizeNextPath(value: FormDataEntryValue | null) {
-  if (typeof value !== 'string' || !value) return '/home';
-  if (!value.startsWith('/') || value.startsWith('//')) return '/home';
-  return value;
-}
-
-function getWebsiteBaseUrl() {
-  return (process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000').replace(/\/+$/, '');
-}
+import { getWebsiteBaseUrl, sanitizeNextPath, webRoutes, withNext, withParams } from '../../lib/routes';
 
 export async function signInWithPasswordAction(formData: FormData) {
   const rawEmail = formData.get('email');
   const rawPassword = formData.get('password');
   const email = typeof rawEmail === 'string' ? rawEmail.trim() : '';
   const password = typeof rawPassword === 'string' ? rawPassword : '';
-  const next = sanitizeNextPath(formData.get('next'));
+  const next = sanitizeNextPath(formData.get('next'), webRoutes.home);
 
   if (!email || !password) {
-    redirect(`/login?error=missing&next=${encodeURIComponent(next)}`);
+    redirect(withParams(webRoutes.login, { error: 'missing', next }));
   }
 
   const supabase = await createWebsiteMutableServerSupabaseClient();
@@ -33,7 +24,7 @@ export async function signInWithPasswordAction(formData: FormData) {
   });
 
   if (error || !data.user) {
-    redirect(`/login?error=password&next=${encodeURIComponent(next)}`);
+    redirect(withParams(webRoutes.login, { error: 'password', next }));
   }
 
   const sessionUser = await getWebSessionUserForProfile(data.user.id, data.user.email ?? null);
@@ -48,14 +39,14 @@ export async function signInWithPasswordAction(formData: FormData) {
 export async function requestLoginLinkAction(formData: FormData) {
   const rawEmail = formData.get('email');
   const email = typeof rawEmail === 'string' ? rawEmail.trim() : '';
-  const next = sanitizeNextPath(formData.get('next'));
+  const next = sanitizeNextPath(formData.get('next'), webRoutes.home);
 
   if (!email) {
-    redirect(`/login?error=missing&next=${encodeURIComponent(next)}`);
+    redirect(withParams(webRoutes.login, { error: 'missing', next }));
   }
 
   const supabase = createWebsiteSupabaseClient();
-  const redirectTo = `${getWebsiteBaseUrl()}/auth/callback?next=${encodeURIComponent(next)}`;
+  const redirectTo = `${getWebsiteBaseUrl()}${withNext('/auth/callback', next)}`;
 
   const { error } = await supabase.auth.signInWithOtp({
     email,
@@ -70,10 +61,8 @@ export async function requestLoginLinkAction(formData: FormData) {
     const reason = message.includes('user')
       ? 'account'
       : 'send';
-    redirect(
-      `/login?error=${encodeURIComponent(reason)}&detail=${encodeURIComponent(error.message)}&next=${encodeURIComponent(next)}`
-    );
+    redirect(withParams(webRoutes.login, { error: reason, detail: error.message, next }));
   }
 
-  redirect(`/login?sent=1&email=${encodeURIComponent(email)}&next=${encodeURIComponent(next)}`);
+  redirect(withParams(webRoutes.login, { sent: 1, email, next }));
 }

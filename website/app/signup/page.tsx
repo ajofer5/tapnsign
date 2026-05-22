@@ -2,12 +2,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { createAccountAction } from './actions';
 import { getWebSessionUser } from '../../lib/web-auth';
-
-function sanitizeNextPath(value?: string) {
-  if (!value) return '/home';
-  if (!value.startsWith('/') || value.startsWith('//')) return '/home';
-  return value;
-}
+import { sanitizeNextPath, webRoutes, withNext } from '../../lib/routes';
 
 export default async function SignupPage({
   searchParams,
@@ -19,7 +14,7 @@ export default async function SignupPage({
 }) {
   const resolvedSearch = await searchParams;
   const existingUser = await getWebSessionUser();
-  const next = sanitizeNextPath(resolvedSearch?.next);
+  const next = sanitizeNextPath(resolvedSearch?.next, webRoutes.home);
 
   const error = resolvedSearch?.error;
 
@@ -32,7 +27,7 @@ export default async function SignupPage({
               <Image src="/ophinia-logo.png" alt="Ophinia" width={120} height={32} className="h-8 w-auto" />
             </Link>
             <Link
-              href="/login"
+              href={webRoutes.login}
               className="text-sm font-semibold text-gray-600 transition-colors hover:text-black"
             >
               Sign In
@@ -129,7 +124,7 @@ export default async function SignupPage({
 
           <div className="mt-8 border-t border-gray-200 pt-6 text-sm leading-7 text-gray-600">
             Already have an Ophinia account?{' '}
-            <Link href={`/login?next=${encodeURIComponent(next)}`} className="font-semibold text-black hover:text-[#6722F7]">
+            <Link href={withNext(webRoutes.login, next)} className="font-semibold text-black hover:text-[#6722F7]">
               Sign in here
             </Link>
             .

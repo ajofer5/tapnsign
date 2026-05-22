@@ -4,12 +4,7 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { createWebsiteMutableServerSupabaseClient } from '../../lib/supabase';
 import { createWebSessionToken, getWebSessionCookieConfig, getWebSessionUserForProfile } from '../../lib/web-session';
-
-function sanitizeNextPath(value: FormDataEntryValue | null) {
-  if (typeof value !== 'string' || !value) return '/home';
-  if (!value.startsWith('/') || value.startsWith('//')) return '/home';
-  return value;
-}
+import { sanitizeNextPath, webRoutes, withParams } from '../../lib/routes';
 
 export async function createAccountAction(formData: FormData) {
   const rawDisplayName = formData.get('display_name');
@@ -18,14 +13,14 @@ export async function createAccountAction(formData: FormData) {
   const displayName = typeof rawDisplayName === 'string' ? rawDisplayName.trim() : '';
   const email = typeof rawEmail === 'string' ? rawEmail.trim() : '';
   const password = typeof rawPassword === 'string' ? rawPassword : '';
-  const next = sanitizeNextPath(formData.get('next'));
+  const next = sanitizeNextPath(formData.get('next'), webRoutes.home);
 
   if (!displayName || !email || !password) {
-    redirect(`/signup?error=missing&next=${encodeURIComponent(next)}`);
+    redirect(withParams(webRoutes.signup, { error: 'missing', next }));
   }
 
   if (password.length < 6) {
-    redirect(`/signup?error=password&next=${encodeURIComponent(next)}`);
+    redirect(withParams(webRoutes.signup, { error: 'password', next }));
   }
 
   const supabase = await createWebsiteMutableServerSupabaseClient();
@@ -46,7 +41,7 @@ export async function createAccountAction(formData: FormData) {
       : message.includes('invalid email')
         ? 'email'
         : 'create';
-    redirect(`/signup?error=${encodeURIComponent(reason)}&next=${encodeURIComponent(next)}`);
+    redirect(withParams(webRoutes.signup, { error: reason, next }));
   }
 
   const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
@@ -55,7 +50,7 @@ export async function createAccountAction(formData: FormData) {
   });
 
   if (signInError || !signInData.user) {
-    redirect(`/login?created=1&email=${encodeURIComponent(email)}&next=${encodeURIComponent(next)}`);
+    redirect(withParams(webRoutes.login, { created: 1, email, next }));
   }
 
   const sessionUser = await getWebSessionUserForProfile(signInData.user.id, signInData.user.email ?? null);

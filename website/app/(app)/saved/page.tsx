@@ -38,7 +38,7 @@ export default async function SavedPage({ searchParams }: SavedPageProps) {
             Revisit listings you want to watch closely, then jump back into a purchase or offer flow when you are ready.
           </p>
         </div>
-        <div className="rounded-xl bg-white px-5 py-3 text-sm font-semibold text-black shadow-sm">
+        <div className="rounded-lg bg-white px-5 py-3 text-sm font-semibold text-black shadow-sm">
           Showing {listings.length} saved item{listings.length !== 1 ? 's' : ''}
         </div>
       </div>
@@ -60,7 +60,7 @@ export default async function SavedPage({ searchParams }: SavedPageProps) {
             <div className="mt-8 flex justify-center">
               <Link
                 href={`/saved?before_saved_at=${encodeURIComponent(nextCursor.beforeSavedAt)}&before_autograph_id=${encodeURIComponent(nextCursor.beforeAutographId)}`}
-                className="rounded-xl border border-black px-5 py-3 text-sm font-semibold text-black transition-colors hover:bg-black hover:text-white"
+                className="rounded-lg border border-black px-5 py-3 text-sm font-semibold text-black transition-colors hover:bg-black hover:text-white"
               >
                 Load More
               </Link>
@@ -68,7 +68,7 @@ export default async function SavedPage({ searchParams }: SavedPageProps) {
           ) : null}
         </>
       ) : (
-        <div className="mt-8 rounded-[2rem] bg-white p-10 text-center shadow-sm">
+        <div className="web-panel mt-8 p-10 text-center">
           <h2 className="text-2xl font-black text-black">No saved autographs yet</h2>
           <p className="mt-3 text-base text-gray-600">
             Save listings from the marketplace or listing pages and they will show up here.

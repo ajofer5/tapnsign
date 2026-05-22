@@ -15,7 +15,7 @@ export function WebListingCard({
   const ownerName = listing.owner?.display_name ?? '—';
 
   return (
-    <article className="overflow-hidden rounded-[1.75rem] bg-white shadow-sm">
+    <article className="web-panel-tight overflow-hidden">
       <Link href={`/autograph/${listing.id}`} className="block">
         {listing.thumbnail_url ? (
           <img

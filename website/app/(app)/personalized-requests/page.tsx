@@ -25,7 +25,7 @@ export default async function PersonalizedRequestsPage() {
             Track personalized autograph requests across both sides of the transaction. Creator-side recording still continues in the mobile app.
           </p>
         </div>
-        <div className="rounded-xl bg-white px-5 py-3 text-sm font-semibold text-black shadow-sm">
+        <div className="rounded-lg bg-white px-5 py-3 text-sm font-semibold text-black shadow-sm">
           {incoming.length + outgoing.length} total request{incoming.length + outgoing.length !== 1 ? 's' : ''}
         </div>
       </div>
@@ -82,7 +82,7 @@ function RequestCard({
       : null;
 
   return (
-    <article className="rounded-[1.75rem] bg-white p-6 shadow-sm">
+    <article className="web-panel-tight p-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500">
@@ -118,7 +118,7 @@ function RequestCard({
         {checkoutHref ? (
           <Link
             href={checkoutHref}
-            className="rounded-xl bg-[#001B5C] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#00144A]"
+            className="rounded-lg bg-[#001B5C] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#00144A]"
           >
             Complete Payment
           </Link>
@@ -126,13 +126,13 @@ function RequestCard({
         {request.autograph_certificate_id ? (
           <Link
             href={`/verify/${request.autograph_certificate_id}`}
-            className="rounded-xl border border-gray-300 px-5 py-3 text-sm font-semibold text-gray-700 transition-colors hover:border-black hover:text-black"
+            className="rounded-lg border border-gray-300 px-5 py-3 text-sm font-semibold text-gray-700 transition-colors hover:border-black hover:text-black"
           >
             View Certificate
           </Link>
         ) : null}
         {role === 'creator' && request.status === 'accepted' ? (
-          <div className="rounded-xl border border-dashed border-gray-300 px-5 py-3 text-sm font-semibold text-gray-600">
+          <div className="rounded-lg border border-dashed border-gray-300 px-5 py-3 text-sm font-semibold text-gray-600">
             Open the Ophinia app to record this autograph.
           </div>
         ) : null}
@@ -205,7 +205,7 @@ function getStatusLabel(status: string) {
 
 function EmptyCard({ message }: { message: string }) {
   return (
-    <div className="rounded-[1.75rem] bg-white p-8 text-sm text-gray-600 shadow-sm">
+    <div className="web-panel-tight p-8 text-sm text-gray-600">
       {message}
     </div>
   );

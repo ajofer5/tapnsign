@@ -43,13 +43,13 @@ export default async function ActivityPage() {
             Track purchases, sales, offers, and personalized request activity across your Ophinia account.
           </p>
         </div>
-        <div className="rounded-xl bg-white px-5 py-3 text-sm font-semibold text-black shadow-sm">
+        <div className="rounded-lg bg-white px-5 py-3 text-sm font-semibold text-black shadow-sm">
           Showing {entries.length} event{entries.length !== 1 ? 's' : ''}
         </div>
       </div>
 
       {entries.length === 0 ? (
-        <div className="mt-8 rounded-[2rem] bg-white p-10 text-center shadow-sm">
+        <div className="web-panel mt-8 p-10 text-center">
           <h2 className="text-2xl font-black text-black">No activity yet</h2>
           <p className="mt-3 text-base text-gray-600">
             Once you buy, sell, or interact with offers, your account activity will show up here.
@@ -58,7 +58,7 @@ export default async function ActivityPage() {
       ) : (
         <div className="mt-8 space-y-4">
           {entries.map((entry) => (
-            <article key={entry.id} className="rounded-[1.75rem] bg-white p-6 shadow-sm">
+            <article key={entry.id} className="web-panel-tight p-6">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="min-w-0">
                   <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500">

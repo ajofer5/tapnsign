@@ -4,11 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { createWebsiteAdminSupabaseClient } from '../../lib/supabase';
 import { getWebSessionUser } from '../../lib/web-auth';
-
-function sanitizeNextPath(value: string) {
-  if (!value.startsWith('/') || value.startsWith('//')) return '/marketplace';
-  return value;
-}
+import { sanitizeNextPath, webRouteToAutograph, webRoutes, withNext } from '../../lib/routes';
 
 export async function toggleWatchlistAction(
   autographId: string,
@@ -16,10 +12,10 @@ export async function toggleWatchlistAction(
   nextPath: string
 ) {
   const user = await getWebSessionUser();
-  const safeNextPath = sanitizeNextPath(nextPath);
+  const safeNextPath = sanitizeNextPath(nextPath, webRoutes.marketplace);
 
   if (!user) {
-    redirect(`/login?next=${encodeURIComponent(safeNextPath)}`);
+    redirect(withNext(webRoutes.login, safeNextPath));
   }
 
   const supabase = createWebsiteAdminSupabaseClient();
@@ -40,8 +36,8 @@ export async function toggleWatchlistAction(
   }
 
   revalidatePath(safeNextPath);
-  revalidatePath('/marketplace');
-  revalidatePath(`/autograph/${autographId}`);
-  revalidatePath('/home');
-  revalidatePath('/saved');
+  revalidatePath(webRoutes.marketplace);
+  revalidatePath(webRouteToAutograph(autographId));
+  revalidatePath(webRoutes.home);
+  revalidatePath(webRoutes.saved);
 }

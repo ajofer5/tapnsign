@@ -3,6 +3,7 @@ import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { createWebsiteAdminSupabaseClient, createWebsiteServerSupabaseClient } from './supabase';
 import { getLegacyWebSessionUser, type WebSessionUser } from './web-session';
+import { sanitizeNextPath, webRoutes, withNext } from './routes';
 
 const getCachedWebSessionUser = cache(async (): Promise<WebSessionUser | null> => {
   const headerStore = await headers();
@@ -86,9 +87,9 @@ export async function requireWebSessionUser() {
   const user = await getWebSessionUser();
   if (!user) {
     const headersList = await headers();
-    const path = headersList.get('x-invoke-path') ?? headersList.get('referer') ?? '/home';
-    const next = path.startsWith('/') ? path : '/home';
-    redirect(`/login?next=${encodeURIComponent(next)}`);
+    const path = headersList.get('x-invoke-path') ?? headersList.get('referer') ?? webRoutes.home;
+    const next = sanitizeNextPath(path, webRoutes.home);
+    redirect(withNext(webRoutes.login, next));
   }
   return user;
 }

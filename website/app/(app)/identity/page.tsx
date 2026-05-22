@@ -39,7 +39,7 @@ export default async function VerifyPage({
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-10">
-      <div className="rounded-[2rem] bg-white p-8 shadow-sm">
+      <div className="web-panel p-8">
         <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
           Creator Verification
         </p>
@@ -51,7 +51,7 @@ export default async function VerifyPage({
           unlocking higher visibility on the marketplace.
         </p>
 
-        <div className="mt-8 rounded-[1.75rem] bg-[#F6F6F7] p-6">
+        <div className="web-panel-inset mt-8 p-6">
           <div className="flex items-center justify-between gap-4 border-b border-gray-200 pb-4">
             <span className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
               Verification Fee
@@ -69,23 +69,23 @@ export default async function VerifyPage({
         </div>
 
         {status === 'success' ? (
-          <div className="mt-6 rounded-2xl bg-[#EFF6EC] px-5 py-4 text-sm font-medium text-[#2B6A1C]">
+          <div className="mt-6 rounded-lg bg-[#EFF6EC] px-5 py-4 text-sm font-medium text-[#2B6A1C]">
             Payment complete. Your identity verification has been started — check your email for
             next steps from Stripe Identity.
           </div>
         ) : null}
         {canceled ? (
-          <div className="mt-6 rounded-2xl bg-[#FFF5E5] px-5 py-4 text-sm font-medium text-[#8A5A00]">
+          <div className="mt-6 rounded-lg bg-[#FFF5E5] px-5 py-4 text-sm font-medium text-[#8A5A00]">
             Checkout was canceled before payment completed.
           </div>
         ) : null}
         {error === 'already_verified' || alreadyVerified ? (
-          <div className="mt-6 rounded-2xl bg-[#EFF6EC] px-5 py-4 text-sm font-medium text-[#2B6A1C]">
+          <div className="mt-6 rounded-lg bg-[#EFF6EC] px-5 py-4 text-sm font-medium text-[#2B6A1C]">
             Your account is already verified.
           </div>
         ) : null}
         {error && error !== 'already_verified' ? (
-          <div className="mt-6 rounded-2xl bg-[#FDECEC] px-5 py-4 text-sm font-medium text-[#B3261E]">
+          <div className="mt-6 rounded-lg bg-[#FDECEC] px-5 py-4 text-sm font-medium text-[#B3261E]">
             Could not complete verification checkout. Please try again or contact support.
           </div>
         ) : null}

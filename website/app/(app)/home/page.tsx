@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { getWebSessionUser } from '../../../lib/web-auth';
+import { webRoutes } from '../../../lib/routes';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,7 +9,7 @@ export default async function WebAppHomePage() {
 
   return (
     <div className="mx-auto max-w-5xl px-6 py-10">
-      <section className="rounded-[2rem] bg-white p-8 shadow-sm">
+      <section className="web-panel p-8">
         <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
           Ophinia Web
         </p>
@@ -20,16 +21,16 @@ export default async function WebAppHomePage() {
         </p>
 
         <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <QuickLink href="/marketplace" label="Browse Listings" tone="primary" />
-          <QuickLink href="/collection" label="Collection" />
-          <QuickLink href="/saved" label="Saved" />
-          <QuickLink href="/me/listings" label="My Listings" />
-          <QuickLink href="/me/offers" label="Offer Queue" />
-          <QuickLink href="/verify/demo" label="Certificate Example" />
+          <QuickLink href={webRoutes.marketplace} label="Browse Listings" tone="primary" />
+          <QuickLink href={webRoutes.collection} label="Collection" />
+          <QuickLink href={webRoutes.saved} label="Saved" />
+          <QuickLink href={webRoutes.myListings} label="My Listings" />
+          <QuickLink href={webRoutes.myOffers} label="Offer Queue" />
+          <QuickLink href={webRoutes.certificateExample} label="Certificate Example" />
         </div>
       </section>
 
-      <section className="mt-8 rounded-[2rem] bg-white p-7 shadow-sm">
+      <section className="web-panel mt-8 p-7">
         <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
           Account Snapshot
         </p>
@@ -79,7 +80,7 @@ function QuickLink({
   return (
     <Link
       href={href}
-      className={`rounded-xl px-5 py-4 text-sm font-semibold transition-colors ${
+      className={`rounded-lg px-5 py-4 text-sm font-semibold transition-colors ${
         tone === 'primary'
           ? 'bg-[#001B5C] text-white hover:bg-[#00144A]'
           : 'border border-gray-200 bg-[#F7F7F8] text-black hover:border-black hover:bg-white'
@@ -92,7 +93,7 @@ function QuickLink({
 
 function DetailCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl bg-[#F7F7F8] px-4 py-4">
+    <div className="rounded-lg bg-[#F7F7F8] px-4 py-4">
       <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">{label}</div>
       <div className="mt-2 text-sm font-semibold text-black">{value}</div>
     </div>
@@ -101,7 +102,7 @@ function DetailCard({ label, value }: { label: string; value: string }) {
 
 function FeatureCard({ title, body }: { title: string; body: string }) {
   return (
-    <div className="rounded-[1.75rem] bg-white p-7 shadow-sm">
+    <div className="web-panel-tight p-7">
       <h2 className="text-xl font-black text-black">{title}</h2>
       <p className="mt-3 text-base leading-7 text-gray-600">{body}</p>
     </div>

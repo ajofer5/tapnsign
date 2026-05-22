@@ -8,7 +8,7 @@ export function OfferForm({
   suggestedAmount: string;
 }) {
   return (
-    <form action={`/offer/${autographId}/start`} method="post" className="mt-8 rounded-[1.75rem] bg-[#F6F6F7] p-6">
+    <form action={`/offer/${autographId}/start`} method="post" className="web-panel-inset mt-8 p-6">
       <label className="block text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">
         Your Offer
       </label>
@@ -17,7 +17,7 @@ export function OfferForm({
         name="amount"
         defaultValue={suggestedAmount}
         placeholder="0.00"
-        className="mt-3 w-full rounded-2xl border border-gray-300 bg-white px-4 py-4 text-2xl font-black text-black outline-none transition-colors focus:border-black"
+        className="mt-3 w-full rounded-lg border border-gray-300 bg-white px-4 py-4 text-2xl font-black text-black outline-none transition-colors focus:border-black"
       />
       <button
         type="submit"
