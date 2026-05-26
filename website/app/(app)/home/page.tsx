@@ -100,11 +100,13 @@ export default async function WebAppHomePage() {
         <div className="flex flex-col gap-7 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex items-start gap-5">
             {avatarUrl ? (
-              <img
-                src={avatarUrl}
-                alt={displayName}
-                className="h-40 w-24 rounded-[6px] object-cover"
-              />
+              <div className="w-24 overflow-hidden rounded-[6px] bg-[#F2F2F4]">
+                <img
+                  src={avatarUrl}
+                  alt={displayName}
+                  className="aspect-[3/5] w-full object-contain"
+                />
+              </div>
             ) : (
               <div className="flex h-40 w-24 items-center justify-center rounded-[6px] bg-[#001B5C] text-3xl font-black text-white">
                 {displayName.slice(0, 1).toUpperCase()}
@@ -137,6 +139,11 @@ export default async function WebAppHomePage() {
                   </a>
                 ) : null}
               </div>
+              {profile?.bio ? (
+                <p className="mt-4 max-w-xl text-sm leading-7 text-gray-700 md:text-base">
+                  {profile.bio}
+                </p>
+              ) : null}
               <p className="mt-4 max-w-xl text-sm leading-7 text-gray-600 md:text-base">
                 Member since {formatDate(profile?.member_since)}
                 {profile?.creator_since ? ` · Creating on Ophinia since ${formatDate(profile.creator_since)}` : ''}
@@ -145,11 +152,13 @@ export default async function WebAppHomePage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 lg:min-w-[320px]">
-            <Stat label="Listings" value={String(profile?.active_listings.length ?? 0)} />
-            <Stat label="Signed" value={String(profile?.stats.autographs_signed ?? 0)} />
-            <Stat label="Series" value={String(profile?.stats.unique_series_signed ?? 0)} />
-            <Stat label="Owned" value={String(profile?.stats.autographs_owned ?? 0)} />
+          <div className="lg:min-w-[320px]">
+            <div className="overflow-hidden rounded-[6px] border border-gray-200 bg-white">
+              <StatRow label="Listings" value={String(profile?.active_listings.length ?? 0)} />
+              <StatRow label="Created" value={String(profile?.stats.autographs_signed ?? 0)} />
+              <StatRow label="Series" value={String(profile?.stats.unique_series_signed ?? 0)} />
+              <StatRow label="Owned" value={String(profile?.stats.autographs_owned ?? 0)} isLast />
+            </div>
           </div>
         </div>
       </section>
@@ -208,7 +217,7 @@ export default async function WebAppHomePage() {
         </div>
 
         {currentListings.length > 0 ? (
-          <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {currentListings.map((listing) => (
               <Link
                 key={listing.id}
@@ -266,11 +275,11 @@ export default async function WebAppHomePage() {
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function StatRow({ label, value, isLast = false }: { label: string; value: string; isLast?: boolean }) {
   return (
-    <div className="rounded-[6px] bg-[#F7F7F8] px-4 py-4">
-      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">{label}</div>
-      <div className="mt-2 text-xl font-black text-black">{value}</div>
+    <div className={`flex items-center justify-between gap-4 px-5 py-4 ${isLast ? '' : 'border-b border-gray-200'}`}>
+      <div className="text-sm font-medium text-gray-600">{label}</div>
+      <div className="text-lg font-black text-black">{value}</div>
     </div>
   );
 }

@@ -5,6 +5,7 @@ export type WebsiteProfile = {
   id: string;
   display_name: string;
   avatar_url?: string | null;
+  bio?: string | null;
   instagram_handle?: string | null;
   verified: boolean;
   personalized_requests_enabled: boolean;
@@ -36,6 +37,7 @@ export async function getWebsiteProfile(id: string): Promise<WebsiteProfile | nu
     id: profile.id,
     display_name: profile.display_name,
     avatar_url: profile.avatar_url ?? null,
+    bio: profile.bio ?? null,
     instagram_handle: profile.instagram_handle ?? null,
     verified: !!profile.verified,
     personalized_requests_enabled: !!profile.personalized_requests_enabled,
