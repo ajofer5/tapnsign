@@ -15,8 +15,6 @@ import {
   supabaseAdmin,
 } from '../_shared/utils.ts';
 
-const PRINT_BUNDLE_CENTS = 1699;
-
 // Prodigi REST API — https://www.prodigi.com/print-api/docs/reference/
 const PRODIGI_API_URL = Deno.env.get('PRODIGI_SANDBOX') === 'true'
   ? 'https://api.sandbox.prodigi.com/v4.0/Orders'
@@ -106,8 +104,10 @@ Deno.serve((req) =>
     const shippingState = requireString(body.shipping_state, 'shipping_state');
     const shippingZip = requireString(body.shipping_zip, 'shipping_zip');
 
-    // Image URL — app generates before calling this function
-    const imageUrl8x12 = requireString(body.image_url_8x12, 'image_url_8x12');
+    // image_url_8x12 is optional — if not provided, generate-print-layout is called automatically
+    const imageUrl8x12Provided = typeof body.image_url_8x12 === 'string' && body.image_url_8x12.trim().length > 0
+      ? body.image_url_8x12.trim()
+      : null;
 
     const [autograph, profile] = await Promise.all([
       getAutographForUpdate(autographId),
@@ -118,22 +118,34 @@ Deno.serve((req) =>
     assert(autograph.status === 'active', 409, 'Autograph is not active.');
     assert(autograph.owner_id === user.id, 403, 'You do not own this autograph.');
 
+    let paymentEvent: {
+      id: string;
+      user_id: string | null;
+      autograph_id: string | null;
+      purpose: string;
+      status: string;
+      amount_cents: number;
+      stripe_payment_intent_id: string | null;
+    } | null = null;
+
     // In sandbox mode, payment validation is bypassed for test orders
     if (!isSandbox) {
-      const { data: paymentEvent, error: paymentEventError } = await supabaseAdmin
+      const { data, error: paymentEventError } = await supabaseAdmin
         .from('payment_events')
         .select('id, user_id, autograph_id, purpose, status, amount_cents, stripe_payment_intent_id')
         .eq('id', paymentEventId)
         .single();
 
-      if (paymentEventError || !paymentEvent) {
+      if (paymentEventError || !data) {
         throw new HttpError(404, 'Payment event not found.');
       }
+
+      paymentEvent = data;
 
       assert(paymentEvent.user_id === user.id, 403, 'Payment event does not belong to this user.');
       assert(paymentEvent.autograph_id === autographId, 409, 'Payment event does not match this autograph.');
       assert(paymentEvent.purpose === 'print_bundle', 409, 'Payment event purpose mismatch.');
-      assert(paymentEvent.amount_cents === PRINT_BUNDLE_CENTS, 409, 'Payment amount mismatch.');
+      assert(paymentEvent.amount_cents > 0, 409, 'Payment amount mismatch.');
       assert(typeof paymentEvent.stripe_payment_intent_id === 'string', 409, 'Payment intent reference missing.');
 
       const paymentIntent = await stripe.paymentIntents.retrieve(paymentEvent.stripe_payment_intent_id);
@@ -144,15 +156,24 @@ Deno.serve((req) =>
       );
     }
 
-    // Check for an existing print record for this owner
-    const { data: existingPrint } = await supabaseAdmin
-      .from('autograph_prints')
-      .select('id, fulfillment_status, vendor_order_id')
-      .eq('autograph_id', autographId)
-      .eq('owner_id_at_print', user.id)
-      .eq('status', 'created')
-      .limit(1)
-      .maybeSingle();
+    // Check for an existing print record by payment event (idempotency) OR by autograph+owner (retry)
+    const [{ data: printByPayment }, { data: printByOwner }] = await Promise.all([
+      supabaseAdmin
+        .from('autograph_prints')
+        .select('id, fulfillment_status, vendor_order_id')
+        .eq('payment_event_id', paymentEventId)
+        .limit(1)
+        .maybeSingle(),
+      supabaseAdmin
+        .from('autograph_prints')
+        .select('id, fulfillment_status, vendor_order_id')
+        .eq('autograph_id', autographId)
+        .eq('owner_id_at_print', user.id)
+        .limit(1)
+        .maybeSingle(),
+    ]);
+
+    const existingPrint = printByPayment ?? printByOwner ?? null;
 
     // If already submitted to vendor, return success — idempotent
     if (existingPrint?.vendor_order_id) {
@@ -166,22 +187,16 @@ Deno.serve((req) =>
       });
     }
 
-    // Block if order already reached a terminal state beyond submission
-    if (existingPrint && !['pending', 'payment_confirmed'].includes(existingPrint.fulfillment_status)) {
-      throw new HttpError(409, 'You have already ordered a print for this autograph.');
-    }
-
     const now = new Date().toISOString();
-
-    // Upsert the print record — create new or update the pending one
     let printId: string;
 
     if (existingPrint) {
-      // Update existing pending record with payment confirmation and shipping
+      // Reuse existing record — update with latest payment and shipping details
       const { error: updateError } = await supabaseAdmin
         .from('autograph_prints')
         .update({
-          payment_intent_id: paymentEvent.stripe_payment_intent_id,
+          payment_intent_id: isSandbox ? null : paymentEvent!.stripe_payment_intent_id,
+          payment_event_id: isSandbox ? null : paymentEvent!.id,
           payment_confirmed_at: now,
           shipping_name: shippingName,
           shipping_line1: shippingLine1,
@@ -201,7 +216,6 @@ Deno.serve((req) =>
         .from('autograph_prints')
         .select('print_sequence_number')
         .eq('autograph_id', autographId)
-        .eq('status', 'created')
         .order('print_sequence_number', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -215,7 +229,8 @@ Deno.serve((req) =>
           owner_id_at_print: user.id,
           print_sequence_number: nextSequence,
           status: 'created',
-          payment_intent_id: isSandbox ? null : paymentEventId,
+          payment_intent_id: isSandbox ? null : paymentEvent!.stripe_payment_intent_id,
+          payment_event_id: isSandbox ? null : paymentEvent!.id,
           payment_confirmed_at: now,
           shipping_name: shippingName,
           shipping_line1: shippingLine1,
@@ -238,6 +253,34 @@ Deno.serve((req) =>
         .from('payment_events')
         .update({ status: 'captured' })
         .eq('id', paymentEventId);
+    }
+
+    // Generate print layout image via render worker if not already provided
+    let imageUrl8x12 = imageUrl8x12Provided;
+    if (!imageUrl8x12) {
+      const renderWorkerUrl = Deno.env.get('RENDER_WORKER_URL') ?? '';
+      const renderSecret = Deno.env.get('RENDER_SECRET') ?? '';
+      assert(renderWorkerUrl.length > 0, 500, 'RENDER_WORKER_URL is not configured.');
+
+      console.log('[submit-print-order] calling render worker for', autographId, printId);
+      const renderRes = await fetch(`${renderWorkerUrl}/render-print-layout`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-render-secret': renderSecret,
+        },
+        body: JSON.stringify({ autograph_id: autographId, print_id: printId }),
+      });
+
+      const renderData = await renderRes.json().catch(() => ({}));
+      console.log('[submit-print-order] render worker response:', renderRes.status, JSON.stringify(renderData));
+
+      if (!renderRes.ok) {
+        throw new HttpError(500, `Layout generation failed: ${renderData?.error ?? renderRes.statusText}`);
+      }
+
+      imageUrl8x12 = renderData?.print_layout_url;
+      assert(typeof imageUrl8x12 === 'string' && imageUrl8x12.length > 0, 500, `Print layout URL missing from render worker response.`);
     }
 
     // Submit order to Prodigi
