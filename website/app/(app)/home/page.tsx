@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { getMyOfferQueue } from '../../../lib/me';
 import { getMyPersonalizedRequests } from '../../../lib/personalized-requests';
 import { getWebsiteProfile } from '../../../lib/profile';
-import { webRouteToProfile, webRoutes } from '../../../lib/routes';
+import { webRoutes } from '../../../lib/routes';
 import { getWebSessionUser } from '../../../lib/web-auth';
 
 export const dynamic = 'force-dynamic';
@@ -152,36 +152,6 @@ export default async function WebAppHomePage() {
         </div>
       </section>
 
-      <section className="web-panel mt-8 p-7">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
-              Quick Actions
-            </p>
-            <p className="mt-2 text-sm leading-7 text-gray-600">
-              Review your public profile, manage your collection, and keep offers moving.
-            </p>
-          </div>
-          {user?.id ? (
-            <Link
-              href={webRouteToProfile(user.id)}
-              className="inline-flex items-center justify-center rounded-lg bg-[#001B5C] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#00144A]"
-            >
-              View My Public Profile
-            </Link>
-          ) : null}
-        </div>
-
-        <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          <QuickLink href={webRoutes.collection} label="Collection" />
-          <QuickLink href={webRoutes.marketplace} label="Marketplace" tone="primary" />
-          <QuickLink href={webRoutes.saved} label="Saved" />
-          <QuickLink href={webRoutes.myListings} label="My Listings" />
-          <QuickLink href={webRoutes.myOffers} label="Offer Queue" />
-          <QuickLink href={webRoutes.activity} label="Activity" />
-        </div>
-      </section>
-
       <section className="mt-8 grid gap-6 md:grid-cols-2">
         <div className="web-panel-tight p-7 md:col-span-2">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -217,29 +187,6 @@ export default async function WebAppHomePage() {
         </div>
       </section>
     </div>
-  );
-}
-
-function QuickLink({
-  href,
-  label,
-  tone = 'default',
-}: {
-  href: string;
-  label: string;
-  tone?: 'default' | 'primary';
-}) {
-  return (
-    <Link
-      href={href}
-      className={`rounded-lg px-5 py-4 text-sm font-semibold transition-colors ${
-        tone === 'primary'
-          ? 'bg-[#001B5C] text-white hover:bg-[#00144A]'
-          : 'border border-gray-200 bg-[#F7F7F8] text-black hover:border-black hover:bg-white'
-      }`}
-    >
-      {label}
-    </Link>
   );
 }
 
