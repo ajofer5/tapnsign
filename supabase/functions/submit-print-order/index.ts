@@ -21,8 +21,8 @@ const PRODIGI_API_URL = Deno.env.get('PRODIGI_SANDBOX') === 'true'
   : 'https://api.prodigi.com/v4.0/Orders';
 const PRODIGI_API_KEY = Deno.env.get('PRODIGI_API_KEY') ?? '';
 
-// Prodigi SKU for 8×12 photo print
-const SKU_8X12 = 'GLOBAL-PHO-8X12';
+// Prodigi SKU for 5×7.5 photo print
+const SKU_5X7 = 'GLOBAL-PHO-5X7';
 
 type ProdigiRecipient = {
   name: string;
@@ -255,32 +255,32 @@ Deno.serve((req) =>
         .eq('id', paymentEventId);
     }
 
-    // Generate print layout image via render worker if not already provided
+    // Generate print layout image via edge function if not already provided
     let imageUrl8x12 = imageUrl8x12Provided;
     if (!imageUrl8x12) {
-      const renderWorkerUrl = Deno.env.get('RENDER_WORKER_URL') ?? '';
-      const renderSecret = Deno.env.get('RENDER_SECRET') ?? '';
-      assert(renderWorkerUrl.length > 0, 500, 'RENDER_WORKER_URL is not configured.');
-
-      console.log('[submit-print-order] calling render worker for', autographId, printId);
-      const renderRes = await fetch(`${renderWorkerUrl}/render-print-layout`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-render-secret': renderSecret,
-        },
-        body: JSON.stringify({ autograph_id: autographId, print_id: printId }),
+      const internalSecret = Deno.env.get('INTERNAL_FUNCTION_SECRET') ?? '';
+      console.log('[submit-print-order] calling generate-print-layout for', autographId, printId);
+      const layoutRes = await supabaseAdmin.functions.invoke('generate-print-layout', {
+        body: { autograph_id: autographId, print_id: printId },
+        headers: { 'x-internal-secret': internalSecret },
       });
-
-      const renderData = await renderRes.json().catch(() => ({}));
-      console.log('[submit-print-order] render worker response:', renderRes.status, JSON.stringify(renderData));
-
-      if (!renderRes.ok) {
-        throw new HttpError(500, `Layout generation failed: ${renderData?.error ?? renderRes.statusText}`);
+      console.log('[submit-print-order] generate-print-layout data:', JSON.stringify(layoutRes.data), 'error:', layoutRes.error?.message);
+      if (layoutRes.error) {
+        let detail = layoutRes.error.message;
+        try {
+          const ctx = (layoutRes.error as any).context;
+          if (ctx && typeof ctx.json === 'function') {
+            const body = await ctx.json();
+            if (body?.error) detail = body.error;
+          }
+        } catch { /* ignore */ }
+        throw new HttpError(500, `Layout generation failed: ${detail}`);
       }
-
-      imageUrl8x12 = renderData?.print_layout_url;
-      assert(typeof imageUrl8x12 === 'string' && imageUrl8x12.length > 0, 500, `Print layout URL missing from render worker response.`);
+      if (layoutRes.data?.error) {
+        throw new HttpError(500, `Layout generation error: ${layoutRes.data.error}`);
+      }
+      imageUrl8x12 = layoutRes.data?.print_layout_url;
+      assert(typeof imageUrl8x12 === 'string' && imageUrl8x12.length > 0, 500, `Print layout URL missing. Response: ${JSON.stringify(layoutRes.data)}`);
     }
 
     // Submit order to Prodigi
@@ -298,8 +298,8 @@ Deno.serve((req) =>
 
     const items: ProdigiItem[] = [
       {
-        merchantReference: `${printId}-8x12`,
-        sku: SKU_8X12,
+        merchantReference: `${printId}-5x7`,
+        sku: SKU_5X7,
         copies: 1,
         sizing: 'fillPrintArea',
         attributes: { finish: 'lustre' },
