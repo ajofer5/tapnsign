@@ -1,8 +1,8 @@
 import Link from 'next/link';
-import { getMyOfferQueue } from '../../../lib/me';
+import { formatMoney, getMyListings, getMyOfferQueue } from '../../../lib/me';
 import { getMyPersonalizedRequests } from '../../../lib/personalized-requests';
 import { getWebsiteProfile } from '../../../lib/profile';
-import { webRoutes } from '../../../lib/routes';
+import { webRouteToAutograph, webRoutes } from '../../../lib/routes';
 import { getWebSessionUser } from '../../../lib/web-auth';
 
 export const dynamic = 'force-dynamic';
@@ -28,12 +28,13 @@ type ActionItem = {
 export default async function WebAppHomePage() {
   const user = await getWebSessionUser();
   const profile = user?.id ? await getWebsiteProfile(user.id) : null;
-  const [{ groups: offerQueue }, personalizedRequests] = user?.id
+  const [{ groups: offerQueue }, personalizedRequests, ownedListingsPage] = user?.id
     ? await Promise.all([
         getMyOfferQueue(user.id, 12, null),
         getMyPersonalizedRequests(user.id),
+        getMyListings(user.id, 12, null),
       ])
-    : [{ groups: [] }, { incoming: [], outgoing: [] }];
+    : [{ groups: [] }, { incoming: [], outgoing: [] }, { listings: [], nextCursor: null }];
 
   const displayName = profile?.display_name ?? user?.display_name ?? 'Ophinia Member';
   const avatarUrl = profile?.avatar_url ?? null;
@@ -46,6 +47,7 @@ export default async function WebAppHomePage() {
   const outgoingReadyRequests = personalizedRequests.outgoing.filter(
     (request) => request.status === 'fulfilled' && !request.completed_transfer_id
   );
+  const currentListings = ownedListingsPage.listings.filter((listing) => listing.is_for_sale);
   const actionItems: ActionItem[] = [];
 
   if (acceptedOffers.length > 0) {
@@ -185,6 +187,80 @@ export default async function WebAppHomePage() {
             </div>
           )}
         </div>
+      </section>
+
+      <section className="web-panel mt-8 p-7">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
+              Current Listings
+            </p>
+            <p className="mt-2 text-sm leading-7 text-gray-600">
+              Everything you currently have live in the marketplace.
+            </p>
+          </div>
+          <Link
+            href={webRoutes.myListings}
+            className="rounded-lg border border-gray-300 px-4 py-3 text-sm font-semibold text-gray-700 transition-colors hover:border-black hover:text-black"
+          >
+            Open My Listings
+          </Link>
+        </div>
+
+        {currentListings.length > 0 ? (
+          <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {currentListings.map((listing) => (
+              <Link
+                key={listing.id}
+                href={webRouteToAutograph(listing.id)}
+                className="overflow-hidden rounded-[6px] border border-gray-200 bg-white transition-colors hover:border-black"
+              >
+                {listing.thumbnail_url ? (
+                  <img
+                    src={listing.thumbnail_url}
+                    alt={listing.creator_name}
+                    className="aspect-[60/85] w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex aspect-[60/85] items-center justify-center bg-[#1C1C1F] text-sm font-semibold uppercase tracking-[0.25em] text-white/50">
+                    Ophinia
+                  </div>
+                )}
+                <div className="space-y-2 p-3.5">
+                  <div className="text-sm font-black leading-5 text-black">
+                    {listing.creator_name}
+                    {listing.creator_sequence_number != null ? ` · #${listing.creator_sequence_number}` : ''}
+                  </div>
+                  {listing.series_name ? (
+                    <div className="text-xs leading-5 text-gray-600">
+                      {listing.series_name}
+                      {listing.series_sequence_number != null && listing.series_max_size != null
+                        ? ` · ${listing.series_sequence_number} of ${listing.series_max_size}`
+                        : ''}
+                    </div>
+                  ) : null}
+                  <div className="flex items-end justify-between gap-3 border-t border-gray-100 pt-3">
+                    <div>
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-500">
+                        {listing.listing_mode === 'buy_now' ? 'Fixed Price' : 'Estimated Value'}
+                      </div>
+                      <div className="mt-1 text-sm font-semibold text-black">
+                        {formatMoney(listing.price_cents)}
+                      </div>
+                    </div>
+                    <div className="rounded-[4px] bg-[#F7F7F8] px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-700">
+                      Live
+                    </div>
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <div className="mt-6 rounded-[6px] bg-[#F7F7F8] px-5 py-5 text-sm text-gray-600">
+            You do not have any live marketplace listings yet.
+          </div>
+        )}
       </section>
     </div>
   );
