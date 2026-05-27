@@ -65,10 +65,19 @@ const SMALL_FRAMES = [
   { frameIdx: 9, timeS: 5.95, x: tx(533) + (SF_W + SF_GAP) * 3, y: SF_Y, w: SF_W, h: SF_H },
 ];
 
-// Preload template and logo from bundled assets
-const TEMPLATE_PATH = path.join(__dirname, 'assets', 'print-layout-8x10.png');
-const TEMPLATE_BUF = fs.existsSync(TEMPLATE_PATH) ? fs.readFileSync(TEMPLATE_PATH) : null;
-if (!TEMPLATE_BUF) console.warn('[init] print-layout-8x10.png not found in assets/');
+// Preload assets from bundled directory
+const LOGO_PATH = path.join(__dirname, 'assets', 'ophinia-logo-white.png');
+const LOGO_BUF = fs.existsSync(LOGO_PATH) ? fs.readFileSync(LOGO_PATH) : null;
+if (!LOGO_BUF) console.warn('[init] ophinia-logo-white.png not found in assets/');
+
+const FONT_PATH = path.join(__dirname, 'assets', 'Optima.ttc');
+const FONT_B64 = fs.existsSync(FONT_PATH)
+  ? fs.readFileSync(FONT_PATH).toString('base64')
+  : null;
+if (!FONT_B64) console.warn('[init] Optima.ttc not found in assets/ — falling back to DejaVu Serif');
+
+// Logo area (below QR)
+const LOGO_AREA = { x: tx(791), y: ty(492), w: tx(80), h: ty(26) };
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -234,31 +243,6 @@ async function renderPrintLayout({ autograph, printRecord }) {
   console.log('[render] frames fetched, building composites');
   const composites = [];
 
-  // --- Erase template placeholder border lines from all frame areas ---
-  // The template PNG has thin white border lines outlining each frame area.
-  // Painting solid black slightly beyond each frame erases those lines cleanly
-  // so photos sit in clean black areas. Outer border and logo are unaffected.
-  const FRAME_PAD = 6;
-  const makeBlackRect = async (w, h) =>
-    sharp({ create: { width: w, height: h, channels: 3, background: { r: 0, g: 0, b: 0 } } })
-      .png().toBuffer();
-
-  composites.push({
-    input: await makeBlackRect(FRAME12.w + FRAME_PAD * 2, FRAME12.h + FRAME_PAD * 2),
-    left: FRAME12.x - FRAME_PAD, top: FRAME12.y - FRAME_PAD,
-  });
-  for (const sf of SMALL_FRAMES) {
-    composites.push({
-      input: await makeBlackRect(sf.w + FRAME_PAD * 2, sf.h + FRAME_PAD * 2),
-      left: sf.x - FRAME_PAD, top: sf.y - FRAME_PAD,
-    });
-  }
-  // Also erase sig square placeholder border
-  composites.push({
-    input: await makeBlackRect(SIG_SQ.w + FRAME_PAD * 2, SIG_SQ.h + FRAME_PAD * 2),
-    left: SIG_SQ.x - FRAME_PAD, top: SIG_SQ.y - FRAME_PAD,
-  });
-
   // --- Frame 12 photo (large left column) ---
   if (frame12Buf) {
     composites.push({ input: frame12Buf, left: FRAME12.x, top: FRAME12.y });
@@ -273,7 +257,7 @@ async function renderPrintLayout({ autograph, printRecord }) {
 
   // --- Signature square: black fill + centered gold strokes ---
   const sigBg = await sharp({
-    create: { width: SIG_SQ.w, height: SIG_SQ.h, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 1 } },
+    create: { width: SIG_SQ.w, height: SIG_SQ.h, channels: 3, background: { r: 0, g: 0, b: 0 } },
   }).png().toBuffer();
   composites.push({ input: sigBg, left: SIG_SQ.x, top: SIG_SQ.y });
 
@@ -311,7 +295,26 @@ async function renderPrintLayout({ autograph, printRecord }) {
     console.error('[render] QR generation error:', e.message);
   }
 
-  // --- Metadata text SVG (font sizes scaled for 300 DPI print canvas) ---
+  // --- Ophinia logo ---
+  if (LOGO_BUF) {
+    try {
+      const resizedLogo = await sharp(LOGO_BUF)
+        .resize(LOGO_AREA.w, LOGO_AREA.h, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+        .png()
+        .toBuffer();
+      composites.push({ input: resizedLogo, left: LOGO_AREA.x, top: LOGO_AREA.y });
+    } catch (e) {
+      console.error('[render] logo composite error:', e.message);
+    }
+  }
+
+  // --- Metadata + borders full-canvas SVG ---
+  // Font embedded as base64 so Optima renders correctly on the Railway container.
+  const fontFaceDecl = FONT_B64
+    ? `<defs><style>@font-face { font-family: 'Optima'; src: url('data:font/truetype;base64,${FONT_B64}'); }</style></defs>`
+    : '';
+  const fontFamily = FONT_B64 ? 'Optima, DejaVu Serif, serif' : 'DejaVu Serif, Georgia, serif';
+
   const date = new Date(autograph.created_at).toLocaleDateString('en-US', {
     month: 'long', day: 'numeric', year: 'numeric',
   });
@@ -320,9 +323,9 @@ async function renderPrintLayout({ autograph, printRecord }) {
     : creatorName.toUpperCase();
 
   const metaLines = [
-    { text: nameLabel,              fontSize: 72, opacity: 1.0,  bold: true,  letterSpacing: 3 },
-    { text: `Captured on ${date}`,  fontSize: 52, opacity: 0.75, bold: false, letterSpacing: 1 },
-    { text: `Print #${printSeq}`,   fontSize: 52, opacity: 0.75, bold: false, letterSpacing: 1 },
+    { text: nameLabel,             fontSize: 72, opacity: 1.0,  bold: true,  letterSpacing: 3 },
+    { text: `Captured on ${date}`, fontSize: 52, opacity: 0.75, bold: false, letterSpacing: 1 },
+    { text: `Print #${printSeq}`,  fontSize: 52, opacity: 0.75, bold: false, letterSpacing: 1 },
   ];
   if (seriesName) {
     metaLines.push({ text: seriesName, fontSize: 48, opacity: 0.65, bold: false, letterSpacing: 1 });
@@ -333,7 +336,7 @@ async function renderPrintLayout({ autograph, printRecord }) {
     <text
       x="${META_AREA.x + 20}"
       y="${META_AREA.y + 72 + i * lineH}"
-      font-family="URW Classico, Optima, DejaVu Serif, Georgia, serif"
+      font-family="${fontFamily}"
       font-size="${line.fontSize}"
       font-weight="${line.bold ? 'bold' : 'normal'}"
       fill="white"
@@ -341,22 +344,23 @@ async function renderPrintLayout({ autograph, printRecord }) {
       letter-spacing="${line.letterSpacing}"
     >${escapeXml(line.text)}</text>`).join('\n');
 
-  const metaSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${CANVAS_W}" height="${CANVAS_H}">
+  // Outer + inner borders drawn programmatically — no dependency on template PNG
+  const overlaySvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${CANVAS_W}" height="${CANVAS_H}">
+    ${fontFaceDecl}
+    <rect x="10" y="10" width="${CANVAS_W - 20}" height="${CANVAS_H - 20}"
+      fill="none" stroke="white" stroke-width="3" opacity="0.5"/>
+    <rect x="38" y="38" width="${CANVAS_W - 76}" height="${CANVAS_H - 76}"
+      fill="none" stroke="white" stroke-width="1.5" opacity="0.3"/>
     ${metaTextEls}
   </svg>`;
-  composites.push({ input: Buffer.from(metaSvg), left: 0, top: 0 });
+  composites.push({ input: Buffer.from(overlaySvg), left: 0, top: 0 });
 
-  // --- Composite ---
-  // Template is the base canvas — black background with white borders/logo baked in.
-  // Photos are placed inside the frame areas; border lines live around the edges
-  // so they remain visible. Metadata and strokes composite on top.
+  // --- Composite onto black canvas ---
   console.log('[render] compositing landscape PNG');
 
-  const baseCanvas = TEMPLATE_BUF
-    ? sharp(TEMPLATE_BUF).resize(CANVAS_W, CANVAS_H, { fit: 'fill' })
-    : sharp({ create: { width: CANVAS_W, height: CANVAS_H, channels: 3, background: { r: 0, g: 0, b: 0 } } });
-
-  const landscape = await baseCanvas
+  const landscape = await sharp({
+    create: { width: CANVAS_W, height: CANVAS_H, channels: 3, background: { r: 0, g: 0, b: 0 } },
+  })
     .composite(composites)
     .png({ compressionLevel: 6 })
     .toBuffer();
