@@ -37,7 +37,8 @@ type ActivityEntry = {
   seriesName?: string | null;
   amountCents: number;
   date: string;
-  status?: 'pending' | 'accepted' | 'on_hold' | 'declined' | 'withdrawn' | 'expired';
+  status?: 'pending' | 'accepted' | 'on_hold' | 'declined' | 'withdrawn' | 'expired' | 'countered' | 'fulfilled' | 'completed';
+  offerId?: string | null;
   offerRole?: 'owner' | 'buyer';
   expiresAt?: string | null;
   paymentDueAt?: string | null;
@@ -47,6 +48,35 @@ type ActivityEntry = {
   recipientName?: string | null;
   inscriptionText?: string | null;
   completedTransferId?: string | null;
+  isActionable?: boolean;
+};
+
+type ActivityCursor = {
+  beforeEventAt: string;
+  beforeFeedId: string;
+};
+
+type ActivityFeedRow = {
+  feed_id: string;
+  event_type: ActivityEntry['type'];
+  autograph_id: string | null;
+  creator_name: string;
+  creator_sequence_number: number | null;
+  series_name: string | null;
+  amount_cents: number;
+  event_at: string;
+  status: ActivityEntry['status'] | null;
+  offer_id: string | null;
+  offer_role: ActivityEntry['offerRole'] | null;
+  expires_at: string | null;
+  payment_due_at: string | null;
+  accepted_transfer_id: string | null;
+  personalized_request_id: string | null;
+  request_role: ActivityEntry['requestRole'] | null;
+  recipient_name: string | null;
+  inscription_text: string | null;
+  completed_transfer_id: string | null;
+  is_actionable: boolean;
 };
 
 type Point = { x: number; y: number; t: number };
@@ -88,14 +118,6 @@ function formatDeadline(value: string) {
   });
 }
 
-function parseAutographLabel(autograph: any) {
-  return {
-    creatorName: autograph?.creator?.display_name ?? 'Unknown',
-    creatorSequenceNumber: autograph?.creator_sequence_number ?? null,
-    seriesName: autograph?.series?.name ?? null,
-  };
-}
-
 const EVENT_CONFIG: Record<ActivityEntry['type'], { label: string }> = {
   sold:         { label: 'Sold' },
   purchased:    { label: 'Purchased' },
@@ -121,13 +143,15 @@ function activityViewedKey(userId: string) {
   return `activity_last_viewed_${userId}`;
 }
 
-const ACTIVITY_QUERY_LIMIT = 60;
 const ACTIVITY_STALE_MS = 30_000;
-const EXPIRE_OFFERS_STALE_MS = 5 * 60_000;
+const ACTIVITY_PAGE_SIZE = 40;
 
 export default function ActivityScreen() {
   const [entries, setEntries] = useState<ActivityEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [cursor, setCursor] = useState<ActivityCursor | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [actioningId, setActioningId] = useState<string | null>(null);
   const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null);
@@ -136,7 +160,56 @@ export default function ActivityScreen() {
   const appUrl = process.env.EXPO_PUBLIC_APP_URL ?? 'https://tapnsign.app';
   const router = useRouter();
   const lastLoadedAtRef = useRef<number | null>(null);
-  const lastExpiredOffersAtRef = useRef<number | null>(null);
+  const mapFeedRow = useCallback((row: ActivityFeedRow): ActivityEntry => ({
+    id: row.feed_id,
+    type: row.event_type,
+    autographId: row.autograph_id,
+    creatorName: row.creator_name,
+    creatorSequenceNumber: row.creator_sequence_number ?? null,
+    seriesName: row.series_name ?? null,
+    amountCents: row.amount_cents,
+    date: row.event_at,
+    status: row.status ?? undefined,
+    offerId: row.offer_id ?? undefined,
+    offerRole: row.offer_role ?? undefined,
+    expiresAt: row.expires_at ?? undefined,
+    paymentDueAt: row.payment_due_at ?? undefined,
+    acceptedTransferId: row.accepted_transfer_id ?? undefined,
+    personalizedRequestId: row.personalized_request_id ?? undefined,
+    requestRole: row.request_role ?? undefined,
+    recipientName: row.recipient_name ?? undefined,
+    inscriptionText: row.inscription_text ?? undefined,
+    completedTransferId: row.completed_transfer_id ?? undefined,
+    isActionable: row.is_actionable,
+  }), []);
+
+  const fetchActivityPage = useCallback(async (pageCursor: ActivityCursor | null) => {
+    if (!user) {
+      return { items: [] as ActivityEntry[], nextCursor: null as ActivityCursor | null };
+    }
+
+    const { data, error } = await supabase.rpc('get_activity_feed', {
+      p_user_id: user.id,
+      p_limit: ACTIVITY_PAGE_SIZE,
+      p_before_event_at: pageCursor?.beforeEventAt ?? null,
+      p_before_feed_id: pageCursor?.beforeFeedId ?? null,
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    const rows = (data as ActivityFeedRow[] | null) ?? [];
+    const items = rows.map(mapFeedRow);
+    const last = items[items.length - 1];
+
+    return {
+      items,
+      nextCursor: items.length === ACTIVITY_PAGE_SIZE && last
+        ? { beforeEventAt: last.date, beforeFeedId: last.id }
+        : null,
+    };
+  }, [mapFeedRow, user]);
 
   const loadEntries = useCallback(async (options?: { force?: boolean }) => {
     if (!user) return Promise.resolve();
@@ -149,164 +222,34 @@ export default function ActivityScreen() {
     setLoadError(false);
 
     try {
-      if (
-        !lastExpiredOffersAtRef.current ||
-        now - lastExpiredOffersAtRef.current >= EXPIRE_OFFERS_STALE_MS
-      ) {
-        await callEdgeFunction('expire-autograph-offers', {});
-        lastExpiredOffersAtRef.current = now;
-      }
-
-      const [transfersRes, offersRes, personalizedRes] = await Promise.all([
-        supabase
-          .from('transfers')
-          .select('id, autograph_id, from_user_id, to_user_id, price_cents, transferred_at, autograph:autograph_id ( creator_sequence_number, creator:creator_id ( display_name ), series:series_id ( name ) )')
-          .or(`from_user_id.eq.${user.id},to_user_id.eq.${user.id}`)
-          .order('transferred_at', { ascending: false })
-          .limit(ACTIVITY_QUERY_LIMIT),
-        supabase
-          .from('autograph_offers')
-          .select('id, autograph_id, buyer_id, owner_id, amount_cents, status, created_at, responded_at, expires_at, payment_due_at, accepted_transfer_id, autograph:autograph_id ( creator_sequence_number, creator:creator_id ( display_name ), series:series_id ( name ) )')
-          .or(`buyer_id.eq.${user.id},owner_id.eq.${user.id}`)
-          .order('created_at', { ascending: false })
-          .limit(ACTIVITY_QUERY_LIMIT),
-        supabase
-          .from('personalized_autograph_requests')
-          .select(`
-            id,
-            creator_id,
-            requester_id,
-            minted_autograph_id,
-            recipient_name,
-            inscription_text,
-            amount_cents,
-            status,
-            created_at,
-            responded_at,
-            fulfilled_at,
-            completed_at,
-            expires_at,
-            payment_due_at,
-            completed_transfer_id,
-            creator:creator_id ( display_name ),
-            autograph:minted_autograph_id ( creator_sequence_number )
-          `)
-          .or(`creator_id.eq.${user.id},requester_id.eq.${user.id}`)
-          .order('created_at', { ascending: false })
-          .limit(ACTIVITY_QUERY_LIMIT),
-      ]);
-
-      const results: ActivityEntry[] = [];
-
-      for (const t of transfersRes.data ?? []) {
-        const { creatorName, creatorSequenceNumber, seriesName } = parseAutographLabel(t.autograph);
-        if (t.from_user_id === user.id) {
-          results.push({ id: `transfer-sold-${t.id}`, type: 'sold', autographId: t.autograph_id, creatorName, creatorSequenceNumber, seriesName, amountCents: t.price_cents, date: t.transferred_at });
-        } else {
-          results.push({ id: `transfer-purchased-${t.id}`, type: 'purchased', autographId: t.autograph_id, creatorName, creatorSequenceNumber, seriesName, amountCents: t.price_cents, date: t.transferred_at });
-        }
-      }
-
-      for (const offer of offersRes.data ?? []) {
-        const { creatorName, creatorSequenceNumber, seriesName } = parseAutographLabel(offer.autograph);
-        const isOwner = offer.owner_id === user.id;
-        let type: ActivityEntry['type'];
-
-        if (offer.status === 'pending') {
-          type = isOwner ? 'offer_received' : 'offer_sent';
-        } else if (offer.status === 'accepted') {
-          type = 'offer_accepted';
-        } else if (offer.status === 'on_hold') {
-          type = 'offer_on_hold';
-        } else if (offer.status === 'declined') {
-          type = 'offer_declined';
-        } else if (offer.status === 'withdrawn') {
-          type = 'offer_withdrawn';
-        } else {
-          type = 'offer_expired';
-        }
-
-        results.push({
-          id: `offer-${offer.id}`,
-          type,
-          autographId: offer.autograph_id,
-          creatorName,
-          creatorSequenceNumber,
-          seriesName,
-          amountCents: offer.amount_cents,
-          date: offer.responded_at ?? offer.created_at,
-          status: offer.status,
-          offerRole: isOwner ? 'owner' : 'buyer',
-          expiresAt: offer.expires_at,
-          paymentDueAt: offer.payment_due_at,
-          acceptedTransferId: offer.accepted_transfer_id,
-        });
-      }
-
-      for (const request of personalizedRes.data ?? []) {
-        const isCreator = request.creator_id === user.id;
-        let type: ActivityEntry['type'];
-
-        if (request.status === 'pending') {
-          type = isCreator ? 'personalized_request_received' : 'personalized_request_sent';
-        } else if (request.status === 'countered') {
-          type = 'personalized_request_countered';
-        } else if (request.status === 'accepted') {
-          type = 'personalized_request_accepted';
-        } else if (request.status === 'declined') {
-          type = 'personalized_request_declined';
-        } else if (request.status === 'withdrawn') {
-          type = 'personalized_request_withdrawn';
-        } else if (request.status === 'expired') {
-          type = 'personalized_request_expired';
-        } else if (request.status === 'fulfilled') {
-          type = 'personalized_request_fulfilled';
-        } else {
-          type = 'personalized_request_completed';
-        }
-
-        results.push({
-          id: `personalized-${request.id}`,
-          type,
-          autographId: request.minted_autograph_id ?? null,
-          creatorName: (request.creator as any)?.display_name ?? 'Creator',
-          creatorSequenceNumber: (request.autograph as any)?.creator_sequence_number ?? null,
-          seriesName: null,
-          amountCents: request.amount_cents,
-          date: request.completed_at ?? request.fulfilled_at ?? request.responded_at ?? request.created_at,
-          expiresAt: request.expires_at ?? null,
-          paymentDueAt: request.payment_due_at ?? null,
-          personalizedRequestId: request.id,
-          requestRole: isCreator ? 'creator' : 'requester',
-          recipientName: request.recipient_name,
-          inscriptionText: request.inscription_text ?? null,
-          completedTransferId: request.completed_transfer_id ?? null,
-        });
-      }
-
-      results.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      setEntries(results);
+      const { items, nextCursor } = await fetchActivityPage(null);
+      setEntries(items);
+      setCursor(nextCursor);
+      setHasMore(!!nextCursor);
       lastLoadedAtRef.current = Date.now();
       AsyncStorage.setItem(activityViewedKey(user.id), new Date().toISOString()).catch(() => {});
     } catch (error) {
       console.log('Load activity error:', error);
       setEntries([]);
+      setCursor(null);
+      setHasMore(false);
       setLoadError(true);
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [fetchActivityPage, user]);
 
   const handleOfferAction = async (entry: ActivityEntry, action: 'accept' | 'decline' | 'withdraw') => {
+    if (!entry.offerId) return;
     setActioningId(entry.id);
     try {
       if (action === 'withdraw') {
         await callEdgeFunction('withdraw-autograph-offer', {
-          offer_id: entry.id.replace('offer-', ''),
+          offer_id: entry.offerId,
         });
       } else {
         await callEdgeFunction('respond-autograph-offer', {
-          offer_id: entry.id.replace('offer-', ''),
+          offer_id: entry.offerId,
           action,
         });
       }
@@ -336,10 +279,10 @@ export default function ActivityScreen() {
   };
 
   const handleCompleteOfferPurchase = async (entry: ActivityEntry) => {
+    if (!entry.offerId) return;
     setActioningId(entry.id);
     try {
-      const offerId = entry.id.replace('offer-', '');
-      await openAuthenticatedWebPath(`/app/offers/${offerId}/checkout`);
+      await openAuthenticatedWebPath(`/app/offers/${entry.offerId}/checkout`);
       Alert.alert('Continue on Web', 'Accepted-offer payment has been moved to Ophinia on the web.');
     } catch {
       Alert.alert('Purchase Error', 'Could not open the web checkout. Please try again.');
@@ -381,6 +324,33 @@ export default function ActivityScreen() {
     }
   };
 
+  const handleLoadMore = useCallback(() => {
+    if (!user || loading || loadingMore || !hasMore || !cursor) return;
+
+    setLoadingMore(true);
+    fetchActivityPage(cursor)
+      .then(({ items, nextCursor }) => {
+        setEntries((prev) => {
+          const seen = new Set(prev.map((item) => item.id));
+          const merged = [...prev];
+          for (const item of items) {
+            if (!seen.has(item.id)) {
+              merged.push(item);
+            }
+          }
+          return merged;
+        });
+        setCursor(nextCursor);
+        setHasMore(!!nextCursor);
+      })
+      .catch((error) => {
+        console.log('Load more activity error:', error);
+      })
+      .finally(() => {
+        setLoadingMore(false);
+      });
+  }, [cursor, fetchActivityPage, hasMore, loading, loadingMore, user]);
+
   useFocusEffect(
     useCallback(() => {
       if (!user) return;
@@ -412,7 +382,16 @@ export default function ActivityScreen() {
         data={entries}
         keyExtractor={(item) => item.id}
         ListEmptyComponent={<Text style={styles.emptyText}>No activity yet.</Text>}
+        ListFooterComponent={
+          loadingMore ? (
+            <View style={styles.loadMoreFooter}>
+              <ActivityIndicator size="small" color={BrandColors.primary} />
+            </View>
+          ) : null
+        }
         ItemSeparatorComponent={() => <View style={styles.separator} />}
+        onEndReached={handleLoadMore}
+        onEndReachedThreshold={0.4}
         renderItem={({ item }) => {
           const config = EVENT_CONFIG[item.type];
           const canPreviewBeforePurchase =
@@ -641,6 +620,11 @@ const styles = StyleSheet.create({
     color: '#000',
     fontFamily: BrandFonts.primary,
     fontSize: 16,
+  },
+  loadMoreFooter: {
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   separator: {
     height: 1,
