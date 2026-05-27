@@ -45,8 +45,8 @@ const FRAME12 = { x: tx(89), y: ty(88), w: tx(373), h: ty(624) };
 // Signature strokes square (top-right) — gold strokes on black, no photo
 const SIG_SQ = { x: tx(600), y: ty(89), w: tx(273), h: ty(257) };
 
-// QR code (right side, middle)
-const QR_AREA = { x: tx(791), y: ty(388), w: tx(81), h: ty(79) };
+// QR code (right side, middle) — shifted slightly right and down to align with template placeholder
+const QR_AREA = { x: tx(797), y: ty(396), w: tx(81), h: ty(79) };
 
 // Metadata text (left of QR/logo column)
 const META_AREA = { x: tx(499), y: ty(388), w: tx(284), h: ty(142) };
@@ -141,8 +141,8 @@ function strokesToSvgPathsCentered(strokes, color, targetW, targetH) {
   const bboxW = maxX - minX || 1;
   const bboxH = maxY - minY || 1;
 
-  // Scale bounding box to fit target at 75% fill, maintaining aspect ratio
-  const scale = Math.min((targetW * 0.75) / bboxW, (targetH * 0.75) / bboxH);
+  // Scale bounding box to fit target at 88% fill, maintaining aspect ratio
+  const scale = Math.min((targetW * 0.88) / bboxW, (targetH * 0.88) / bboxH);
 
   // Center the scaled bounding box within the target
   const scaledW = bboxW * scale;
@@ -234,15 +234,6 @@ async function renderPrintLayout({ autograph, printRecord }) {
   console.log('[render] frames fetched, building composites');
   const composites = [];
 
-  // --- Template as base layer (provides borders, logo, frame outlines) ---
-  if (TEMPLATE_BUF) {
-    const scaledTemplate = await sharp(TEMPLATE_BUF)
-      .resize(CANVAS_W, CANVAS_H, { fit: 'fill' })
-      .png()
-      .toBuffer();
-    composites.push({ input: scaledTemplate, left: 0, top: 0 });
-  }
-
   // --- Frame 12 photo (large left column) ---
   if (frame12Buf) {
     composites.push({ input: frame12Buf, left: FRAME12.x, top: FRAME12.y });
@@ -329,6 +320,17 @@ async function renderPrintLayout({ autograph, printRecord }) {
     ${metaTextEls}
   </svg>`;
   composites.push({ input: Buffer.from(metaSvg), left: 0, top: 0 });
+
+  // --- Template as top layer with screen blend ---
+  // Screen blend: black pixels in template become transparent, white border/logo lines
+  // show on top of photos. This keeps the frame outlines and logo visible over photos.
+  if (TEMPLATE_BUF) {
+    const scaledTemplate = await sharp(TEMPLATE_BUF)
+      .resize(CANVAS_W, CANVAS_H, { fit: 'fill' })
+      .png()
+      .toBuffer();
+    composites.push({ input: scaledTemplate, left: 0, top: 0, blend: 'screen' });
+  }
 
   // --- Composite onto black canvas ---
   console.log('[render] compositing landscape PNG');
