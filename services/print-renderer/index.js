@@ -2,7 +2,10 @@
 
 const express = require('express');
 const sharp = require('sharp');
+const QRCode = require('qrcode');
 const { createClient } = require('@supabase/supabase-js');
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
@@ -15,56 +18,66 @@ const PORT = process.env.PORT || 3000;
 const RENDER_SECRET = process.env.RENDER_SECRET ?? '';
 const SUPABASE_URL = process.env.SUPABASE_URL ?? '';
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
-const OUTPUT_BUCKET = 'autograph-videos';
+const OUTPUT_BUCKET = 'print-layouts';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 // ---------------------------------------------------------------------------
-// Layout constants (2400×3600 @ 300 DPI = 8×12 inches)
+// Layout constants
+// Generated in landscape 3000×2400 (10"×8" @ 300 DPI),
+// then rotated 90° CW → 2400×3000 portrait for Prodigi GLOBAL-PHO-8X10.
+// Positions derived from Figma template (assets/print-layouts/Print Layout 8x10.png, 1008×809px).
 // ---------------------------------------------------------------------------
 
-const OUTPUT_WIDTH = 2400;
-const OUTPUT_HEIGHT = 3600;
-const S = 3; // SVG viewBox was 800×1200
+const CANVAS_W = 3000; // 10"
+const CANVAS_H = 2400; //  8"
 
-const SMALL_W = 159 * S;  // 477
-const SMALL_H = 265 * S;  // 795
+// Scale from Figma template coords to output pixels
+const SX = CANVAS_W / 1008; // 2.9762
+const SY = CANVAS_H / 809;  // 2.9666
 
-// Small card slots [0–10]
-const SMALL_CARD_SLOTS = [
-  // Top row (frames 1–5)
-  { x: 0,        y: 0,        w: SMALL_W, h: SMALL_H },
-  { x: 160 * S,  y: 0,        w: SMALL_W, h: SMALL_H },
-  { x: 320 * S,  y: 0,        w: SMALL_W, h: SMALL_H },
-  { x: 480 * S,  y: 0,        w: SMALL_W, h: SMALL_H },
-  { x: 640 * S,  y: 0,        w: SMALL_W, h: SMALL_H },
-  // Left column (frames 6, 8, 10)
-  { x: 0,        y: 266 * S,  w: SMALL_W, h: SMALL_H },
-  { x: 0,        y: 533 * S,  w: SMALL_W, h: SMALL_H },
-  { x: 0,        y: 799 * S,  w: SMALL_W, h: SMALL_H },
-  // Right column (frames 7, 9, 11)
-  { x: 640 * S,  y: 266 * S,  w: SMALL_W, h: SMALL_H },
-  { x: 640 * S,  y: 533 * S,  w: SMALL_W, h: SMALL_H },
-  { x: 640 * S,  y: 799 * S,  w: SMALL_W, h: SMALL_H },
+const tx = (v) => Math.round(v * SX);
+const ty = (v) => Math.round(v * SY);
+
+// Large frame 12 — left column
+const FRAME12 = { x: tx(89), y: ty(88), w: tx(373), h: ty(624) };
+// → approx { x: 265, y: 261, w: 1110, h: 1851 }
+
+// Signature strokes square (top-right) — gold strokes on black, no photo
+const SIG_SQ = { x: tx(600), y: ty(89), w: tx(273), h: ty(257) };
+// → approx { x: 1786, y: 264, w: 813, h: 762 }
+
+// QR code (right side, middle)
+const QR_AREA = { x: tx(791), y: ty(388), w: tx(81), h: ty(79) };
+// → approx { x: 2353, y: 1151, w: 241, h: 234 }
+
+// Logo (below QR)
+const LOGO_AREA = { x: tx(791), y: ty(492), w: tx(80), h: ty(26) };
+// → approx { x: 2353, y: 1460, w: 238, h: 77 }
+
+// Metadata text (left of QR/logo column)
+const META_AREA = { x: tx(499), y: ty(388), w: tx(284), h: ty(142) };
+// → approx { x: 1485, y: 1151, w: 845, h: 421 }
+
+// Small frames row — frames 4, 6, 8, 10 (0-indexed: 3, 5, 7, 9)
+// Span template x: 533–930, y: 573–715
+const SF_Y = ty(573);   // 1700
+const SF_H = ty(142);   // 421
+const SF_W = tx(88);    // 262
+const SF_TOTAL = tx(930) - tx(533); // 1182
+const SF_GAP = Math.round((SF_TOTAL - 4 * SF_W) / 3); // ~45
+
+const SMALL_FRAMES = [
+  { frameIdx: 3, timeS: 2.65, x: tx(533),                      y: SF_Y, w: SF_W, h: SF_H },
+  { frameIdx: 5, timeS: 3.75, x: tx(533) + (SF_W + SF_GAP),    y: SF_Y, w: SF_W, h: SF_H },
+  { frameIdx: 7, timeS: 4.85, x: tx(533) + (SF_W + SF_GAP) * 2, y: SF_Y, w: SF_W, h: SF_H },
+  { frameIdx: 9, timeS: 5.95, x: tx(533) + (SF_W + SF_GAP) * 3, y: SF_Y, w: SF_W, h: SF_H },
 ];
 
-// frame display order → preview_frame_urls index
-const SMALL_FRAME_INDICES = [0, 1, 2, 3, 4, 5, 7, 9, 6, 8, 10];
-
-const CENTER_SLOT  = { x: 160 * S, y: 266 * S, w: 478 * S, h: 798 * S };
-const CENTER_BORDER = 70;
-const CENTER_PHOTO = {
-  x: CENTER_SLOT.x + CENTER_BORDER,
-  y: CENTER_SLOT.y + CENTER_BORDER,
-  w: CENTER_SLOT.w - CENTER_BORDER * 2,
-  h: CENTER_SLOT.h - CENTER_BORDER * 2,
-};
-
-const SLIP_Y = 1065 * S;
-const SLIP_H = 134 * S;
-
-// Frame timestamps in seconds
-const FRAME_TIMES_S = [1.0, 1.55, 2.1, 2.65, 3.2, 3.75, 4.3, 4.85, 5.4, 5.95, 6.5, 7.05];
+// Preload white logo from bundled asset
+const LOGO_PATH = path.join(__dirname, 'assets', 'ophinia-logo-white.png');
+const LOGO_BUF = fs.existsSync(LOGO_PATH) ? fs.readFileSync(LOGO_PATH) : null;
+if (!LOGO_BUF) console.warn('[init] ophinia-logo-white.png not found in assets/');
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -92,11 +105,13 @@ function buildSmoothPath(points) {
   return d;
 }
 
+// Renders strokes as SVG path strings. upToTimeSeconds=Infinity for complete signature.
+// color='gold' or '#F1C168' triggers the two-layer gold shimmer effect.
 function strokesToSvgPaths(strokes, upToTimeSeconds, color, sourceW, sourceH, targetW, targetH) {
   const scaleX = targetW / (sourceW || 1);
   const scaleY = targetH / (sourceH || 1);
   const strokeWidth = Math.max(2, 5 * Math.min(scaleX, scaleY));
-  const isGold = color === '#F1C168' || color === '#C9A84C';
+  const isGold = color === '#F1C168' || color === '#C9A84C' || color === 'gold';
 
   const paths = strokes.flatMap((stroke) => {
     const visible = stroke.points.filter((p) => p.t == null || p.t <= upToTimeSeconds);
@@ -114,14 +129,6 @@ function strokesToSvgPaths(strokes, upToTimeSeconds, color, sourceW, sourceH, ta
   });
 
   return paths.join('\n');
-}
-
-function octPath(x, y, w, h, c) {
-  return [
-    `M ${x + c},${y}`, `L ${x + w - c},${y}`, `L ${x + w},${y + c}`,
-    `L ${x + w},${y + h - c}`, `L ${x + w - c},${y + h}`,
-    `L ${x + c},${y + h}`, `L ${x},${y + h - c}`, `L ${x},${y + c}`, 'Z',
-  ].join(' ');
 }
 
 async function fetchBuffer(url) {
@@ -153,137 +160,163 @@ async function renderPrintLayout({ autograph, printRecord }) {
   const strokeColor = autograph.stroke_color ?? '#FA0909';
   const captureW = autograph.capture_width ?? 1080;
   const captureH = autograph.capture_height ?? 1610;
+  const creatorName = autograph._creatorName ?? 'Unknown';
+  const sequenceNumber = autograph.creator_sequence_number ?? null;
+  const seriesName = autograph._seriesName ?? null;
+  const printSeq = printRecord.print_sequence_number;
 
-  // Fetch all 12 frames at slot size in parallel
-  console.log(`[render] fetching ${frameUrls.length} frames`);
+  // Fetch frame 12 + small frames in parallel
+  const framesNeeded = [
+    { idx: 11, w: FRAME12.w, h: FRAME12.h },
+    ...SMALL_FRAMES.map((sf) => ({ idx: sf.frameIdx, w: sf.w, h: sf.h })),
+  ];
+  console.log('[render] fetching frames:', framesNeeded.map((f) => f.idx));
+
   const frameBuffers = await Promise.all(
-    Array.from({ length: 12 }, async (_, i) => {
-      const rawUrl = frameUrls[i];
+    framesNeeded.map(async ({ idx, w, h }) => {
+      const rawUrl = frameUrls[idx];
       if (!rawUrl) return null;
-      const [tw, th] = i === 11 ? [CENTER_PHOTO.w, CENTER_PHOTO.h] : [SMALL_W, SMALL_H];
       try {
-        const buf = await fetchBuffer(toTransformUrl(rawUrl, tw, th));
-        return await sharp(buf).resize(tw, th, { fit: 'cover' }).jpeg({ quality: 90 }).toBuffer();
+        const buf = await fetchBuffer(toTransformUrl(rawUrl, w, h));
+        return await sharp(buf).resize(w, h, { fit: 'cover' }).jpeg({ quality: 90 }).toBuffer();
       } catch (e) {
-        console.error(`[render] frame ${i} error:`, e.message);
+        console.error(`[render] frame ${idx} error:`, e.message);
         return null;
       }
     })
   );
-  console.log('[render] frames fetched, compositing');
 
-  // Start with black canvas
+  const frame12Buf = frameBuffers[0];
+  const smallFrameBufs = frameBuffers.slice(1);
+
+  console.log('[render] frames fetched, building composites');
   const composites = [];
 
-  // Small cards
-  for (let slotIdx = 0; slotIdx < 11; slotIdx++) {
-    const slot = SMALL_CARD_SLOTS[slotIdx];
-    const frameIdx = SMALL_FRAME_INDICES[slotIdx];
-    const buf = frameBuffers[frameIdx];
-    const timeSeconds = FRAME_TIMES_S[frameIdx] ?? Infinity;
+  // --- Frame 12 photo (large left column) ---
+  if (frame12Buf) {
+    composites.push({ input: frame12Buf, left: FRAME12.x, top: FRAME12.y });
+  }
 
+  // --- Signature square: black fill + gold strokes only ---
+  const sigBg = await sharp({
+    create: { width: SIG_SQ.w, height: SIG_SQ.h, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 1 } },
+  }).png().toBuffer();
+  composites.push({ input: sigBg, left: SIG_SQ.x, top: SIG_SQ.y });
+
+  const goldPaths = strokesToSvgPaths(strokes, Infinity, '#F1C168', captureW, captureH, SIG_SQ.w, SIG_SQ.h);
+  if (goldPaths) {
+    const sigSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${SIG_SQ.w}" height="${SIG_SQ.h}">${goldPaths}</svg>`;
+    composites.push({ input: Buffer.from(sigSvg), left: SIG_SQ.x, top: SIG_SQ.y });
+  }
+
+  // --- Small frames with stroke overlays (showing signing progression) ---
+  for (let i = 0; i < SMALL_FRAMES.length; i++) {
+    const sf = SMALL_FRAMES[i];
+    const buf = smallFrameBufs[i];
     if (buf) {
-      composites.push({ input: buf, left: slot.x, top: slot.y });
+      composites.push({ input: buf, left: sf.x, top: sf.y });
     }
-
-    // Stroke overlay SVG for this slot
-    const strokePaths = strokesToSvgPaths(strokes, timeSeconds, strokeColor, captureW, captureH, slot.w, slot.h);
+    const strokePaths = strokesToSvgPaths(strokes, sf.timeS, strokeColor, captureW, captureH, sf.w, sf.h);
     if (strokePaths) {
-      const svgOverlay = `<svg xmlns="http://www.w3.org/2000/svg" width="${slot.w}" height="${slot.h}">${strokePaths}</svg>`;
-      composites.push({ input: Buffer.from(svgOverlay), left: slot.x, top: slot.y });
+      const svgOverlay = `<svg xmlns="http://www.w3.org/2000/svg" width="${sf.w}" height="${sf.h}">${strokePaths}</svg>`;
+      composites.push({ input: Buffer.from(svgOverlay), left: sf.x, top: sf.y });
     }
   }
 
-  // Center card background (black border area)
-  composites.push({
-    input: await sharp({ create: { width: CENTER_SLOT.w, height: CENTER_SLOT.h, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 1 } } }).png().toBuffer(),
-    left: CENTER_SLOT.x, top: CENTER_SLOT.y,
-  });
-
-  // Center photo
-  const centerBuf = frameBuffers[11];
-  if (centerBuf) {
-    composites.push({ input: centerBuf, left: CENTER_PHOTO.x, top: CENTER_PHOTO.y });
+  // --- QR code ---
+  try {
+    const qrUrl = `https://ophinia.com/verify/${autograph.id}`;
+    const qrSvg = await QRCode.toString(qrUrl, {
+      type: 'svg',
+      width: QR_AREA.w,
+      margin: 1,
+      color: { dark: '#FFFFFF', light: '#000000' },
+    });
+    composites.push({ input: Buffer.from(qrSvg), left: QR_AREA.x, top: QR_AREA.y });
+  } catch (e) {
+    console.error('[render] QR generation error:', e.message);
   }
 
-  // Center strokes
-  const centerStrokes = strokesToSvgPaths(strokes, Infinity, strokeColor, captureW, captureH, CENTER_PHOTO.w, CENTER_PHOTO.h);
-  if (centerStrokes) {
-    const svgOverlay = `<svg xmlns="http://www.w3.org/2000/svg" width="${CENTER_PHOTO.w}" height="${CENTER_PHOTO.h}">${centerStrokes}</svg>`;
-    composites.push({ input: Buffer.from(svgOverlay), left: CENTER_PHOTO.x, top: CENTER_PHOTO.y });
+  // --- Ophinia logo ---
+  if (LOGO_BUF) {
+    try {
+      const resizedLogo = await sharp(LOGO_BUF)
+        .resize(LOGO_AREA.w, LOGO_AREA.h, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+        .png()
+        .toBuffer();
+      composites.push({ input: resizedLogo, left: LOGO_AREA.x, top: LOGO_AREA.y });
+    } catch (e) {
+      console.error('[render] logo composite error:', e.message);
+    }
   }
 
-  // Octagonal frame on center card
-  const oct1 = octPath(CENTER_SLOT.x + 8, CENTER_SLOT.y + 8, CENTER_SLOT.w - 16, CENTER_SLOT.h - 16, 18);
-  const oct2 = octPath(CENTER_SLOT.x + 12, CENTER_SLOT.y + 12, CENTER_SLOT.w - 24, CENTER_SLOT.h - 24, 14);
-  const octSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${OUTPUT_WIDTH}" height="${OUTPUT_HEIGHT}">
-    <path d="${oct1}" fill="none" stroke="white" stroke-width="2.5" opacity="0.7"/>
-    <path d="${oct2}" fill="none" stroke="white" stroke-width="1.0" opacity="0.4"/>
-  </svg>`;
-  composites.push({ input: Buffer.from(octSvg), left: 0, top: 0 });
-
-  // Creator name on center card
-  const creatorName = autograph._creatorName ?? 'Unknown';
-  const sequenceNumber = autograph.creator_sequence_number ?? null;
-  const nameY = CENTER_SLOT.y + 46;
-  const nameLabel = sequenceNumber != null ? `${creatorName.toUpperCase()} #${sequenceNumber}` : creatorName.toUpperCase();
-  const nameSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${OUTPUT_WIDTH}" height="${OUTPUT_HEIGHT}">
-    <text x="${CENTER_SLOT.x + CENTER_SLOT.w / 2}" y="${nameY}"
-      text-anchor="middle" font-family="Georgia, serif" font-size="28" font-weight="bold"
-      fill="white" letter-spacing="2">${escapeXml(nameLabel)}</text>
-  </svg>`;
-  composites.push({ input: Buffer.from(nameSvg), left: 0, top: 0 });
-
-  // Print slip background
-  composites.push({
-    input: await sharp({ create: { width: OUTPUT_WIDTH, height: SLIP_H, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 1 } } }).png().toBuffer(),
-    left: 0, top: SLIP_Y,
+  // --- Metadata text + border (full-canvas SVG) ---
+  const date = new Date(autograph.created_at).toLocaleDateString('en-US', {
+    month: 'long', day: 'numeric', year: 'numeric',
   });
+  const nameLabel = sequenceNumber != null
+    ? `${creatorName.toUpperCase()} #${sequenceNumber}`
+    : creatorName.toUpperCase();
 
-  // Print slip text
-  const date = new Date(autograph.created_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-  const seriesName = autograph._seriesName ?? null;
-  const printSeq = printRecord.print_sequence_number;
-  const printLine = seriesName ? `Print ${printSeq} · ${seriesName} · Series 3` : `Print ${printSeq}`;
-  const slipCenterY = SLIP_Y + SLIP_H / 2;
-  const lineHeight = 22;
-  const lines = [nameLabel, date, printLine];
-  const textStartY = slipCenterY - (lines.length * lineHeight) / 2 + lineHeight * 0.8;
+  const metaLines = [
+    { text: nameLabel,          fontSize: 36, opacity: 1.0, bold: true,  letterSpacing: 2 },
+    { text: `Captured on ${date}`, fontSize: 24, opacity: 0.75, bold: false, letterSpacing: 0.5 },
+    { text: `Print #${printSeq}`,  fontSize: 24, opacity: 0.75, bold: false, letterSpacing: 0.5 },
+  ];
+  if (seriesName) {
+    metaLines.push({ text: seriesName, fontSize: 22, opacity: 0.65, bold: false, letterSpacing: 0.5 });
+  }
 
-  const linesSvg = lines.map((line, i) => {
-    const fontSize = i === 0 ? 18 : 13;
-    const opacity = i === 0 ? 1 : 0.7;
-    return `<text x="${OUTPUT_WIDTH / 2}" y="${textStartY + i * lineHeight}"
-      text-anchor="middle" font-family="Georgia, serif" font-size="${fontSize}"
-      fill="white" opacity="${opacity}" letter-spacing="${i === 0 ? 2 : 0.5}"
-    >${escapeXml(line)}</text>`;
-  }).join('\n');
+  const lineH = 60;
+  const metaTextEls = metaLines.map((line, i) => `
+    <text
+      x="${META_AREA.x + 16}"
+      y="${META_AREA.y + 44 + i * lineH}"
+      font-family="Georgia, serif"
+      font-size="${line.fontSize}"
+      font-weight="${line.bold ? 'bold' : 'normal'}"
+      fill="white"
+      opacity="${line.opacity}"
+      letter-spacing="${line.letterSpacing}"
+    >${escapeXml(line.text)}</text>`).join('\n');
 
-  const slipSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${OUTPUT_WIDTH}" height="${OUTPUT_HEIGHT}">
-    <line x1="40" y1="${SLIP_Y + 1}" x2="${OUTPUT_WIDTH - 40}" y2="${SLIP_Y + 1}" stroke="white" stroke-width="0.8" opacity="0.2"/>
-    ${linesSvg}
+  const overlaySvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${CANVAS_W}" height="${CANVAS_H}">
+    <!-- Outer border -->
+    <rect x="10" y="10" width="${CANVAS_W - 20}" height="${CANVAS_H - 20}"
+      fill="none" stroke="white" stroke-width="2" opacity="0.3"/>
+    <!-- Inner border -->
+    <rect x="35" y="35" width="${CANVAS_W - 70}" height="${CANVAS_H - 70}"
+      fill="none" stroke="white" stroke-width="1" opacity="0.18"/>
+    <!-- Signature square border -->
+    <rect x="${SIG_SQ.x}" y="${SIG_SQ.y}" width="${SIG_SQ.w}" height="${SIG_SQ.h}"
+      fill="none" stroke="white" stroke-width="1.5" opacity="0.25"/>
+    <!-- Metadata -->
+    ${metaTextEls}
   </svg>`;
-  composites.push({ input: Buffer.from(slipSvg), left: 0, top: 0 });
 
-  console.log('[render] compositing to PNG');
-  const pngBuffer = await sharp({
-    create: { width: OUTPUT_WIDTH, height: OUTPUT_HEIGHT, channels: 3, background: { r: 0, g: 0, b: 0 } },
+  composites.push({ input: Buffer.from(overlaySvg), left: 0, top: 0 });
+
+  // --- Composite onto black canvas ---
+  console.log('[render] compositing landscape PNG');
+  const landscape = await sharp({
+    create: { width: CANVAS_W, height: CANVAS_H, channels: 3, background: { r: 0, g: 0, b: 0 } },
   })
     .composite(composites)
     .png({ compressionLevel: 6 })
     .toBuffer();
 
-  console.log(`[render] PNG size: ${pngBuffer.byteLength} bytes`);
-  return pngBuffer;
+  // Rotate 90° CW → portrait 2400×3000 for Prodigi GLOBAL-PHO-8X10
+  const portrait = await sharp(landscape).rotate(90).png({ compressionLevel: 6 }).toBuffer();
+  console.log(`[render] portrait PNG: ${portrait.byteLength} bytes`);
+  return portrait;
 }
 
 // ---------------------------------------------------------------------------
-// HTTP handler
+// HTTP handlers
 // ---------------------------------------------------------------------------
 
 app.post('/render-print-layout', async (req, res) => {
   try {
-    // Auth
     const secret = req.headers['x-render-secret'] ?? '';
     if (!RENDER_SECRET || secret !== RENDER_SECRET) {
       return res.status(401).json({ error: 'Unauthorized' });
@@ -296,7 +329,6 @@ app.post('/render-print-layout', async (req, res) => {
 
     console.log(`[render] request: autograph=${autograph_id} print=${print_id}`);
 
-    // Fetch autograph
     const { data: autograph, error: autographError } = await supabase
       .from('autographs')
       .select('id, owner_id, creator_id, status, strokes_json, stroke_color, capture_width, capture_height, preview_frame_urls, creator_sequence_number, series_id, created_at')
@@ -306,7 +338,6 @@ app.post('/render-print-layout', async (req, res) => {
     if (autographError || !autograph) return res.status(404).json({ error: 'Autograph not found' });
     if (autograph.status !== 'active') return res.status(409).json({ error: 'Autograph is not active' });
 
-    // Fetch print record
     const { data: printRecord, error: printError } = await supabase
       .from('autograph_prints')
       .select('id, autograph_id, print_sequence_number, print_layout_url, owner_id_at_print')
@@ -316,9 +347,8 @@ app.post('/render-print-layout', async (req, res) => {
     if (printError || !printRecord) return res.status(404).json({ error: 'Print record not found' });
     if (printRecord.autograph_id !== autograph_id) return res.status(409).json({ error: 'Print does not match autograph' });
 
-    // Return cached layout if already generated
     if (printRecord.print_layout_url) {
-      console.log(`[render] returning cached URL`);
+      console.log('[render] returning cached URL');
       return res.json({ print_layout_url: printRecord.print_layout_url });
     }
 
@@ -326,7 +356,6 @@ app.post('/render-print-layout', async (req, res) => {
       return res.status(422).json({ error: 'No preview frames available for this autograph' });
     }
 
-    // Fetch creator name
     const { data: creatorProfile } = await supabase
       .from('profiles')
       .select('display_name')
@@ -334,7 +363,6 @@ app.post('/render-print-layout', async (req, res) => {
       .maybeSingle();
     autograph._creatorName = creatorProfile?.display_name ?? 'Unknown';
 
-    // Fetch series name
     if (autograph.series_id) {
       const { data: series } = await supabase
         .from('series')
@@ -344,10 +372,8 @@ app.post('/render-print-layout', async (req, res) => {
       autograph._seriesName = series?.name ?? null;
     }
 
-    // Render
     const pngBuffer = await renderPrintLayout({ autograph, printRecord });
 
-    // Upload to Supabase storage
     const pngPath = `${printRecord.owner_id_at_print}/print_layouts/${autograph_id}_print_${print_id}.png`;
     const { error: uploadError } = await supabase.storage
       .from(OUTPUT_BUCKET)
@@ -361,7 +387,6 @@ app.post('/render-print-layout', async (req, res) => {
     const { data: { publicUrl } } = supabase.storage.from(OUTPUT_BUCKET).getPublicUrl(pngPath);
     console.log(`[render] uploaded: ${publicUrl}`);
 
-    // Cache on print record
     await supabase
       .from('autograph_prints')
       .update({ print_layout_url: publicUrl })
