@@ -1,5 +1,5 @@
 import { Session, User } from '@supabase/supabase-js';
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import { registerPushToken } from './notifications';
 import { supabase } from './supabase';
@@ -24,6 +24,7 @@ type Profile = {
   verification_status: 'none' | 'pending' | 'verified' | 'failed' | 'expired';
   birthday_month: number | null;
   birthday_day: number | null;
+  bio?: string | null;
   instagram_handle?: string | null;
   instagram_status?: 'none' | 'connected' | 'verified';
   instagram_verified_at?: string | null;
@@ -32,6 +33,8 @@ type Profile = {
   instagram_verification_requested_at?: string | null;
   instagram_verification_expires_at?: string | null;
   instagram_verification_checked_at?: string | null;
+  personalized_requests_enabled?: boolean;
+  personalized_min_price_cents?: number | null;
 };
 
 type AuthContextType = {
@@ -56,13 +59,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const profileRequestIdRef = useRef(0);
 
-  const fetchProfile = async (userId: string) => {
+  const clearBrokenLocalSession = async () => {
+    try {
+      await supabase.auth.signOut({ scope: 'local' });
+    } catch {}
+    setSession(null);
+    setProfile(null);
+  };
+
+  const fetchProfile = useCallback(async (userId: string) => {
+    const requestId = ++profileRequestIdRef.current;
     const { data } = await supabase
       .from('profiles')
-      .select('*, profile_avatar:profile_avatar_autograph_id ( id, thumbnail_url, video_url, strokes_json, capture_width, capture_height, stroke_color )')
+      .select('*, bio, profile_avatar:profile_avatar_autograph_id ( id, thumbnail_url, video_url, strokes_json, capture_width, capture_height, stroke_color )')
       .eq('id', userId)
       .single();
+
+    if (profileRequestIdRef.current !== requestId) return;
+
     const hydrated = data
       ? {
           ...data,
@@ -70,24 +86,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       : null;
     setProfile(hydrated ?? null);
-  };
+  }, []);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      if (session?.user) {
-        fetchProfile(session.user.id);
-        registerPushToken(session.user.id);
-      }
-      setLoading(false);
-    });
+    supabase.auth
+      .getSession()
+      .then(async ({ data: { session }, error }) => {
+        if (error?.message?.toLowerCase().includes('refresh token')) {
+          await clearBrokenLocalSession();
+          return;
+        }
+
+        setSession(session);
+      })
+      .catch(async (error) => {
+        if (error instanceof Error && error.message.toLowerCase().includes('refresh token')) {
+          await clearBrokenLocalSession();
+          return;
+        }
+      })
+      .finally(() => {
+        setLoading(false);
+      });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-      if (session?.user) {
-        fetchProfile(session.user.id);
-        registerPushToken(session.user.id);
-      } else {
+      if (!session?.user) {
+        profileRequestIdRef.current += 1;
         setProfile(null);
       }
     });
@@ -96,11 +121,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    const userId = session?.user?.id;
+    if (!userId) return;
+
+    void fetchProfile(userId);
+    void registerPushToken(userId);
+  }, [fetchProfile, session?.user?.id]);
+
+  useEffect(() => {
     if (!session?.user?.id) return;
 
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
-        registerPushToken(session.user.id);
+        void registerPushToken(session.user.id);
       }
     });
 

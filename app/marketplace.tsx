@@ -1,24 +1,30 @@
 import { AutographPlayer } from '@/components/autograph-player';
+import { CardMetadataBlock } from '@/components/card-metadata-block';
 import { CertificateSheet } from '@/components/certificate-sheet';
-import { NameWithSequence, PublicVideoCard, formatPublicVideoDate, formatPublicVideoPrice } from '@/components/public-video-card';
+import { NameWithSequence, formatPublicVideoDate, formatPublicVideoPrice } from '@/components/public-video-card';
 import { PublicVideoThumbnail } from '@/components/public-video-thumbnail';
 import { BrandColors, BrandFonts } from '@/constants/theme';
-import { callEdgeFunction } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
+import { callEdgeFunction } from '@/lib/api';
 import { logInterestEvent } from '@/lib/interest';
+import { buildAutographUrl } from '@/lib/public-links';
 import { supabase } from '@/lib/supabase';
+import { openAuthenticatedWebPath } from '@/lib/web-handoff';
 import { useStripe } from '@stripe/stripe-react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import {
+  Animated,
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -34,8 +40,10 @@ type ListingItem = {
   createdAt: string;
   visibility: 'private' | 'public';
   saleState: 'not_for_sale' | 'fixed';
+  listingMode: 'buy_now' | 'make_offer';
   priceCents: number | null;
   videoUri: string;
+  previewFrameUrls: string[];
   strokes: Stroke[];
   captureWidth: number;
   captureHeight: number;
@@ -47,13 +55,22 @@ type ListingItem = {
   creator: {
     display_name: string;
     verified: boolean;
+    name_verified: boolean;
   };
   strokeColor: string;
+  templateId?: string | null;
   creatorSequenceNumber: number | null;
   seriesName: string | null;
   seriesSequenceNumber: number | null;
   seriesMaxSize: number | null;
   offerLockedUntil?: string | null;
+  printCount: number;
+  thumbnailUrl?: string | null;
+};
+
+type MarketplaceCursor = {
+  beforeCreatedAt: string;
+  beforeId: string;
 };
 
 type MarketplaceFilters = {
@@ -76,23 +93,38 @@ const defaultFilters: MarketplaceFilters = {
 
 type MarketplaceSort = 'newest' | 'oldest' | 'price_asc' | 'price_desc';
 
-function MarketplaceThumbnail({ item }: { item: ListingItem }) {
-  return (
-    <PublicVideoThumbnail
-      videoUrl={item.videoUri}
-      strokes={item.strokes}
-      captureWidth={item.captureWidth}
-      captureHeight={item.captureHeight}
-      strokeColor={item.strokeColor}
-    />
-  );
+function getListingPriceLabel(item: Pick<ListingItem, 'listingMode'>) {
+  return item.listingMode === 'buy_now' ? 'Fixed Price' : 'Estimated Value';
+}
+
+function canBuyNow(item: Pick<ListingItem, 'saleState' | 'listingMode'>) {
+  return item.saleState === 'fixed' && item.listingMode === 'buy_now';
+}
+
+function canMakeOffer(item: Pick<ListingItem, 'saleState' | 'listingMode'>) {
+  return item.saleState === 'fixed' && item.listingMode === 'make_offer';
+}
+
+function getPreviewPriceText(item: Pick<ListingItem, 'offerLockedUntil' | 'priceCents'>) {
+  return item.offerLockedUntil ? 'Sale Pending' : formatPublicVideoPrice(item.priceCents);
+}
+
+function formatCardDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return `${date.getMonth() + 1}/${date.getDate()}/${String(date.getFullYear()).slice(-2)}`;
 }
 
 export default function MarketplaceScreen() {
+  const PAGE_SIZE = 30;
   const [listings, setListings] = useState<ListingItem[]>([]);
   const [recommendedIds, setRecommendedIds] = useState<string[]>([]);
   const [watchedIds, setWatchedIds] = useState<Set<string>>(new Set());
+  const [blockedUserIds, setBlockedUserIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [cursor, setCursor] = useState<MarketplaceCursor | null>(null);
   const [loadError, setLoadError] = useState(false);
   const lastFetchedAt = useRef<number | null>(null);
   const STALE_MS = 30_000; // re-fetch only if data is older than 30 seconds
@@ -105,119 +137,132 @@ export default function MarketplaceScreen() {
   const [contextMenuVisible, setContextMenuVisible] = useState(false);
   const [reportItem, setReportItem] = useState<ListingItem | null>(null);
   const [reportSubmitting, setReportSubmitting] = useState(false);
+  const [purchasingId, setPurchasingId] = useState<string | null>(null);
   const [certItem, setCertItem] = useState<ListingItem | null>(null);
   const [offerItem, setOfferItem] = useState<ListingItem | null>(null);
   const [offerInput, setOfferInput] = useState('');
   const [offerSubmitting, setOfferSubmitting] = useState(false);
+  const offerSlideAnim = useRef(new Animated.Value(0)).current;
   const { user } = useAuth();
-  const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const router = useRouter();
+  const { initPaymentSheet, presentPaymentSheet } = useStripe();
 
   const mapRow = (row: any): ListingItem => ({
     id: row.id,
-    visibility: row.visibility ?? 'private',
-    saleState: row.sale_state ?? (row.is_for_sale ? 'fixed' : 'not_for_sale'),
+    visibility: 'public',
+    saleState: row.sale_state ?? 'fixed',
+    listingMode: row.listing_mode === 'buy_now' ? 'buy_now' : 'make_offer',
     creatorId: row.creator_id,
     ownerId: row.owner_id,
-    ownerName: row.owner?.display_name ?? '—',
+    ownerName: row.owner_display_name ?? '—',
     certificateId: row.certificate_id,
     createdAt: row.created_at,
     priceCents: row.price_cents ?? null,
-    isForSale: row.is_for_sale ?? false,
+    isForSale: true,
     openToTrade: row.open_to_trade ?? false,
     videoUri: row.video_url,
+    previewFrameUrls: row.preview_frame_urls ?? [],
+    thumbnailUrl: row.thumbnail_url ?? null,
     strokes: row.strokes_json ?? [],
     captureWidth: row.capture_width ?? 1,
     captureHeight: row.capture_height ?? 1,
-    creator: row.creator,
-    strokeColor: row.stroke_color ?? '#FA0909',
+    creator: {
+      display_name: row.creator_display_name ?? 'Creator',
+      verified: !!row.creator_verified,
+      name_verified: !!row.creator_name_verified,
+    },
+    strokeColor: row.stroke_color ?? '#001B5C',
+    templateId: row.template_id ?? 'classic',
     creatorSequenceNumber: row.creator_sequence_number ?? null,
-    seriesName: null,
+    seriesName: row.series_name ?? null,
     seriesSequenceNumber: row.series_sequence_number ?? null,
-    seriesMaxSize: null,
+    seriesMaxSize: row.series_max_size ?? null,
+    offerLockedUntil: row.offer_locked_until ?? null,
+    printCount: row.print_count ?? 0,
   });
+
+  const fetchMarketplacePage = useCallback(async (pageCursor: MarketplaceCursor | null) => {
+    if (!user) return { items: [] as ListingItem[], nextCursor: null as MarketplaceCursor | null, blockedIds: new Set<string>(), watchedFromList: [] as string[], recommendationIds: [] as string[] };
+
+    const includeAncillary = !pageCursor;
+    const [browseRes, watchRes, recommendationsRes, blockedRes] = await Promise.all([
+      supabase.rpc('get_marketplace_feed', {
+        p_limit: PAGE_SIZE,
+        p_before_created_at: pageCursor?.beforeCreatedAt ?? null,
+        p_before_id: pageCursor?.beforeId ?? null,
+        p_viewer_id: user.id,
+      }),
+      includeAncillary ? supabase.from('watchlist').select('autograph_id').eq('user_id', user.id) : Promise.resolve({ data: null, error: null } as any),
+      includeAncillary ? supabase.rpc('get_marketplace_recommendations', { p_limit: 6 }) : Promise.resolve({ data: null, error: null } as any),
+      includeAncillary ? supabase.from('blocked_users').select('blocked_user_id').eq('blocker_id', user.id) : Promise.resolve({ data: null, error: null } as any),
+    ]);
+
+    const rows = browseRes.data ?? [];
+    const items = rows.map(mapRow);
+    const last = items[items.length - 1];
+
+    return {
+      items,
+      nextCursor: items.length === PAGE_SIZE && last
+        ? { beforeCreatedAt: last.createdAt, beforeId: last.id }
+        : null,
+      blockedIds: new Set<string>((blockedRes.data ?? []).map((row: any) => row.blocked_user_id as string)),
+      watchedFromList: (watchRes.data ?? []).map((w: any) => w.autograph_id as string),
+      recommendationIds: (recommendationsRes.data ?? []).map((row: any) => row.autograph_id as string),
+    };
+  }, [user]);
 
 useFocusEffect(
     useCallback(() => {
       if (!user) return;
       if (lastFetchedAt.current && Date.now() - lastFetchedAt.current < STALE_MS) return;
       setLoading(true);
+      setLoadError(false);
 
-      const baseQuery = `
-        id, creator_id, owner_id, certificate_id, created_at, visibility, sale_state, price_cents,
-        open_to_trade, is_for_sale,
-        video_url, strokes_json, capture_width, capture_height,
-        creator_sequence_number, series_id, series_sequence_number,
-        creator:creator_id ( display_name, verified ),
-        owner:owner_id ( display_name )
-      `;
-
-      (async () => {
-        return Promise.all([
-          supabase.from('autographs').select(baseQuery).eq('visibility', 'public').eq('sale_state', 'fixed').order('created_at', { ascending: false }),
-          supabase.from('watchlist').select('autograph_id').eq('user_id', user.id),
-          supabase.rpc('get_marketplace_recommendations', { p_limit: 6 }),
-        ]);
-      })().then(async ([browseRes, watchRes, recommendationsRes]) => {
-        const browseItems = (browseRes.data ?? []).map(mapRow);
-
-        // Fetch series names for listings that belong to a series
-        const rawRows = browseRes.data ?? [];
-        const seriesIds = [...new Set(rawRows.map((r: any) => r.series_id).filter(Boolean))] as string[];
-        if (seriesIds.length > 0) {
-          const { data: seriesRows } = await supabase.from('series').select('id, name, max_size').in('id', seriesIds);
-          const seriesMap: Record<string, { name: string; max_size: number }> = {};
-          for (const s of seriesRows ?? []) seriesMap[s.id] = { name: s.name, max_size: s.max_size };
-          browseItems.forEach((item, idx) => {
-            const raw = rawRows[idx] as any;
-            if (raw?.series_id && seriesMap[raw.series_id]) {
-              item.seriesName = seriesMap[raw.series_id].name;
-              item.seriesMaxSize = seriesMap[raw.series_id].max_size;
-            }
-          });
-        }
-
-        // Merge watchlist items
-        const watchedFromList = (watchRes.data ?? []).map((w: any) => w.autograph_id);
+      fetchMarketplacePage(null).then(({ items, nextCursor, blockedIds, watchedFromList, recommendationIds }) => {
+        setBlockedUserIds(blockedIds);
         setWatchedIds(new Set(watchedFromList));
-        const browseIds = browseItems.map((item) => item.id);
-        const recommendationIds = (recommendationsRes.data ?? []).map((row: any) => row.autograph_id as string);
-        if (browseIds.length > 0) {
-          const nowIso = new Date().toISOString();
-          const { data: lockedOffers } = await supabase
-            .from('autograph_offers')
-            .select('autograph_id, payment_due_at')
-            .in('autograph_id', browseIds)
-            .eq('status', 'accepted')
-            .is('accepted_transfer_id', null)
-            .gt('payment_due_at', nowIso);
-
-          const lockedMap = new Map<string, string | null>();
-          for (const offer of lockedOffers ?? []) {
-            lockedMap.set(offer.autograph_id, offer.payment_due_at ?? null);
-          }
-
-          setListings(
-            browseItems
-              .filter((item) => !lockedMap.has(item.id))
-              .map((item) => ({ ...item, offerLockedUntil: lockedMap.get(item.id) ?? null }))
-          );
-          setRecommendedIds(recommendationIds.filter((id) => !lockedMap.has(id)));
-        } else {
-          setListings(browseItems);
-          setRecommendedIds(recommendationIds);
-        }
+        setRecommendedIds(recommendationIds);
+        setListings(items);
+        setCursor(nextCursor);
+        setHasMore(!!nextCursor);
         lastFetchedAt.current = Date.now();
         setLoading(false);
       }).catch((error) => {
         console.log('Load marketplace error:', error);
         setListings([]);
         setRecommendedIds([]);
+        setCursor(null);
+        setHasMore(false);
         setLoadError(true);
         setLoading(false);
       });
-    }, [user])
+    }, [fetchMarketplacePage, user])
   );
+
+  const handleLoadMore = useCallback(() => {
+    if (!user || loading || loadingMore || !hasMore || !cursor) return;
+    setLoadingMore(true);
+    fetchMarketplacePage(cursor)
+      .then(({ items, nextCursor }) => {
+        setListings((prev) => {
+          const seen = new Set(prev.map((item) => item.id));
+          const merged = [...prev];
+          for (const item of items) {
+            if (!seen.has(item.id)) merged.push(item);
+          }
+          return merged;
+        });
+        setCursor(nextCursor);
+        setHasMore(!!nextCursor);
+      })
+      .catch((error) => {
+        console.log('Load more marketplace error:', error);
+      })
+      .finally(() => {
+        setLoadingMore(false);
+      });
+  }, [cursor, fetchMarketplacePage, hasMore, loading, loadingMore, user]);
 
   const openPreview = (item: ListingItem) => {
     setPreviewItem(item);
@@ -229,6 +274,37 @@ useFocusEffect(
 
   const closePreview = () => {
     setPreviewItem(null);
+  };
+
+  const shareAutograph = async (item: ListingItem) => {
+    const autographUrl = buildAutographUrl(item.id);
+    try {
+      await Share.share(
+        Platform.OS === 'ios'
+          ? {
+              message: `Check out this verified autograph from ${item.creator.display_name} on Ophinia.`,
+              url: autographUrl,
+            }
+          : {
+              message: `Check out this verified autograph from ${item.creator.display_name} on Ophinia.\n${autographUrl}`,
+            }
+      );
+    } catch {}
+  };
+
+  const openOfferSheet = (item: ListingItem) => {
+    setOfferItem(item);
+    setOfferInput('');
+    offerSlideAnim.setValue(0);
+    Animated.timing(offerSlideAnim, { toValue: 1, duration: 280, useNativeDriver: true }).start();
+  };
+
+  const closeOfferSheet = () => {
+    if (offerSubmitting) return;
+    Animated.timing(offerSlideAnim, { toValue: 0, duration: 220, useNativeDriver: true }).start(() => {
+      setOfferItem(null);
+      setOfferInput('');
+    });
   };
 
   const handleReport = async (reason: string) => {
@@ -265,6 +341,45 @@ useFocusEffect(
     }
   };
 
+  const handleToggleBlockedUser = async (targetUserId: string, label: string, shouldBlock: boolean) => {
+    if (!user) {
+      Alert.alert('Sign in required', 'Please sign in to manage blocked users.');
+      return;
+    }
+    if (targetUserId === user.id) return;
+
+    try {
+      if (shouldBlock) {
+        const { error } = await supabase.from('blocked_users').insert({
+          blocker_id: user.id,
+          blocked_user_id: targetUserId,
+        });
+        if (error && error.code !== '23505') throw error;
+        setBlockedUserIds((prev) => new Set(prev).add(targetUserId));
+        setListings((prev) => prev.filter((item) => item.ownerId !== targetUserId && item.creatorId !== targetUserId));
+        setPreviewItem(null);
+        setContextMenuVisible(false);
+        Alert.alert('User Blocked', `${label} has been blocked. Their listings are now hidden.`);
+      } else {
+        const { error } = await supabase
+          .from('blocked_users')
+          .delete()
+          .eq('blocker_id', user.id)
+          .eq('blocked_user_id', targetUserId);
+        if (error) throw error;
+        setBlockedUserIds((prev) => {
+          const next = new Set(prev);
+          next.delete(targetUserId);
+          return next;
+        });
+        setContextMenuVisible(false);
+        Alert.alert('User Unblocked', `${label} has been unblocked. Refresh the marketplace to see their listings again.`);
+      }
+    } catch {
+      Alert.alert('Block Failed', `Could not ${shouldBlock ? 'block' : 'unblock'} this user. Please try again.`);
+    }
+  };
+
   const formatCentsInput = (raw: string) => {
     const digits = raw.replace(/\D/g, '');
     if (!digits) return '';
@@ -276,6 +391,10 @@ useFocusEffect(
 
   const handleCreateOffer = async () => {
     if (!offerItem) return;
+    if (!user) {
+      Alert.alert('Sign in required', 'Please sign in to make an offer.');
+      return;
+    }
     const amount = Number.parseFloat(offerInput);
 
     if (Number.isNaN(amount) || amount <= 0) {
@@ -285,15 +404,58 @@ useFocusEffect(
 
     setOfferSubmitting(true);
     try {
-      await callEdgeFunction('create-autograph-offer', {
+      // Disclosure required before collecting payment details.
+      const confirmed = await new Promise<boolean>((resolve) => {
+        Alert.alert(
+          'Offer Authorization',
+          `Submitting an offer places a temporary authorization hold of $${amount.toFixed(2)} on your card. Your card is only charged if the seller accepts. Payment is processed by Stripe, Ophinia's authorized payment partner.`,
+          [
+            { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+            { text: 'Continue', onPress: () => resolve(true) },
+          ]
+        );
+      });
+      if (!confirmed) return;
+
+      const paymentData = await callEdgeFunction<{
+        client_secret: string;
+        payment_intent_id: string;
+        payment_event_id: string;
+      }>('create-offer-commitment-payment-intent', {
         autograph_id: offerItem.id,
         amount_cents: Math.round(amount * 100),
       });
-      setOfferItem(null);
-      setOfferInput('');
-      Alert.alert('Offer Sent', 'Your offer was sent and will expire in 24 hours if it is not answered.');
-    } catch {
-      Alert.alert('Offer Failed', 'Could not send offer. Please try again.');
+
+      const { error: initError } = await initPaymentSheet({
+        paymentIntentClientSecret: paymentData.client_secret,
+        merchantDisplayName: 'Ophinia',
+      });
+
+      if (initError) {
+        Alert.alert('Authorization Error', 'Could not start payment authorization. Please try again.');
+        return;
+      }
+
+      const { error: paymentError } = await presentPaymentSheet();
+      if (paymentError) {
+        if (paymentError.code !== 'Canceled') {
+          Alert.alert('Authorization Failed', 'Could not confirm your offer authorization. Please try again.');
+        }
+        return;
+      }
+
+      await callEdgeFunction('create-autograph-offer', {
+        autograph_id: offerItem.id,
+        amount_cents: Math.round(amount * 100),
+        payment_event_id: paymentData.payment_event_id,
+      });
+      closeOfferSheet();
+      Alert.alert('Offer Sent', 'Your offer was sent and the authorization hold is now in place.');
+    } catch (error) {
+      Alert.alert(
+        'Offer Failed',
+        error instanceof Error ? error.message : 'Could not create your offer. Please try again.',
+      );
     } finally {
       setOfferSubmitting(false);
     }
@@ -304,52 +466,22 @@ useFocusEffect(
       Alert.alert('Sign in required', 'Please sign in to purchase autographs.');
       return;
     }
+    setPurchasingId(item.id);
     try {
-      const responseJson = await callEdgeFunction<{
-        client_secret?: string;
-        payment_event_id?: string;
-      }>('create-payment-intent', {
-        autograph_id: item.id,
-      });
-
-      const { client_secret, payment_event_id } = responseJson;
-      if (!client_secret || !payment_event_id) throw new Error('Could not start purchase.');
-
-      const { error: initError } = await initPaymentSheet({
-        paymentIntentClientSecret: client_secret,
-        merchantDisplayName: 'TapnSign',
-        style: 'automatic',
-      });
-      if (initError) throw new Error(initError.message);
-
-      const { error: paymentError } = await presentPaymentSheet();
-
-      if (paymentError) {
-        if (paymentError.code !== 'Canceled') Alert.alert('Payment Failed', paymentError.message);
-        return;
-      }
-
-      await callEdgeFunction('purchase-autograph', {
-        autograph_id: item.id,
-        payment_event_id,
-      });
-
       closePreview();
-      Alert.alert(
-        'Purchase Complete!',
-        `You now own this autograph by ${item.creator.display_name}.`,
-        [{ text: 'View My Autographs', onPress: () => router.push('/autographs') }]
-      );
-      setListings((prev) => prev.filter((l) => l.id !== item.id));
+      await openAuthenticatedWebPath(`/app/checkout/${item.id}`);
+      Alert.alert('Continue on Web', `Checkout for ${item.creator.display_name} has been moved to Ophinia on the web.`);
     } catch {
-      Alert.alert('Error', 'Could not complete purchase. Please try again.');
+      Alert.alert('Error', 'Could not open the web checkout. Please try again.');
+    } finally {
+      setPurchasingId(null);
     }
   };
 
   const activeListings = useMemo(() => {
     let items = listings;
     if (filters.savedOnly) items = items.filter((l) => watchedIds.has(l.id));
-    if (filters.buyNow) items = items.filter((l) => l.isForSale);
+    if (filters.buyNow) items = items.filter((l) => canBuyNow(l));
     if (filters.creator.trim()) {
       const q = filters.creator.trim().toLowerCase();
       items = items.filter((l) => l.creator.display_name.toLowerCase().includes(q));
@@ -381,13 +513,70 @@ useFocusEffect(
     return recommendedIds
       .map((id) => listingMap.get(id))
       .filter((item): item is ListingItem => !!item)
-      .slice(0, 3);
+      .slice(0, 4);
   }, [activeListings, recommendedIds, isFiltered]);
 
-  const recommendedIdSet = useMemo(() => new Set(recommendedListings.map((item) => item.id)), [recommendedListings]);
-  const feedListings = useMemo(
-    () => (isFiltered ? activeListings : activeListings.filter((item) => !recommendedIdSet.has(item.id))),
-    [activeListings, isFiltered, recommendedIdSet]
+  const feedListings = useMemo(() => activeListings, [activeListings]);
+
+  const renderMarketplaceCard = (item: ListingItem) => (
+    <Pressable style={styles.marketplaceCard} onPress={() => openPreview(item)}>
+      <View style={styles.marketplaceThumbnailWrap}>
+        <PublicVideoThumbnail
+          videoUrl={item.videoUri}
+          thumbnailUrl={item.thumbnailUrl}
+          previewFrameUrls={item.previewFrameUrls}
+          strokes={item.strokes}
+          captureWidth={item.captureWidth}
+          captureHeight={item.captureHeight}
+          strokeColor={item.strokeColor}
+          shellStyle={styles.marketplaceThumbnail}
+        />
+        {item.saleState === 'fixed' && (
+          <View style={styles.cardOverlayBar}>
+            <Text style={styles.cardOverlayPrice} numberOfLines={1}>
+              {item.offerLockedUntil ? 'Sale Pending' : formatPublicVideoPrice(item.priceCents)}
+            </Text>
+            {!item.offerLockedUntil && canBuyNow(item) ? (
+              <Pressable
+                style={[styles.cardOverlayButton, purchasingId === item.id && { opacity: 0.6 }]}
+                onPress={(e) => { e.stopPropagation(); handlePurchase(item); }}
+                disabled={purchasingId === item.id}
+              >
+                {purchasingId === item.id
+                  ? <ActivityIndicator size="small" color="#fff" />
+                  : <Text style={styles.cardOverlayButtonText}>Buy</Text>}
+              </Pressable>
+            ) : !item.offerLockedUntil && canMakeOffer(item) ? (
+              <Pressable
+                style={styles.cardOverlayButton}
+                onPress={(e) => { e.stopPropagation(); openPreview(item); openOfferSheet(item); }}
+              >
+                <Text style={styles.cardOverlayButtonText}>Offer</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        )}
+      </View>
+        <View style={styles.marketplaceCardBody}>
+          <NameWithSequence
+            name={item.creator.display_name}
+            sequenceNumber={item.creatorSequenceNumber}
+            style={styles.marketplaceCardName}
+          />
+          <CardMetadataBlock
+            compact
+            sequenceNumber={item.creatorSequenceNumber}
+            capturedAt={item.createdAt}
+            printCount={item.printCount}
+            seriesName={item.seriesName}
+            seriesEdition={
+              item.seriesSequenceNumber != null && item.seriesMaxSize != null
+                ? `${item.seriesSequenceNumber} of ${item.seriesMaxSize}`
+                : null
+            }
+          />
+        </View>
+    </Pressable>
   );
 
   if (loading) {
@@ -412,10 +601,10 @@ useFocusEffect(
       <View style={styles.filterHeaderRow}>
         <Text style={styles.filterResultCount}>{activeListings.length} listing{activeListings.length !== 1 ? 's' : ''}</Text>
         <Pressable
-          style={[styles.filterButton, isFiltered && styles.filterButtonActive]}
+          style={styles.filterLink}
           onPress={() => { setDraftFilters(filters); setDraftSort(sort); setFilterVisible(true); }}
         >
-          <Text style={[styles.filterButtonText, isFiltered && styles.filterButtonTextActive]}>
+          <Text style={[styles.filterLinkText, isFiltered && styles.filterLinkTextActive]}>
             {isFiltered ? 'Filtered ✕' : 'Filter/Sort'}
           </Text>
         </Pressable>
@@ -424,49 +613,49 @@ useFocusEffect(
       <FlatList
         data={feedListings}
         keyExtractor={(item) => item.id}
+        numColumns={2}
+        columnWrapperStyle={styles.marketplaceGridRow}
+        contentContainerStyle={styles.marketplaceGridContent}
+        onEndReachedThreshold={0.45}
+        onEndReached={handleLoadMore}
         ListEmptyComponent={<Text style={styles.emptyText}>No autographs match your filters.</Text>}
+        ListFooterComponent={
+          loadingMore ? (
+            <View style={styles.loadMoreFooter}>
+              <ActivityIndicator size="small" color={BrandColors.primary} />
+            </View>
+          ) : !isFiltered && hasMore ? (
+            <View style={styles.loadMoreFooter}>
+              <Text style={styles.loadMoreHint}>Scroll for more listings</Text>
+            </View>
+          ) : null
+        }
         ListHeaderComponent={
           !isFiltered && recommendedListings.length > 0 ? (
             <View style={styles.recommendationSection}>
               <Text style={styles.recommendationTitle}>For You</Text>
               <Text style={styles.recommendationSubtitle}>Based on the creators and videos you have been engaging with.</Text>
               <View style={styles.recommendationList}>
-                {recommendedListings.map((item) => (
-                  <View key={item.id} style={styles.recommendationCardWrap}>
-                    <PublicVideoCard
-                      name={item.creator.display_name}
-                      sequenceNumber={item.creatorSequenceNumber}
-                      seriesName={item.seriesName}
-                      seriesEdition={item.seriesSequenceNumber != null && item.seriesMaxSize != null ? `${item.seriesSequenceNumber} of ${item.seriesMaxSize}` : null}
-                      date={formatPublicVideoDate(item.createdAt)}
-                      verified={item.creator.verified}
-                      priceLabel="Estimated Value"
-                      priceText={formatPublicVideoPrice(item.priceCents)}
-                      secondaryText={`Listed by ${item.ownerName}`}
-                      onPress={() => openPreview(item)}
-                      renderThumbnail={() => <MarketplaceThumbnail item={item} />}
-                    />
+                {Array.from({ length: Math.ceil(recommendedListings.length / 2) }, (_, i) =>
+                  recommendedListings.slice(i * 2, i * 2 + 2)
+                ).map((row, i) => (
+                  <View key={i} style={styles.marketplaceGridRow}>
+                    {row.map((item) => (
+                      <View key={item.id} style={styles.marketplaceGridItem}>
+                        {renderMarketplaceCard(item)}
+                      </View>
+                    ))}
+                    {row.length === 1 && <View style={styles.marketplaceGridItem} />}
                   </View>
                 ))}
               </View>
             </View>
           ) : null
         }
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
         renderItem={({ item }) => (
-          <PublicVideoCard
-            name={item.creator.display_name}
-            sequenceNumber={item.creatorSequenceNumber}
-            seriesName={item.seriesName}
-            seriesEdition={item.seriesSequenceNumber != null && item.seriesMaxSize != null ? `${item.seriesSequenceNumber} of ${item.seriesMaxSize}` : null}
-            date={formatPublicVideoDate(item.createdAt)}
-            verified={item.creator.verified}
-            priceLabel="Estimated Value"
-            priceText={formatPublicVideoPrice(item.priceCents)}
-            secondaryText={`Listed by ${item.ownerName}`}
-            onPress={() => openPreview(item)}
-            renderThumbnail={() => <MarketplaceThumbnail item={item} />}
-          />
+          <View style={styles.marketplaceGridItem}>
+            {renderMarketplaceCard(item)}
+          </View>
         )}
       />
 
@@ -485,12 +674,11 @@ useFocusEffect(
             {previewItem && (
               <View style={styles.modalMeta}>
                 <Pressable onPress={() => { closePreview(); router.push(`/profile/${previewItem.creatorId}`); }}>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: 'center', textDecorationLine: 'underline' } as any}>
-                    <NameWithSequence name={previewItem.creator.display_name} sequenceNumber={previewItem.creatorSequenceNumber} style={[styles.modalCelebrity, { textDecorationLine: 'underline' }] as any} />
-                    {previewItem.seriesName ? <Text style={[styles.modalCelebrity, { textDecorationLine: 'underline' }]}>{` · ${previewItem.seriesName}`}</Text> : null}
+                  <View style={styles.modalMetaLinkRow}>
+                    <NameWithSequence name={previewItem.creator.display_name} sequenceNumber={previewItem.creatorSequenceNumber} style={styles.modalCelebrity} />
+                    {previewItem.seriesName ? <Text style={styles.modalCelebrity}>{` · ${previewItem.seriesName}`}</Text> : null}
                   </View>
                 </Pressable>
-                <Text style={styles.modalPriceLabel}>Estimated Value</Text>
                 <Text style={styles.modalPrice}>{formatPublicVideoPrice(previewItem.priceCents)}</Text>
               </View>
             )}
@@ -499,13 +687,82 @@ useFocusEffect(
           {previewItem && (
             <AutographPlayer
               videoUrl={previewItem.videoUri}
+              thumbnailUrl={previewItem.thumbnailUrl}
+              previewFrameUrls={previewItem.previewFrameUrls}
+              templateId={previewItem.templateId}
               strokes={previewItem.strokes}
               strokeColor={previewItem.strokeColor}
               captureWidth={previewItem.captureWidth}
               captureHeight={previewItem.captureHeight}
-              onCertificate={() => setCertItem(previewItem)}
               onLongPress={() => setContextMenuVisible(true)}
             />
+          )}
+
+          {previewItem && (
+            <View style={styles.modalMetadataBlock}>
+              <View style={styles.modalHeaderRow}>
+                <View style={styles.modalHeaderMetaLeft}>
+                  <Text style={styles.modalHeaderMetaText}>{formatCardDate(previewItem.createdAt)}</Text>
+                </View>
+                <View style={styles.modalNameRow}>
+                  <NameWithSequence name={previewItem.creator.display_name} sequenceNumber={previewItem.creatorSequenceNumber} style={styles.modalCelebrity} />
+                  {previewItem.creator.name_verified && (
+                    <Image source={require('../assets/images/Ophinia_badge_navy background.png')} style={styles.nameBadge} resizeMode="contain" />
+                  )}
+                </View>
+                <Pressable style={styles.certificateLink} onPress={() => setCertItem(previewItem)}>
+                  <Image source={require('../assets/images/Ophinia_O.png')} style={styles.certificateLogo} resizeMode="contain" />
+                </Pressable>
+              </View>
+              <View style={styles.modalInfoRow}>
+                <View style={styles.modalInfoLeft}>
+                  <Text style={styles.modalInfoText}>{`Print #${previewItem.printCount + 1}`}</Text>
+                </View>
+                <View style={styles.modalInfoCenter}>
+                  {previewItem.seriesName || (previewItem.seriesSequenceNumber != null && previewItem.seriesMaxSize != null) ? (
+                    <Text style={styles.modalSeriesText} numberOfLines={1}>
+                      {previewItem.seriesName ?? ''}
+                      {previewItem.seriesName && previewItem.seriesSequenceNumber != null && previewItem.seriesMaxSize != null ? ' · ' : ''}
+                      {previewItem.seriesSequenceNumber != null && previewItem.seriesMaxSize != null
+                        ? `${previewItem.seriesSequenceNumber} of ${previewItem.seriesMaxSize}`
+                        : ''}
+                    </Text>
+                  ) : null}
+                </View>
+              </View>
+              <View style={styles.modalInfoRow}>
+                <View style={styles.modalInfoLeft}>
+                  <Text style={styles.modalInfoText}>{`Listed by ${previewItem.ownerName || previewItem.creator.display_name}`}</Text>
+                </View>
+                <View style={styles.modalInfoCenter} />
+              </View>
+              <View style={styles.modalUtilityRow}>
+                <Pressable style={styles.modalUtilityButton} onPress={() => { void shareAutograph(previewItem); }}>
+                  <Text style={styles.modalUtilityButtonText}>Share</Text>
+                </Pressable>
+              </View>
+            </View>
+          )}
+
+          {previewItem && previewItem.ownerId !== user?.id && (
+            <View style={styles.modalActionBar}>
+              <Text style={styles.modalActionPrice}>{getPreviewPriceText(previewItem)}</Text>
+              {!previewItem.offerLockedUntil && canBuyNow(previewItem) ? (
+                <Pressable
+                  style={[styles.modalActionButton, purchasingId === previewItem.id && { opacity: 0.6 }]}
+                  onPress={() => handlePurchase(previewItem)}
+                  disabled={purchasingId === previewItem.id}
+                >
+                  {purchasingId === previewItem.id
+                    ? <ActivityIndicator size="small" color="#fff" />
+                    : <Text style={styles.modalActionButtonText}>Buy Now</Text>}
+                </Pressable>
+              ) : !previewItem.offerLockedUntil && canMakeOffer(previewItem) ? (
+                <Pressable style={styles.modalActionButton} onPress={() => openOfferSheet(previewItem)}>
+                  <Text style={styles.modalActionButtonText}>Make Offer</Text>
+                </Pressable>
+              ) : null}
+            </View>
           )}
 
           {/* Context menu — long press / right-click on video */}
@@ -513,6 +770,13 @@ useFocusEffect(
             <Pressable style={styles.contextOverlay} onPress={() => setContextMenuVisible(false)}>
               <View style={styles.contextMenu} onStartShouldSetResponder={() => true}>
                 <Text style={styles.contextMenuTitle}>{previewItem.creator.display_name}</Text>
+
+                <Pressable
+                  style={styles.contextMenuItem}
+                  onPress={() => { setContextMenuVisible(false); void shareAutograph(previewItem); }}
+                >
+                  <Text style={styles.contextMenuItemText}>Share</Text>
+                </Pressable>
 
                 {previewItem.ownerId !== user?.id && (
                   <Pressable
@@ -525,21 +789,20 @@ useFocusEffect(
                   </Pressable>
                 )}
 
-                {previewItem.ownerId !== user?.id && (
+                {previewItem.ownerId !== user?.id && !previewItem.offerLockedUntil && canMakeOffer(previewItem) && (
                   <Pressable
                     style={styles.contextMenuItem}
                     onPress={() => {
                       const item = previewItem;
                       setContextMenuVisible(false);
-                      setOfferItem(item);
-                      setOfferInput('');
+                      openOfferSheet(item);
                     }}
                   >
                     <Text style={styles.contextMenuItemText}>Make Offer</Text>
                   </Pressable>
                 )}
 
-                {previewItem.ownerId !== user?.id && (
+                {previewItem.ownerId !== user?.id && !previewItem.offerLockedUntil && canBuyNow(previewItem) && (
                   <Pressable
                     style={styles.contextMenuItem}
                     onPress={() => { setContextMenuVisible(false); handlePurchase(previewItem); }}
@@ -547,6 +810,12 @@ useFocusEffect(
                     <Text style={styles.contextMenuItemText}>Buy · {formatPublicVideoPrice(previewItem.priceCents)}</Text>
                   </Pressable>
                 )}
+
+                {previewItem.ownerId !== user?.id && previewItem.offerLockedUntil ? (
+                  <View style={styles.contextMenuItem}>
+                    <Text style={styles.contextMenuItemText}>Sale Pending</Text>
+                  </View>
+                ) : null}
 
                 <Pressable
                   style={styles.contextMenuItem}
@@ -570,6 +839,23 @@ useFocusEffect(
                     onPress={() => { const id = previewItem.ownerId; setContextMenuVisible(false); closePreview(); router.push(`/profile/${id}`); }}
                   >
                     <Text style={styles.contextMenuItemText}>Seller Profile</Text>
+                  </Pressable>
+                )}
+
+                {previewItem.ownerId !== user?.id && (
+                  <Pressable
+                    style={styles.contextMenuItem}
+                    onPress={() => {
+                      void handleToggleBlockedUser(
+                        previewItem.ownerId,
+                        previewItem.ownerName || previewItem.creator.display_name,
+                        !blockedUserIds.has(previewItem.ownerId),
+                      );
+                    }}
+                  >
+                    <Text style={[styles.contextMenuItemText, { color: '#FF3B30' }]}>
+                      {blockedUserIds.has(previewItem.ownerId) ? 'Unblock Seller' : 'Block Seller'}
+                    </Text>
                   </Pressable>
                 )}
 
@@ -629,22 +915,23 @@ useFocusEffect(
             />
           )}
 
-          {/* Offer sheet — rendered inside video modal to avoid modal stacking on iOS */}
+          {/* Offer sheet — animated View inside modal avoids iOS modal-stacking issues */}
           {offerItem && (
-            <>
-              <Pressable
-                style={styles.offerBackdrop}
-                onPress={() => { if (!offerSubmitting) { setOfferItem(null); setOfferInput(''); } }}
-              />
-              <KeyboardAvoidingView
-                style={styles.offerKeyboardView}
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-              >
+            <Pressable style={styles.offerBackdrop} onPress={closeOfferSheet} />
+          )}
+          {offerItem && (
+            <Animated.View
+              style={[
+                styles.offerKeyboardView,
+                { transform: [{ translateY: offerSlideAnim.interpolate({ inputRange: [0, 1], outputRange: [600, 0] }) }] },
+              ]}
+            >
+              <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
                 <View style={styles.offerSheet} onStartShouldSetResponder={() => true}>
                   <Text style={styles.offerTitle}>Make Offer</Text>
                   <Text style={styles.offerSubtitle}>
                     {offerItem.creator.display_name}
-                    {offerItem.priceCents ? ` · Estimated Value ${formatPublicVideoPrice(offerItem.priceCents)}` : ''}
+                    {offerItem.priceCents ? ` · ${getListingPriceLabel(offerItem)} ${formatPublicVideoPrice(offerItem.priceCents)}` : ''}
                     {' · '}Expires in 24 hours if not accepted
                   </Text>
                   <TextInput
@@ -666,14 +953,14 @@ useFocusEffect(
                   </Pressable>
                   <Pressable
                     style={styles.offerCancelButton}
-                    onPress={() => { if (!offerSubmitting) { setOfferItem(null); setOfferInput(''); } }}
+                    onPress={closeOfferSheet}
                     disabled={offerSubmitting}
                   >
                     <Text style={styles.offerCancelText}>Cancel</Text>
                   </Pressable>
                 </View>
               </KeyboardAvoidingView>
-            </>
+            </Animated.View>
           )}
 
         </View>
@@ -794,7 +1081,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: BrandColors.background,
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingBottom: 0,
+    paddingTop: 0,
   },
   center: {
     flex: 1,
@@ -843,10 +1132,266 @@ const styles = StyleSheet.create({
     fontFamily: BrandFonts.primary,
   },
   recommendationList: {
+    gap: 0,
+  },
+  marketplaceGridRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 12,
+    gap: 12,
+    marginBottom: 12,
+  },
+  marketplaceGridContent: {
+    paddingBottom: 24,
+    paddingTop: 8,
+  },
+  loadMoreFooter: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+  },
+  loadMoreHint: {
+    fontSize: 13,
+    color: '#777',
+    fontFamily: BrandFonts.primary,
+  },
+  marketplaceGridItem: {
+    flex: 1,
+  },
+  modalActionBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderTopColor: '#e9dcc1',
+  },
+  modalActionPrice: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111',
+    fontFamily: BrandFonts.primary,
+  },
+  modalActionButton: {
+    backgroundColor: BrandColors.primary,
+    borderRadius: 999,
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+  },
+  modalActionButtonText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+    fontFamily: BrandFonts.primary,
+  },
+  marketplaceThumbnailWrap: {
+    position: 'relative',
+  },
+  cardOverlayBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  cardOverlayPrice: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+    fontFamily: BrandFonts.primary,
+    flexShrink: 1,
+  },
+  cardOverlayButton: {
+    backgroundColor: BrandColors.primary,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginLeft: 6,
+  },
+  cardOverlayButtonText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '700',
+    fontFamily: BrandFonts.primary,
+  },
+  marketplaceCard: {
+    borderRadius: 20,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e9dcc1',
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+    overflow: 'hidden',
+  },
+  marketplaceThumbnail: {
+    width: '100%',
+    aspectRatio: 60 / 85,
+    height: undefined,
+    borderRadius: 0,
+  },
+  marketplaceCardBody: {
+    paddingHorizontal: 8,
+    paddingTop: 7,
+    paddingBottom: 8,
+  },
+  marketplaceCardName: {
+    fontSize: 13,
+    lineHeight: 17,
+    fontWeight: '700',
+    color: '#111',
+    fontFamily: BrandFonts.primary,
+  },
+  marketplaceHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
     gap: 12,
   },
-  recommendationCardWrap: {
-    marginBottom: 12,
+  marketplaceCreatorColumn: {
+    flex: 1,
+  },
+  marketplaceListedByColumn: {
+    alignItems: 'flex-end',
+    flexShrink: 0,
+    maxWidth: '42%',
+  },
+  marketplaceNameLink: {
+    flex: 1,
+    alignSelf: 'flex-start',
+  },
+  marketplaceNameLinkInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  marketplaceNameLinkCue: {
+    fontSize: 18,
+    lineHeight: 18,
+    color: '#777',
+    fontFamily: BrandFonts.primary,
+    fontWeight: '700',
+    marginTop: 1,
+  },
+  marketplaceSeriesSlot: {
+    height: 18,
+    marginTop: 3,
+    justifyContent: 'center',
+  },
+  marketplaceSeriesRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  marketplaceSeriesCopy: {
+    flex: 1,
+  },
+  marketplaceSeries: {
+    fontSize: 13,
+    lineHeight: 14,
+    fontFamily: BrandFonts.primary,
+    fontStyle: 'italic',
+  },
+  marketplaceSeriesName: {
+    color: '#111',
+    fontFamily: BrandFonts.primary,
+  },
+  marketplaceSeriesEdition: {
+    color: '#888',
+    fontFamily: BrandFonts.primary,
+    fontStyle: 'normal',
+  },
+  marketplaceBadgeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 6,
+  },
+  marketplaceVerifiedBadge: {
+    fontSize: 11,
+    color: '#fff',
+    backgroundColor: '#111',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    alignSelf: 'flex-start',
+    overflow: 'hidden',
+    fontFamily: BrandFonts.primary,
+    fontWeight: '700',
+  },
+  marketplaceGoldBadge: {
+    fontSize: 11,
+    color: '#7A4B00',
+    backgroundColor: '#F7E5BF',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    overflow: 'hidden',
+    fontFamily: BrandFonts.primary,
+    fontWeight: '700',
+  },
+  marketplacePriceRow: {
+    marginTop: 0,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  marketplaceActionColumn: {
+    alignItems: 'flex-end',
+  },
+  marketplaceActionButton: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#fff',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#111',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  marketplaceActionButtonText: {
+    color: '#111',
+    fontSize: 12,
+    fontWeight: '700',
+    fontFamily: BrandFonts.primary,
+  },
+  marketplacePrice: {
+    fontSize: 21,
+    lineHeight: 24,
+    fontWeight: '800',
+    color: '#111',
+    fontFamily: BrandFonts.primary,
+    flex: 1,
+  },
+  marketplaceListedBy: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#666',
+    fontFamily: BrandFonts.primary,
+  },
+  marketplaceListedByInline: {
+    fontSize: 12,
+    lineHeight: 14,
+    color: '#666',
+    fontFamily: BrandFonts.primary,
+    textAlign: 'right',
+  },
+  marketplaceListedByLabel: {
+    fontSize: 11,
+    lineHeight: 14,
+    color: '#888',
+    fontFamily: BrandFonts.primary,
+    textAlign: 'right',
+    flexShrink: 0,
   },
   watchButton: {
     paddingVertical: 8,
@@ -866,13 +1411,6 @@ const styles = StyleSheet.create({
     color: '#8A7D67',
     marginTop: 4,
   },
-  price: {
-    fontSize: 28,
-    lineHeight: 32,
-    fontWeight: '800',
-    color: '#111',
-    fontFamily: BrandFonts.primary,
-  },
   modalContainer: {
     flex: 1,
     backgroundColor: 'black',
@@ -889,19 +1427,115 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
   },
+  modalMetaLinkRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+  },
   modalCelebrity: {
     color: '#fff',
     fontFamily: BrandFonts.primary,
     fontSize: 19,
     fontWeight: '600',
   },
-  modalPriceLabel: {
-    color: 'rgba(255,255,255,0.6)',
+  modalNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  nameBadge: {
+    width: 20,
+    height: 20,
+  },
+  modalMetadataBlock: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 16,
+    backgroundColor: 'black',
+    alignItems: 'center',
+  },
+  modalHeaderRow: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+    minHeight: 34,
+    marginBottom: 6,
+  },
+  modalHeaderMetaLeft: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    alignItems: 'flex-start',
+    gap: 2,
+  },
+  modalHeaderMetaText: {
+    fontSize: 12,
+    lineHeight: 15,
+    color: '#fff',
     fontFamily: BrandFonts.primary,
-    fontSize: 10,
     fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+  },
+  modalInfoRow: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    minHeight: 18,
+    marginTop: 2,
+  },
+  modalInfoLeft: {
+    width: '44%',
+    alignItems: 'flex-start',
+  },
+  modalInfoCenter: {
+    width: '40%',
+    alignItems: 'center',
+  },
+  modalInfoText: {
+    fontSize: 12,
+    lineHeight: 15,
+    color: '#fff',
+    fontFamily: BrandFonts.primary,
+    fontWeight: '600',
+  },
+  modalSeriesText: {
+    fontSize: 12,
+    lineHeight: 15,
+    color: '#d9d9d9',
+    fontFamily: BrandFonts.primary,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  modalUtilityRow: {
+    width: '100%',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  modalUtilityButton: {
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.28)',
+    borderRadius: 999,
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+  },
+  modalUtilityButtonText: {
+    color: '#fff',
+    fontSize: 13,
+    fontFamily: BrandFonts.primary,
+    fontWeight: '700',
+  },
+  certificateLink: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    padding: 2,
+  },
+  certificateLogo: {
+    width: 34,
+    height: 34,
+    opacity: 0.85,
+    tintColor: '#fff',
   },
   modalPrice: {
     color: '#fff',
@@ -1138,31 +1772,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: 0,
   },
   filterResultCount: {
     fontSize: 13,
     color: '#666',
     fontFamily: BrandFonts.primary,
   },
-  filterButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: '#666',
+  filterLink: {
+    paddingVertical: 4,
   },
-  filterButtonActive: {
-    backgroundColor: '#666',
-  },
-  filterButtonText: {
+  filterLinkText: {
     fontSize: 14,
     fontWeight: '600',
     fontFamily: BrandFonts.primary,
     color: '#666',
   },
-  filterButtonTextActive: {
-    color: '#fff',
+  filterLinkTextActive: {
+    color: '#111',
   },
   filterOverlay: {
     flex: 1,
