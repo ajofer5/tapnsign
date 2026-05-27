@@ -45,8 +45,8 @@ const FRAME12 = { x: tx(89), y: ty(88), w: tx(373), h: ty(624) };
 // Signature strokes square (top-right) — gold strokes on black, no photo
 const SIG_SQ = { x: tx(600), y: ty(89), w: tx(273), h: ty(257) };
 
-// QR code (right side, middle) — shifted slightly right and down to align with template placeholder
-const QR_AREA = { x: tx(797), y: ty(396), w: tx(81), h: ty(79) };
+// QR code (right side, middle) — slightly enlarged so exact positioning is forgiving
+const QR_AREA = { x: tx(793), y: ty(390), w: tx(90), h: ty(88) };
 
 // Metadata text (left of QR/logo column)
 const META_AREA = { x: tx(499), y: ty(388), w: tx(284), h: ty(142) };
@@ -308,7 +308,7 @@ async function renderPrintLayout({ autograph, printRecord }) {
     <text
       x="${META_AREA.x + 20}"
       y="${META_AREA.y + 72 + i * lineH}"
-      font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif"
+      font-family="URW Classico, DejaVu Sans, Liberation Sans, sans-serif"
       font-size="${line.fontSize}"
       font-weight="${line.bold ? 'bold' : 'normal'}"
       fill="white"
@@ -321,22 +321,17 @@ async function renderPrintLayout({ autograph, printRecord }) {
   </svg>`;
   composites.push({ input: Buffer.from(metaSvg), left: 0, top: 0 });
 
-  // --- Template as top layer with screen blend ---
-  // Screen blend: black pixels in template become transparent, white border/logo lines
-  // show on top of photos. This keeps the frame outlines and logo visible over photos.
-  if (TEMPLATE_BUF) {
-    const scaledTemplate = await sharp(TEMPLATE_BUF)
-      .resize(CANVAS_W, CANVAS_H, { fit: 'fill' })
-      .png()
-      .toBuffer();
-    composites.push({ input: scaledTemplate, left: 0, top: 0, blend: 'screen' });
-  }
-
-  // --- Composite onto black canvas ---
+  // --- Composite ---
+  // Template is the base canvas — black background with white borders/logo baked in.
+  // Photos are placed inside the frame areas; border lines live around the edges
+  // so they remain visible. Metadata and strokes composite on top.
   console.log('[render] compositing landscape PNG');
-  const landscape = await sharp({
-    create: { width: CANVAS_W, height: CANVAS_H, channels: 3, background: { r: 0, g: 0, b: 0 } },
-  })
+
+  const baseCanvas = TEMPLATE_BUF
+    ? sharp(TEMPLATE_BUF).resize(CANVAS_W, CANVAS_H, { fit: 'fill' })
+    : sharp({ create: { width: CANVAS_W, height: CANVAS_H, channels: 3, background: { r: 0, g: 0, b: 0 } } });
+
+  const landscape = await baseCanvas
     .composite(composites)
     .png({ compressionLevel: 6 })
     .toBuffer();
