@@ -26,7 +26,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 // Layout constants
 // Generated in landscape 3000×2400 (10"×8" @ 300 DPI),
 // then rotated 90° CW → 2400×3000 portrait for Prodigi GLOBAL-PHO-8X10.
-// Positions derived from Figma template (assets/print-layouts/Print Layout 8x10.png, 1008×809px).
+// Positions derived from Figma template (assets/print-layout-8x10.png, 1008×809px).
 // ---------------------------------------------------------------------------
 
 const CANVAS_W = 3000; // 10"
@@ -41,43 +41,34 @@ const ty = (v) => Math.round(v * SY);
 
 // Large frame 12 — left column
 const FRAME12 = { x: tx(89), y: ty(88), w: tx(373), h: ty(624) };
-// → approx { x: 265, y: 261, w: 1110, h: 1851 }
 
 // Signature strokes square (top-right) — gold strokes on black, no photo
 const SIG_SQ = { x: tx(600), y: ty(89), w: tx(273), h: ty(257) };
-// → approx { x: 1786, y: 264, w: 813, h: 762 }
 
 // QR code (right side, middle)
 const QR_AREA = { x: tx(791), y: ty(388), w: tx(81), h: ty(79) };
-// → approx { x: 2353, y: 1151, w: 241, h: 234 }
-
-// Logo (below QR)
-const LOGO_AREA = { x: tx(791), y: ty(492), w: tx(80), h: ty(26) };
-// → approx { x: 2353, y: 1460, w: 238, h: 77 }
 
 // Metadata text (left of QR/logo column)
 const META_AREA = { x: tx(499), y: ty(388), w: tx(284), h: ty(142) };
-// → approx { x: 1485, y: 1151, w: 845, h: 421 }
 
 // Small frames row — frames 4, 6, 8, 10 (0-indexed: 3, 5, 7, 9)
-// Span template x: 533–930, y: 573–715
-const SF_Y = ty(573);   // 1700
-const SF_H = ty(142);   // 421
-const SF_W = tx(88);    // 262
-const SF_TOTAL = tx(930) - tx(533); // 1182
-const SF_GAP = Math.round((SF_TOTAL - 4 * SF_W) / 3); // ~45
+const SF_Y = ty(573);
+const SF_H = ty(142);
+const SF_W = tx(88);
+const SF_TOTAL = tx(930) - tx(533);
+const SF_GAP = Math.round((SF_TOTAL - 4 * SF_W) / 3);
 
 const SMALL_FRAMES = [
-  { frameIdx: 3, timeS: 2.65, x: tx(533),                      y: SF_Y, w: SF_W, h: SF_H },
-  { frameIdx: 5, timeS: 3.75, x: tx(533) + (SF_W + SF_GAP),    y: SF_Y, w: SF_W, h: SF_H },
+  { frameIdx: 3, timeS: 2.65, x: tx(533),                       y: SF_Y, w: SF_W, h: SF_H },
+  { frameIdx: 5, timeS: 3.75, x: tx(533) + (SF_W + SF_GAP),     y: SF_Y, w: SF_W, h: SF_H },
   { frameIdx: 7, timeS: 4.85, x: tx(533) + (SF_W + SF_GAP) * 2, y: SF_Y, w: SF_W, h: SF_H },
   { frameIdx: 9, timeS: 5.95, x: tx(533) + (SF_W + SF_GAP) * 3, y: SF_Y, w: SF_W, h: SF_H },
 ];
 
-// Preload white logo from bundled asset
-const LOGO_PATH = path.join(__dirname, 'assets', 'ophinia-logo-white.png');
-const LOGO_BUF = fs.existsSync(LOGO_PATH) ? fs.readFileSync(LOGO_PATH) : null;
-if (!LOGO_BUF) console.warn('[init] ophinia-logo-white.png not found in assets/');
+// Preload template and logo from bundled assets
+const TEMPLATE_PATH = path.join(__dirname, 'assets', 'print-layout-8x10.png');
+const TEMPLATE_BUF = fs.existsSync(TEMPLATE_PATH) ? fs.readFileSync(TEMPLATE_PATH) : null;
+if (!TEMPLATE_BUF) console.warn('[init] print-layout-8x10.png not found in assets/');
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -105,12 +96,12 @@ function buildSmoothPath(points) {
   return d;
 }
 
-// Renders strokes as SVG path strings. upToTimeSeconds=Infinity for complete signature.
-// color='gold' or '#F1C168' triggers the two-layer gold shimmer effect.
+// Renders strokes scaled from sourceW×sourceH → targetW×targetH.
+// upToTimeSeconds=Infinity for complete signature.
 function strokesToSvgPaths(strokes, upToTimeSeconds, color, sourceW, sourceH, targetW, targetH) {
   const scaleX = targetW / (sourceW || 1);
   const scaleY = targetH / (sourceH || 1);
-  const strokeWidth = Math.max(2, 5 * Math.min(scaleX, scaleY));
+  const strokeWidth = Math.max(3, 6 * Math.min(scaleX, scaleY));
   const isGold = color === '#F1C168' || color === '#C9A84C' || color === 'gold';
 
   const paths = strokes.flatMap((stroke) => {
@@ -126,6 +117,57 @@ function strokesToSvgPaths(strokes, upToTimeSeconds, color, sourceW, sourceH, ta
       ];
     }
     return [`<path d="${d}" stroke="${color}" stroke-width="${strokeWidth}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`];
+  });
+
+  return paths.join('\n');
+}
+
+// Renders the complete signature centered and scaled to fill targetW×targetH with padding.
+// Used for the signature square where we want the sig to be well-framed regardless of
+// where in the capture frame the creator signed.
+function strokesToSvgPathsCentered(strokes, color, targetW, targetH) {
+  // Compute bounding box of all stroke points
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const stroke of strokes) {
+    for (const p of stroke.points) {
+      if (p.x < minX) minX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y > maxY) maxY = p.y;
+    }
+  }
+  if (!isFinite(minX)) return '';
+
+  const bboxW = maxX - minX || 1;
+  const bboxH = maxY - minY || 1;
+
+  // Scale bounding box to fit target at 75% fill, maintaining aspect ratio
+  const scale = Math.min((targetW * 0.75) / bboxW, (targetH * 0.75) / bboxH);
+
+  // Center the scaled bounding box within the target
+  const scaledW = bboxW * scale;
+  const scaledH = bboxH * scale;
+  const offsetX = (targetW - scaledW) / 2 - minX * scale;
+  const offsetY = (targetH - scaledH) / 2 - minY * scale;
+
+  const sw = Math.max(4, Math.round(targetW / 80));
+  const isGold = color === '#F1C168' || color === '#C9A84C' || color === 'gold';
+
+  const paths = strokes.flatMap((stroke) => {
+    if (!stroke.points.length) return [];
+    const transformed = stroke.points.map((p) => ({
+      x: p.x * scale + offsetX,
+      y: p.y * scale + offsetY,
+    }));
+    const d = buildSmoothPath(transformed);
+    if (!d) return [];
+    if (isGold) {
+      return [
+        `<path d="${d}" stroke="#D9AF4C" stroke-width="${sw * 1.2}" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.95"/>`,
+        `<path d="${d}" stroke="#FFF0A0" stroke-width="${sw * 0.48}" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.82"/>`,
+      ];
+    }
+    return [`<path d="${d}" stroke="${color}" stroke-width="${sw}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`];
   });
 
   return paths.join('\n');
@@ -192,18 +234,34 @@ async function renderPrintLayout({ autograph, printRecord }) {
   console.log('[render] frames fetched, building composites');
   const composites = [];
 
+  // --- Template as base layer (provides borders, logo, frame outlines) ---
+  if (TEMPLATE_BUF) {
+    const scaledTemplate = await sharp(TEMPLATE_BUF)
+      .resize(CANVAS_W, CANVAS_H, { fit: 'fill' })
+      .png()
+      .toBuffer();
+    composites.push({ input: scaledTemplate, left: 0, top: 0 });
+  }
+
   // --- Frame 12 photo (large left column) ---
   if (frame12Buf) {
     composites.push({ input: frame12Buf, left: FRAME12.x, top: FRAME12.y });
   }
 
-  // --- Signature square: black fill + gold strokes only ---
+  // --- Frame 12 stroke overlay (full signature on top of photo) ---
+  const frame12Paths = strokesToSvgPaths(strokes, Infinity, strokeColor, captureW, captureH, FRAME12.w, FRAME12.h);
+  if (frame12Paths) {
+    const frame12Svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${FRAME12.w}" height="${FRAME12.h}">${frame12Paths}</svg>`;
+    composites.push({ input: Buffer.from(frame12Svg), left: FRAME12.x, top: FRAME12.y });
+  }
+
+  // --- Signature square: black fill + centered gold strokes ---
   const sigBg = await sharp({
     create: { width: SIG_SQ.w, height: SIG_SQ.h, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 1 } },
   }).png().toBuffer();
   composites.push({ input: sigBg, left: SIG_SQ.x, top: SIG_SQ.y });
 
-  const goldPaths = strokesToSvgPaths(strokes, Infinity, '#F1C168', captureW, captureH, SIG_SQ.w, SIG_SQ.h);
+  const goldPaths = strokesToSvgPathsCentered(strokes, '#F1C168', SIG_SQ.w, SIG_SQ.h);
   if (goldPaths) {
     const sigSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${SIG_SQ.w}" height="${SIG_SQ.h}">${goldPaths}</svg>`;
     composites.push({ input: Buffer.from(sigSvg), left: SIG_SQ.x, top: SIG_SQ.y });
@@ -237,20 +295,7 @@ async function renderPrintLayout({ autograph, printRecord }) {
     console.error('[render] QR generation error:', e.message);
   }
 
-  // --- Ophinia logo ---
-  if (LOGO_BUF) {
-    try {
-      const resizedLogo = await sharp(LOGO_BUF)
-        .resize(LOGO_AREA.w, LOGO_AREA.h, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
-        .png()
-        .toBuffer();
-      composites.push({ input: resizedLogo, left: LOGO_AREA.x, top: LOGO_AREA.y });
-    } catch (e) {
-      console.error('[render] logo composite error:', e.message);
-    }
-  }
-
-  // --- Metadata text + border (full-canvas SVG) ---
+  // --- Metadata text SVG (font sizes scaled for 300 DPI print canvas) ---
   const date = new Date(autograph.created_at).toLocaleDateString('en-US', {
     month: 'long', day: 'numeric', year: 'numeric',
   });
@@ -259,20 +304,20 @@ async function renderPrintLayout({ autograph, printRecord }) {
     : creatorName.toUpperCase();
 
   const metaLines = [
-    { text: nameLabel,          fontSize: 36, opacity: 1.0, bold: true,  letterSpacing: 2 },
-    { text: `Captured on ${date}`, fontSize: 24, opacity: 0.75, bold: false, letterSpacing: 0.5 },
-    { text: `Print #${printSeq}`,  fontSize: 24, opacity: 0.75, bold: false, letterSpacing: 0.5 },
+    { text: nameLabel,              fontSize: 72, opacity: 1.0,  bold: true,  letterSpacing: 3 },
+    { text: `Captured on ${date}`,  fontSize: 52, opacity: 0.75, bold: false, letterSpacing: 1 },
+    { text: `Print #${printSeq}`,   fontSize: 52, opacity: 0.75, bold: false, letterSpacing: 1 },
   ];
   if (seriesName) {
-    metaLines.push({ text: seriesName, fontSize: 22, opacity: 0.65, bold: false, letterSpacing: 0.5 });
+    metaLines.push({ text: seriesName, fontSize: 48, opacity: 0.65, bold: false, letterSpacing: 1 });
   }
 
-  const lineH = 60;
+  const lineH = 100;
   const metaTextEls = metaLines.map((line, i) => `
     <text
-      x="${META_AREA.x + 16}"
-      y="${META_AREA.y + 44 + i * lineH}"
-      font-family="Georgia, serif"
+      x="${META_AREA.x + 20}"
+      y="${META_AREA.y + 72 + i * lineH}"
+      font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif"
       font-size="${line.fontSize}"
       font-weight="${line.bold ? 'bold' : 'normal'}"
       fill="white"
@@ -280,21 +325,10 @@ async function renderPrintLayout({ autograph, printRecord }) {
       letter-spacing="${line.letterSpacing}"
     >${escapeXml(line.text)}</text>`).join('\n');
 
-  const overlaySvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${CANVAS_W}" height="${CANVAS_H}">
-    <!-- Outer border -->
-    <rect x="10" y="10" width="${CANVAS_W - 20}" height="${CANVAS_H - 20}"
-      fill="none" stroke="white" stroke-width="2" opacity="0.3"/>
-    <!-- Inner border -->
-    <rect x="35" y="35" width="${CANVAS_W - 70}" height="${CANVAS_H - 70}"
-      fill="none" stroke="white" stroke-width="1" opacity="0.18"/>
-    <!-- Signature square border -->
-    <rect x="${SIG_SQ.x}" y="${SIG_SQ.y}" width="${SIG_SQ.w}" height="${SIG_SQ.h}"
-      fill="none" stroke="white" stroke-width="1.5" opacity="0.25"/>
-    <!-- Metadata -->
+  const metaSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${CANVAS_W}" height="${CANVAS_H}">
     ${metaTextEls}
   </svg>`;
-
-  composites.push({ input: Buffer.from(overlaySvg), left: 0, top: 0 });
+  composites.push({ input: Buffer.from(metaSvg), left: 0, top: 0 });
 
   // --- Composite onto black canvas ---
   console.log('[render] compositing landscape PNG');
