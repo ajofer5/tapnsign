@@ -1,15 +1,46 @@
-import { BrandColors, BrandFonts } from '@/constants/theme';
+import { AutographCardCanvas } from '@/components/autograph-card-canvas';
+import { BrandFonts } from '@/constants/theme';
+import { getPreviewFramePlaybackDelayMs, getPreviewFrameTimeSeconds, PREVIEW_PLAYBACK_END_HOLD_MS } from '@/lib/capture-timing';
+import { getCardTemplate } from '@/lib/card-templates';
 import { AVPlaybackStatus, ResizeMode, Video } from 'expo-av';
-import { useRef, useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ReactNode, useEffect, useRef, useState } from 'react';
+import { Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
 type Point = { x: number; y: number; t: number };
 type Stroke = { id: string; points: Point[] };
 
-function buildSparkPath(cx: number, cy: number, r: number) {
-  const inner = r * 0.3;
-  return `M ${cx},${cy - r} L ${cx + inner},${cy - inner} L ${cx + r},${cy} L ${cx + inner},${cy + inner} L ${cx},${cy + r} L ${cx - inner},${cy + inner} L ${cx - r},${cy} L ${cx - inner},${cy - inner} Z`;
+const DEFAULT_INK = '#001B5C';
+const BAKED_PREVIEW_FRAME_COUNT = 5;
+
+function buildSmoothPath(points: Point[]) {
+  if (!points.length) return '';
+  if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
+
+  let d = `M ${points[0].x} ${points[0].y}`;
+  for (let i = 1; i < points.length - 1; i++) {
+    const mx = (points[i].x + points[i + 1].x) / 2;
+    const my = (points[i].y + points[i + 1].y) / 2;
+    d += ` Q ${points[i].x} ${points[i].y} ${mx} ${my}`;
+  }
+  d += ` L ${points[points.length - 1].x} ${points[points.length - 1].y}`;
+  return d;
+}
+
+function renderRedStroke(strokeId: string, points: Point[], strokeColor: string) {
+  const fullPath = buildSmoothPath(points);
+  if (!fullPath) return null;
+  return (
+    <Path
+      key={`${strokeId}-plain`}
+      d={fullPath}
+      stroke={strokeColor || DEFAULT_INK}
+      strokeWidth={5}
+      fill="none"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  );
 }
 
 function SignatureOverlay({
@@ -29,7 +60,7 @@ function SignatureOverlay({
   displayHeight: number;
   strokeColor: string;
 }) {
-  const isGold = strokeColor === '#C9A84C';
+  const isGold = strokeColor === '#F1C168';
 
   return (
     <Svg
@@ -42,33 +73,16 @@ function SignatureOverlay({
       {strokes.map((stroke) => {
         const visible = stroke.points.filter((p) => p.t <= currentTimeSeconds);
         if (!visible.length) return null;
-        const d = visible.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
 
         if (!isGold) {
-          return (
-            <Path
-              key={stroke.id}
-              d={d}
-              stroke={strokeColor}
-              strokeWidth={5}
-              fill="none"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          );
+          return renderRedStroke(stroke.id, visible, strokeColor);
         }
 
-        const first = visible[0];
-        const last = visible[visible.length - 1];
+        const d = buildSmoothPath(visible);
 
         return [
-          <Path key={`${stroke.id}-g1`} d={d} stroke="#C9A84C" strokeWidth={16} fill="none" strokeLinecap="round" strokeLinejoin="round" opacity={0.10} />,
-          <Path key={`${stroke.id}-g2`} d={d} stroke="#C9A84C" strokeWidth={10} fill="none" strokeLinecap="round" strokeLinejoin="round" opacity={0.25} />,
-          <Path key={`${stroke.id}-g3`} d={d} stroke="#E8C56E" strokeWidth={5} fill="none" strokeLinecap="round" strokeLinejoin="round" opacity={0.9} />,
-          <Path key={`${stroke.id}-g4`} d={d} stroke="#FFF0A0" strokeWidth={2} fill="none" strokeLinecap="round" strokeLinejoin="round" opacity={0.85} />,
-          <Path key={`${stroke.id}-s1`} d={buildSparkPath(first.x, first.y, 8)} fill="#FFF0A0" opacity={0.9} />,
-          <Path key={`${stroke.id}-s2`} d={buildSparkPath(last.x, last.y, 10)} fill="#FFF0A0" opacity={0.95} />,
-          <Path key={`${stroke.id}-s3`} d={buildSparkPath(last.x + 12, last.y - 8, 5)} fill="#E8C56E" opacity={0.7} />,
+          <Path key={`${stroke.id}-g1`} d={d} stroke="#D9AF4C" strokeWidth={6} fill="none" strokeLinecap="round" strokeLinejoin="round" opacity={0.95} />,
+          <Path key={`${stroke.id}-g2`} d={d} stroke="#FFF0A0" strokeWidth={2.4} fill="none" strokeLinecap="round" strokeLinejoin="round" opacity={0.82} />,
         ];
       })}
     </Svg>
@@ -76,32 +90,63 @@ function SignatureOverlay({
 }
 
 type AutographPlayerProps = {
-  videoUrl: string;
+  videoUrl?: string | null;
+  thumbnailUrl?: string | null;
+  previewFrameUrls?: string[] | null;
+  creatorName?: string | null;
+  templateId?: string | null;
   strokes: Stroke[];
   strokeColor: string;
   captureWidth: number;
   captureHeight: number;
   hintText?: string;
-  onCertificate?: () => void;
   onLongPress?: () => void;
+  overlayContent?: ReactNode;
 };
 
 export function AutographPlayer({
   videoUrl,
+  thumbnailUrl,
+  previewFrameUrls,
+  creatorName,
+  templateId,
   strokes,
   strokeColor,
   captureWidth,
   captureHeight,
   hintText = 'Tap and hold for video options',
-  onCertificate,
   onLongPress,
+  overlayContent,
 }: AutographPlayerProps) {
+  const template = getCardTemplate(templateId);
   const [box, setBox] = useState({ width: 1, height: 1 });
   const [playbackTime, setPlaybackTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isPreparingFrames, setIsPreparingFrames] = useState(false);
   const [rotation, setRotation] = useState(0);
+  const [frameIndex, setFrameIndex] = useState<number | null>(null);
   const videoRef = useRef<Video | null>(null);
+  const flipbookRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const preloadPromiseRef = useRef<Promise<void> | null>(null);
   const isRotated = rotation === 90 || rotation === -90;
+  const hasFlipbook = !videoUrl && !!previewFrameUrls?.length;
+  const hasBakedPreviewFrames = (previewFrameUrls?.length ?? 0) > 0 && (previewFrameUrls?.length ?? 0) <= BAKED_PREVIEW_FRAME_COUNT;
+  const staticFrame = thumbnailUrl ?? (previewFrameUrls?.length ? previewFrameUrls[previewFrameUrls.length - 1] : null);
+  const flipbookCardFrameUri = previewFrameUrls?.length
+    ? (frameIndex != null ? (previewFrameUrls[frameIndex] ?? previewFrameUrls[previewFrameUrls.length - 1]) : previewFrameUrls[previewFrameUrls.length - 1])
+    : null;
+  const activeFrameUri = frameIndex != null && previewFrameUrls?.length
+    ? (previewFrameUrls[frameIndex] ?? staticFrame)
+    : staticFrame;
+  const sourceAspect = Math.max(captureWidth || 1, 1) / Math.max(captureHeight || 1, 1);
+  const wrapperAspect = box.width / Math.max(box.height, 1);
+  const mediaWidth = wrapperAspect > sourceAspect ? box.height * sourceAspect : box.width;
+  const mediaHeight = wrapperAspect > sourceAspect ? box.height : box.width / sourceAspect;
+  const mediaLeft = (box.width - mediaWidth) / 2;
+  const mediaTop = (box.height - mediaHeight) / 2;
+  const currentTimeSeconds = hasFlipbook && previewFrameUrls?.length && frameIndex != null && previewFrameUrls.length > 1
+    ? getPreviewFrameTimeSeconds(frameIndex, previewFrameUrls.length)
+    : Infinity;
 
   const handleStatus = (status: AVPlaybackStatus) => {
     if (!status.isLoaded) return;
@@ -109,16 +154,88 @@ export function AutographPlayer({
     setIsPlaying(status.isPlaying);
   };
 
+  const ensurePreviewFramesReady = async () => {
+    if (!previewFrameUrls?.length) return;
+    if (preloadPromiseRef.current) return preloadPromiseRef.current;
+
+    const criticalUrls = [
+      previewFrameUrls[0],
+      previewFrameUrls[1],
+      previewFrameUrls[2],
+      previewFrameUrls[previewFrameUrls.length - 1],
+      thumbnailUrl,
+    ].filter((url, index, array): url is string => !!url && array.indexOf(url) === index);
+
+    const promise = Promise.allSettled(
+      criticalUrls.map(async (url) => {
+        try {
+          await Image.prefetch(url);
+        } catch {}
+      })
+    ).then(() => undefined);
+
+    preloadPromiseRef.current = promise;
+    await promise;
+  };
+
   const togglePlay = async () => {
-    if (!videoRef.current) return;
-    const status = await videoRef.current.getStatusAsync();
-    if (!status.isLoaded) return;
-    if (status.isPlaying) {
-      await videoRef.current.pauseAsync();
-    } else {
-      await videoRef.current.playAsync();
+    if (videoUrl) {
+      if (!videoRef.current) return;
+      const status = await videoRef.current.getStatusAsync();
+      if (!status.isLoaded) return;
+      if (status.isPlaying) {
+        await videoRef.current.pauseAsync();
+      } else {
+        await videoRef.current.playAsync();
+      }
+      return;
+    }
+
+    if (hasFlipbook && previewFrameUrls?.length) {
+      if (flipbookRef.current || isPreparingFrames) return;
+      setIsPreparingFrames(true);
+      try {
+        await ensurePreviewFramesReady();
+      } finally {
+        setIsPreparingFrames(false);
+      }
+
+      setIsPlaying(true);
+      setFrameIndex(0);
+      const runFrame = (idx: number) => {
+        if (!previewFrameUrls?.length) return;
+        setFrameIndex(idx);
+        if (idx >= previewFrameUrls.length - 1) {
+          flipbookRef.current = setTimeout(() => {
+            flipbookRef.current = null;
+            setFrameIndex(null);
+            setIsPlaying(false);
+          }, PREVIEW_PLAYBACK_END_HOLD_MS);
+          return;
+        }
+
+        const delayMs = getPreviewFramePlaybackDelayMs(idx, previewFrameUrls.length);
+        flipbookRef.current = setTimeout(() => runFrame(idx + 1), delayMs);
+      };
+
+      runFrame(0);
     }
   };
+
+  useEffect(() => {
+    if (previewFrameUrls?.length) {
+      previewFrameUrls.forEach((url) => {
+        if (url) void Image.prefetch(url);
+      });
+    }
+    if (thumbnailUrl) void Image.prefetch(thumbnailUrl);
+  }, [previewFrameUrls, thumbnailUrl]);
+
+  useEffect(() => {
+    return () => {
+      if (flipbookRef.current) clearTimeout(flipbookRef.current);
+    };
+  }, []);
 
   return (
     <View
@@ -126,39 +243,78 @@ export function AutographPlayer({
       onLayout={(e) => setBox({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}
     >
       <View style={styles.videoLayer}>
-        <Video
-          ref={videoRef}
-          source={{ uri: videoUrl }}
+        {videoUrl ? (
+          <Video
+            ref={videoRef}
+            source={{ uri: videoUrl }}
+            style={[
+              styles.video,
+              isRotated && { width: box.height, height: box.width },
+              rotation !== 0 && { transform: [{ rotate: `${rotation}deg` }] },
+            ]}
+            useNativeControls={false}
+            resizeMode={ResizeMode.CONTAIN}
+            shouldPlay={false}
+            onReadyForDisplay={({ naturalSize }) => {
+              const captureIsPortrait = captureWidth < captureHeight;
+              const videoIsLandscape = naturalSize.width > naturalSize.height;
+              setRotation(captureIsPortrait && videoIsLandscape ? 90 : 0);
+            }}
+            onPlaybackStatusUpdate={handleStatus}
+          />
+        ) : hasFlipbook && activeFrameUri ? (
+          hasBakedPreviewFrames ? (
+            <Image source={{ uri: activeFrameUri }} style={styles.video} resizeMode="contain" />
+          ) : (
+            <AutographCardCanvas
+              template={template}
+              creatorName={creatorName ?? ''}
+              captureWidth={captureWidth}
+              captureHeight={captureHeight}
+              strokes={strokes}
+              currentTimeSeconds={frameIndex != null ? currentTimeSeconds : undefined}
+              strokeColor={strokeColor}
+              photoSource={flipbookCardFrameUri ? { uri: flipbookCardFrameUri } : undefined}
+              style={styles.cardCanvas}
+            />
+          )
+        ) : activeFrameUri ? (
+          <Image source={{ uri: activeFrameUri }} style={styles.video} resizeMode="contain" />
+        ) : null}
+      </View>
+
+      {videoUrl && (
+        <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
+          <SignatureOverlay
+            strokes={strokes}
+            currentTimeSeconds={videoUrl ? playbackTime : currentTimeSeconds}
+            sourceWidth={captureWidth}
+            sourceHeight={captureHeight}
+            displayWidth={box.width}
+            displayHeight={box.height}
+            strokeColor={strokeColor}
+          />
+        </View>
+      )}
+
+      {overlayContent ? (
+        <View
+          pointerEvents="none"
           style={[
-            styles.video,
-            isRotated && { width: box.height, height: box.width },
-            rotation !== 0 && { transform: [{ rotate: `${rotation}deg` }] },
+            styles.statsOverlay,
+            {
+              left: mediaLeft,
+              top: mediaTop,
+              width: mediaWidth,
+              height: mediaHeight,
+            },
           ]}
-          useNativeControls={false}
-          resizeMode={ResizeMode.CONTAIN}
-          shouldPlay={false}
-          onReadyForDisplay={({ naturalSize }) => {
-            const captureIsPortrait = captureWidth < captureHeight;
-            const videoIsLandscape = naturalSize.width > naturalSize.height;
-            setRotation(captureIsPortrait && videoIsLandscape ? 90 : 0);
-          }}
-          onPlaybackStatusUpdate={handleStatus}
-        />
-      </View>
+        >
+          {overlayContent}
+        </View>
+      ) : null}
 
-      <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
-        <SignatureOverlay
-          strokes={strokes}
-          currentTimeSeconds={playbackTime}
-          sourceWidth={captureWidth}
-          sourceHeight={captureHeight}
-          displayWidth={box.width}
-          displayHeight={box.height}
-          strokeColor={strokeColor}
-        />
-      </View>
-
-      <Text style={styles.videoHintText}>{hintText}</Text>
+      <Text style={styles.videoHintText}>{videoUrl ? hintText : 'Tap to replay signing'}</Text>
 
       <Pressable
         style={styles.videoTapTarget}
@@ -171,18 +327,17 @@ export function AutographPlayer({
             ? { onContextMenu: (e: any) => e.preventDefault() }
             : {})}
       >
-        {!isPlaying && (
+        {isPreparingFrames ? (
+          <View style={styles.playButtonCircle}>
+            <Text style={styles.preparingText}>...</Text>
+          </View>
+        ) : !isPlaying && (
           <View style={styles.playButtonCircle}>
             <View style={styles.playTriangle} />
           </View>
         )}
       </Pressable>
 
-      {onCertificate && (
-        <Pressable style={styles.certOverlayButton} onPress={onCertificate}>
-          <Text style={styles.certOverlayButtonText}>TapnSign</Text>
-        </Pressable>
-      )}
     </View>
   );
 }
@@ -204,6 +359,10 @@ const styles = StyleSheet.create({
     height: '100%',
     backgroundColor: '#000',
   },
+  cardCanvas: {
+    width: '100%',
+    height: '100%',
+  },
   videoHintText: {
     position: 'absolute',
     top: 12,
@@ -217,6 +376,10 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  statsOverlay: {
+    zIndex: 10,
+    elevation: 10,
   },
   playButtonCircle: {
     width: 72,
@@ -237,20 +400,13 @@ const styles = StyleSheet.create({
     borderLeftColor: '#fff',
     marginLeft: 6,
   },
-  certOverlayButton: {
-    position: 'absolute',
-    bottom: 14,
-    right: 14,
-    backgroundColor: 'transparent',
-    borderRadius: 10,
-    paddingLeft: 16,
-    paddingRight: 24,
-    paddingVertical: 8,
-  },
-  certOverlayButtonText: {
-    fontFamily: BrandFonts.script,
-    color: BrandColors.primary,
-    fontSize: 30,
-    lineHeight: 36,
+  preparingText: {
+    color: '#fff',
+    fontSize: 18,
+    fontFamily: BrandFonts.primary,
+    fontWeight: '700',
+    letterSpacing: 2,
+    marginLeft: 2,
+    marginTop: -2,
   },
 });

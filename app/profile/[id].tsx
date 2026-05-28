@@ -1,15 +1,19 @@
 import { AutographPlayer } from '@/components/autograph-player';
+import { CardMetadataBlock } from '@/components/card-metadata-block';
 import { CertificateSheet } from '@/components/certificate-sheet';
 import { ProfileAvatar } from '@/components/profile-avatar';
-import { NameWithSequence, PublicVideoCard, formatPublicVideoDate, formatPublicVideoPrice, publicVideoCardStyles } from '@/components/public-video-card';
+import { NameWithSequence, formatPublicVideoDate, formatPublicVideoPrice } from '@/components/public-video-card';
 import { PublicVideoThumbnail } from '@/components/public-video-thumbnail';
 import { BrandColors, BrandFonts } from '@/constants/theme';
-import { callEdgeFunction } from '@/lib/api';
+import { fetchAutographTemplateIds } from '@/lib/autograph-template';
 import { useAuth } from '@/lib/auth-context';
+import { callEdgeFunction } from '@/lib/api';
 import { logInterestEvent } from '@/lib/interest';
+import { buildAutographUrl } from '@/lib/public-links';
 import { supabase } from '@/lib/supabase';
-import { useStripe } from '@stripe/stripe-react-native';
+import { openAuthenticatedWebPath } from '@/lib/web-handoff';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { useStripe } from '@stripe/stripe-react-native';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
@@ -37,22 +41,27 @@ type Listing = {
   created_at: string;
   visibility: 'private' | 'public';
   sale_state: 'not_for_sale' | 'fixed';
+  listing_mode?: 'buy_now' | 'make_offer';
   is_for_sale: boolean;
   price_cents: number | null;
   thumbnail_url: string | null;
   video_url?: string | null;
+  preview_frame_urls?: string[] | null;
   strokes_json?: Stroke[];
   capture_width?: number;
   capture_height?: number;
   stroke_color: string;
+  template_id?: string | null;
   creator_name: string;
   creator_verified: boolean;
+  creator_name_verified?: boolean;
   creator_sequence_number?: number | null;
   series_name?: string | null;
   series_sequence_number?: number | null;
   series_max_size?: number | null;
   owner_name?: string | null;
   offer_locked_until?: string | null;
+  print_count?: number;
 };
 
 type Stats = {
@@ -68,6 +77,7 @@ type Stats = {
 type ProfileData = {
   id: string;
   display_name: string;
+  bio?: string | null;
   avatar_url?: string | null;
   profile_avatar_autograph_id?: string | null;
   avatar_autograph?: {
@@ -89,6 +99,8 @@ type ProfileData = {
   instagram_handle?: string | null;
   instagram_status?: 'none' | 'connected' | 'verified';
   instagram_verified_at?: string | null;
+  personalized_requests_enabled?: boolean;
+  personalized_min_price_cents?: number | null;
   stats: Stats;
   public_videos?: Listing[];
   active_listings?: Listing[];
@@ -134,6 +146,18 @@ function formatInstagramStatus(value?: ProfileData['instagram_status'], handle?:
   return handle ? 'Connected' : 'Not Linked';
 }
 
+function getListingPriceLabel(listing: Pick<Listing, 'listing_mode'>) {
+  return listing.listing_mode === 'buy_now' ? 'Fixed Price' : 'Estimated Value';
+}
+
+function canBuyNow(listing: Pick<Listing, 'sale_state' | 'listing_mode' | 'offer_locked_until'>) {
+  return listing.sale_state === 'fixed' && listing.listing_mode === 'buy_now' && !listing.offer_locked_until;
+}
+
+function canMakeOffer(listing: Pick<Listing, 'sale_state' | 'listing_mode' | 'offer_locked_until'>) {
+  return listing.sale_state === 'fixed' && listing.listing_mode === 'make_offer' && !listing.offer_locked_until;
+}
+
 export default function ProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuth();
@@ -144,16 +168,24 @@ export default function ProfileScreen() {
   const [notFound, setNotFound] = useState(false);
   const [previewItem, setPreviewItem] = useState<Listing | null>(null);
   const [contextMenuVisible, setContextMenuVisible] = useState(false);
+  const [profileMenuVisible, setProfileMenuVisible] = useState(false);
   const [certItem, setCertItem] = useState<Listing | null>(null);
   const [offerItem, setOfferItem] = useState<Listing | null>(null);
   const [detailsVisible, setDetailsVisible] = useState(false);
   const [offerInput, setOfferInput] = useState('');
   const [offerSubmitting, setOfferSubmitting] = useState(false);
+  const [personalizedVisible, setPersonalizedVisible] = useState(false);
+  const [personalizedRecipient, setPersonalizedRecipient] = useState('');
+  const [personalizedInscription, setPersonalizedInscription] = useState('');
+  const [personalizedNote, setPersonalizedNote] = useState('');
+  const [personalizedAmount, setPersonalizedAmount] = useState('');
+  const [personalizedSubmitting, setPersonalizedSubmitting] = useState(false);
   const [reportItem, setReportItem] = useState<Listing | null>(null);
   const [reportSubmitting, setReportSubmitting] = useState(false);
-
+  const [isBlockedProfile, setIsBlockedProfile] = useState(false);
+  const [blockingProfile, setBlockingProfile] = useState(false);
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
-  const appUrl = process.env.EXPO_PUBLIC_APP_URL ?? 'https://tapnsign.app';
+
   const isOwnProfile = user?.id === id;
 
   useEffect(() => {
@@ -165,14 +197,14 @@ export default function ProfileScreen() {
   }, [isOwnProfile, navigation, router]);
 
   const openPreview = (item: Listing) => {
-    if (item.video_url) {
+    if (item.video_url || item.thumbnail_url || item.preview_frame_urls?.length) {
       setPreviewItem(item);
       void logInterestEvent('view_autograph', {
         autographId: item.id,
         creatorId: item.creator_id ?? id,
       });
     } else {
-      Linking.openURL(`${appUrl}/verify/${item.certificate_id}`);
+      Linking.openURL(buildAutographUrl(item.id));
     }
   };
 
@@ -201,8 +233,8 @@ export default function ProfileScreen() {
   const handleShare = async (item: Listing) => {
     try {
       await Share.share({
-        message: `${item.creator_name} on TapnSign\n${appUrl}/verify/${item.certificate_id}`,
-        url: `${appUrl}/verify/${item.certificate_id}`,
+        message: `${item.creator_name} on Ophinia\n${buildAutographUrl(item.id)}`,
+        url: buildAutographUrl(item.id),
       });
     } catch {}
   };
@@ -215,9 +247,14 @@ export default function ProfileScreen() {
   };
 
   const handleOfferChange = (text: string) => setOfferInput(formatCentsInput(text));
+  const handlePersonalizedAmountChange = (text: string) => setPersonalizedAmount(formatCentsInput(text));
 
   const handleCreateOffer = async () => {
     if (!offerItem) return;
+    if (!user) {
+      Alert.alert('Sign in required', 'Please sign in to make an offer.');
+      return;
+    }
     const amount = Number.parseFloat(offerInput);
 
     if (Number.isNaN(amount) || amount <= 0) {
@@ -227,15 +264,59 @@ export default function ProfileScreen() {
 
     setOfferSubmitting(true);
     try {
-      await callEdgeFunction('create-autograph-offer', {
+      // Disclosure required before collecting payment details.
+      const confirmed = await new Promise<boolean>((resolve) => {
+        Alert.alert(
+          'Offer Authorization',
+          `Submitting an offer places a temporary authorization hold of $${amount.toFixed(2)} on your card. Your card is only charged if the seller accepts. Payment is processed by Stripe, Ophinia's authorized payment partner.`,
+          [
+            { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+            { text: 'Continue', onPress: () => resolve(true) },
+          ]
+        );
+      });
+      if (!confirmed) return;
+
+      const paymentData = await callEdgeFunction<{
+        client_secret: string;
+        payment_intent_id: string;
+        payment_event_id: string;
+      }>('create-offer-commitment-payment-intent', {
         autograph_id: offerItem.id,
         amount_cents: Math.round(amount * 100),
       });
+
+      const { error: initError } = await initPaymentSheet({
+        paymentIntentClientSecret: paymentData.client_secret,
+        merchantDisplayName: 'Ophinia',
+      });
+
+      if (initError) {
+        Alert.alert('Authorization Error', 'Could not start payment authorization. Please try again.');
+        return;
+      }
+
+      const { error: paymentError } = await presentPaymentSheet();
+      if (paymentError) {
+        if (paymentError.code !== 'Canceled') {
+          Alert.alert('Authorization Failed', 'Could not confirm your offer authorization. Please try again.');
+        }
+        return;
+      }
+
+      await callEdgeFunction('create-autograph-offer', {
+        autograph_id: offerItem.id,
+        amount_cents: Math.round(amount * 100),
+        payment_event_id: paymentData.payment_event_id,
+      });
       setOfferItem(null);
       setOfferInput('');
-      Alert.alert('Offer Sent', 'Your offer was sent and will expire in 24 hours if it is not answered.');
-    } catch {
-      Alert.alert('Offer Failed', 'Could not send offer. Please try again.');
+      Alert.alert('Offer Sent', 'Your offer was sent and the authorization hold is now in place.');
+    } catch (error) {
+      Alert.alert(
+        'Offer Failed',
+        error instanceof Error ? error.message : 'Could not create your offer. Please try again.'
+      );
     } finally {
       setOfferSubmitting(false);
     }
@@ -247,37 +328,147 @@ export default function ProfileScreen() {
       return;
     }
     try {
-      const responseJson = await callEdgeFunction<{
-        client_secret?: string;
-        payment_event_id?: string;
-      }>('create-payment-intent', { autograph_id: item.id });
+      setPreviewItem(null);
+      await openAuthenticatedWebPath(`/app/checkout/${item.id}`);
+      Alert.alert('Continue on Web', 'Checkout has been moved to Ophinia on the web.');
+    } catch {
+      Alert.alert('Error', 'Could not open the web checkout. Please try again.');
+    }
+  };
 
-      const { client_secret, payment_event_id } = responseJson;
-      if (!client_secret || !payment_event_id) throw new Error('Could not start purchase.');
+  const handleOpenPersonalizedRequest = () => {
+    if (!profile) return;
+    const minPrice = profile.personalized_min_price_cents
+      ? (profile.personalized_min_price_cents / 100).toFixed(2)
+      : '10.00';
+    setPersonalizedRecipient('');
+    setPersonalizedInscription('');
+    setPersonalizedNote('');
+    setPersonalizedAmount(minPrice);
+    setPersonalizedVisible(true);
+  };
+
+  const handleCreatePersonalizedRequest = async () => {
+    if (!profile) return;
+    if (!user) {
+      Alert.alert('Sign in required', 'Please sign in to request a personalized autograph.');
+      return;
+    }
+
+    const amount = Number.parseFloat(personalizedAmount);
+    const minAmount = (profile.personalized_min_price_cents ?? 0) / 100;
+
+    if (!personalizedRecipient.trim()) {
+      Alert.alert('Recipient Required', 'Please enter the recipient name for this personalized autograph.');
+      return;
+    }
+
+    if (Number.isNaN(amount) || amount <= 0) {
+      Alert.alert('Invalid Amount', 'Please enter a valid offer amount greater than $0.');
+      return;
+    }
+
+    if (profile.personalized_min_price_cents && amount < minAmount) {
+      Alert.alert('Minimum Price', `This creator requires at least $${minAmount.toFixed(2)} for personalized requests.`);
+      return;
+    }
+
+    setPersonalizedSubmitting(true);
+    try {
+      // Disclosure required before collecting payment details.
+      const confirmed = await new Promise<boolean>((resolve) => {
+        Alert.alert(
+          'Personalized Autograph Request',
+          `You are commissioning a personalized autograph from ${profile.display_name} for $${amount.toFixed(2)}. A temporary authorization hold will be placed on your card now. You are only charged when the creator completes and delivers the autograph. Payment is processed by Stripe, Ophinia's authorized payment partner.`,
+          [
+            { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+            { text: 'Continue', onPress: () => resolve(true) },
+          ]
+        );
+      });
+      if (!confirmed) return;
+
+      const paymentData = await callEdgeFunction<{
+        client_secret: string;
+        payment_intent_id: string;
+        payment_event_id: string;
+      }>('create-personalized-request-payment-intent', {
+        creator_id: profile.id,
+        recipient_name: personalizedRecipient.trim(),
+        inscription_text: personalizedInscription.trim() || null,
+        requester_note: personalizedNote.trim() || null,
+        amount_cents: Math.round(amount * 100),
+      });
 
       const { error: initError } = await initPaymentSheet({
-        paymentIntentClientSecret: client_secret,
-        merchantDisplayName: 'TapnSign',
+        paymentIntentClientSecret: paymentData.client_secret,
+        merchantDisplayName: 'Ophinia',
       });
-      if (initError) throw new Error(initError.message);
 
-      const { error: paymentError } = await presentPaymentSheet();
-      if (paymentError) {
-        if (paymentError.code !== 'Canceled') Alert.alert('Payment Failed', paymentError.message);
+      if (initError) {
+        Alert.alert('Authorization Error', 'Could not start payment authorization. Please try again.');
         return;
       }
 
-      await callEdgeFunction('purchase-autograph', {
-        autograph_id: item.id,
-        payment_event_id,
-      });
+      const { error: paymentError } = await presentPaymentSheet();
+      if (paymentError) {
+        if (paymentError.code !== 'Canceled') {
+          Alert.alert('Authorization Failed', 'Could not confirm your payment authorization. Please try again.');
+        }
+        return;
+      }
 
-      Alert.alert('Purchase Complete', 'This autograph is now in your collection.', [
-        { text: 'OK' },
-      ]);
-      setPreviewItem(null);
+      await callEdgeFunction('create-personalized-autograph-request', {
+        creator_id: profile.id,
+        recipient_name: personalizedRecipient.trim(),
+        inscription_text: personalizedInscription.trim() || null,
+        requester_note: personalizedNote.trim() || null,
+        amount_cents: Math.round(amount * 100),
+        payment_event_id: paymentData.payment_event_id,
+      });
+      setPersonalizedVisible(false);
+      Alert.alert(
+        'Request Sent',
+        'Your personalized autograph request has been sent and your payment authorization is in place. You can track updates in Personalized Requests from your account.'
+      );
+    } catch (error) {
+      Alert.alert(
+        'Request Failed',
+        error instanceof Error ? error.message : 'Could not send personalized request. Please try again.'
+      );
+    } finally {
+      setPersonalizedSubmitting(false);
+    }
+  };
+
+  const handleToggleBlockedProfile = async (shouldBlock: boolean) => {
+    if (!user || !id || isOwnProfile) return;
+    setBlockingProfile(true);
+    try {
+      if (shouldBlock) {
+        const { error } = await supabase.from('blocked_users').insert({
+          blocker_id: user.id,
+          blocked_user_id: id,
+        });
+        if (error && error.code !== '23505') throw error;
+        setIsBlockedProfile(true);
+        setPreviewItem(null);
+        setContextMenuVisible(false);
+        Alert.alert('User Blocked', `${profile?.display_name ?? 'This user'} has been blocked. Their listings are now hidden.`);
+      } else {
+        const { error } = await supabase
+          .from('blocked_users')
+          .delete()
+          .eq('blocker_id', user.id)
+          .eq('blocked_user_id', id);
+        if (error) throw error;
+        setIsBlockedProfile(false);
+        Alert.alert('User Unblocked', `${profile?.display_name ?? 'This user'} has been unblocked.`);
+      }
     } catch {
-      Alert.alert('Error', 'Could not complete purchase. Please try again.');
+      Alert.alert('Block Failed', `Could not ${shouldBlock ? 'block' : 'unblock'} this user. Please try again.`);
+    } finally {
+      setBlockingProfile(false);
     }
   };
 
@@ -289,63 +480,31 @@ export default function ProfileScreen() {
         setLoading(false);
         if (error || !data) { setNotFound(true); return; }
         const profileData = data as ProfileData;
-        const publicVideos = profileData.public_videos ?? profileData.active_listings ?? [];
-        const videoIds = publicVideos.map((video) => video.id);
-
-        if (videoIds.length > 0) {
-          const nowIso = new Date().toISOString();
-          const { data: lockedOffers } = await supabase
-            .from('autograph_offers')
-            .select('autograph_id, payment_due_at')
-            .in('autograph_id', videoIds)
-            .eq('status', 'accepted')
-            .is('accepted_transfer_id', null)
-            .gt('payment_due_at', nowIso);
-
-          const lockedMap = new Map<string, string | null>();
-          for (const offer of lockedOffers ?? []) {
-            lockedMap.set(offer.autograph_id, offer.payment_due_at ?? null);
-          }
-
-          const remap = publicVideos.map((video) => (
-            lockedMap.has(video.id)
-              ? {
-                  ...video,
-                  sale_state: 'not_for_sale' as const,
-                  is_for_sale: false,
-                  offer_locked_until: lockedMap.get(video.id) ?? null,
-                }
-              : video
-          ));
-
-          profileData.public_videos = remap;
-          profileData.active_listings = remap;
-        }
-
-        if (!profileData.avatar_autograph && profileData.profile_avatar_autograph_id) {
-          const { data: avatarAutograph } = await supabase
-            .from('autographs')
-            .select('id, thumbnail_url, video_url, strokes_json, capture_width, capture_height, stroke_color')
-            .eq('id', profileData.profile_avatar_autograph_id)
-            .eq('status', 'active')
-            .maybeSingle();
-
-          if (avatarAutograph) {
-            profileData.avatar_autograph = {
-              id: avatarAutograph.id,
-              thumbnail_url: avatarAutograph.thumbnail_url,
-              video_url: avatarAutograph.video_url,
-              strokes_json: avatarAutograph.strokes_json ?? [],
-              capture_width: avatarAutograph.capture_width ?? 1,
-              capture_height: avatarAutograph.capture_height ?? 1,
-              stroke_color: avatarAutograph.stroke_color,
-            };
-            profileData.avatar_url = avatarAutograph.thumbnail_url ?? profileData.avatar_url ?? null;
-          }
-        }
+        const listingIds = [
+          ...(profileData.public_videos ?? []).map((item) => item.id),
+          ...(profileData.active_listings ?? []).map((item) => item.id),
+        ];
+        const templateIds = await fetchAutographTemplateIds(listingIds);
+        profileData.public_videos = (profileData.public_videos ?? []).map((item) => ({
+          ...item,
+          template_id: templateIds[item.id] ?? item.template_id ?? 'classic',
+        }));
+        profileData.active_listings = (profileData.active_listings ?? []).map((item) => ({
+          ...item,
+          template_id: templateIds[item.id] ?? item.template_id ?? 'classic',
+        }));
 
         if (user?.id && user.id !== id) {
+          const { data: blockedRow } = await supabase
+            .from('blocked_users')
+            .select('blocked_user_id')
+            .eq('blocker_id', user.id)
+            .eq('blocked_user_id', id)
+            .maybeSingle();
+          setIsBlockedProfile(!!blockedRow);
           void logInterestEvent('view_profile', { creatorId: id });
+        } else {
+          setIsBlockedProfile(false);
         }
 
         setProfile(profileData);
@@ -392,7 +551,7 @@ export default function ProfileScreen() {
           />
           <View style={styles.headerInfo}>
             <View style={styles.nameRow}>
-              <Text style={styles.displayName}>{profile.display_name}</Text>
+              <Text style={[styles.displayName, { flex: 1 }]}>{profile.display_name}</Text>
               {profile.verified && (
                 <View style={styles.verifiedBadge}>
                   <Text style={styles.verifiedBadgeText}>✓ Verified</Text>
@@ -400,70 +559,141 @@ export default function ProfileScreen() {
               )}
             </View>
             {profile.verified ? (
-              <Text style={styles.memberSince}>✓ Verified by TapnSign</Text>
+              <Text style={styles.memberSince}>✓ Verified by Ophinia</Text>
             ) : null}
-            {profile.instagram_handle ? (
-              <Pressable
-                style={styles.instagramLinkRow}
-                onPress={() => Linking.openURL(`https://instagram.com/${profile.instagram_handle}`)}
-              >
-                <FontAwesome name="instagram" size={14} color="#E1306C" />
-                <Text style={styles.instagramLinkText}>@{profile.instagram_handle}</Text>
-              </Pressable>
+            {profile.bio ? (
+              <Text style={styles.profileBio}>{profile.bio}</Text>
             ) : null}
           </View>
         </Pressable>
-        {isOwnProfile && (
+      {isOwnProfile && (
           <Pressable onPress={() => router.push('/account')} hitSlop={10}>
             <FontAwesome name="cog" size={33} color="#777" />
           </Pressable>
         )}
+        {!isOwnProfile && (
+          <Pressable onPress={() => setProfileMenuVisible(true)} hitSlop={10} style={{ paddingHorizontal: 4 }}>
+            <FontAwesome name="ellipsis-v" size={20} color="#777" />
+          </Pressable>
+        )}
       </View>
 
+      {profileMenuVisible && (
+        <Pressable style={styles.contextOverlay} onPress={() => setProfileMenuVisible(false)}>
+          <View style={styles.contextMenu} onStartShouldSetResponder={() => true}>
+            <Text style={styles.contextMenuTitle}>{profile?.display_name ?? 'User'}</Text>
+            <Pressable
+              style={styles.contextMenuItem}
+              onPress={() => { setProfileMenuVisible(false); void handleToggleBlockedProfile(!isBlockedProfile); }}
+              disabled={blockingProfile}
+            >
+              <Text style={[styles.contextMenuItemText, { color: '#FF3B30' }]}>
+                {blockingProfile ? 'Updating…' : isBlockedProfile ? 'Unblock User' : 'Block User'}
+              </Text>
+            </Pressable>
+            <Pressable style={styles.contextMenuItem} onPress={() => setProfileMenuVisible(false)}>
+              <Text style={[styles.contextMenuItemText, { color: '#888' }]}>Cancel</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      )}
 
-      {/* Public videos */}
-      {publicVideos.length > 0 && (
-        <>
-          <Text style={styles.sectionTitle}>Public Videos</Text>
-          {publicVideos.map((listing) => (
-            <View key={listing.id} style={styles.profileCardWrap}>
-              <PublicVideoCard
-                name={listing.creator_name}
-                sequenceNumber={listing.creator_sequence_number}
-                date={formatPublicVideoDate(listing.created_at)}
-                verified={listing.creator_verified}
-                gold={listing.stroke_color === '#C9A84C'}
-                seriesName={listing.series_name}
-                seriesEdition={listing.series_sequence_number != null && listing.series_max_size != null ? `${listing.series_sequence_number} of ${listing.series_max_size}` : null}
-                priceLabel={listing.sale_state === 'fixed' ? 'Estimated Value' : undefined}
-                priceText={listing.sale_state === 'fixed' ? formatPublicVideoPrice(listing.price_cents) : 'Not for Sale'}
-                secondaryText={listing.sale_state === 'fixed' && listing.owner_name ? `Listed by ${listing.owner_name}` : null}
-                onPress={() => openPreview(listing)}
-                renderThumbnail={() => (
-                  listing.video_url ? (
-                    <PublicVideoThumbnail
-                      videoUrl={listing.video_url}
-                      strokes={listing.strokes_json ?? []}
-                      captureWidth={listing.capture_width ?? 1}
-                      captureHeight={listing.capture_height ?? 1}
-                      strokeColor={listing.stroke_color}
+      {!isOwnProfile && !isBlockedProfile && profile.personalized_requests_enabled ? (
+        <Pressable style={styles.personalizedCard} onPress={handleOpenPersonalizedRequest}>
+          <Text style={styles.personalizedEyebrow}>Personalized Autograph</Text>
+          <Text style={styles.personalizedTitle}>Request a custom Ophinia autograph</Text>
+          <Text style={styles.personalizedBody}>
+            Personalized requests start at {formatPublicVideoPrice(profile.personalized_min_price_cents ?? 1000)}.
+          </Text>
+        </Pressable>
+      ) : null}
+
+      <Text style={styles.sectionTitle}>Listings</Text>
+      {isBlockedProfile ? (
+        <View style={styles.blockedStateCard}>
+          <Text style={styles.blockedStateTitle}>Listings Hidden</Text>
+          <Text style={styles.blockedStateText}>
+            You have blocked this user. Their listings and interactions are hidden until you unblock them.
+          </Text>
+        </View>
+      ) : publicVideos.length > 0 ? (
+        <View style={styles.listingsGrid}>
+          {publicVideos.reduce<Listing[][]>((rows, item, i) => {
+            if (i % 2 === 0) rows.push([item]);
+            else rows[rows.length - 1].push(item);
+            return rows;
+          }, []).map((row, rowIndex) => (
+            <View key={rowIndex} style={styles.listingsGridRow}>
+              {row.map((listing) => (
+                <Pressable key={listing.id} style={styles.profileListingCard} onPress={() => openPreview(listing)}>
+                  <View style={styles.profileListingThumbWrap}>
+                    {listing.thumbnail_url || listing.preview_frame_urls?.length || listing.video_url ? (
+                      <PublicVideoThumbnail
+                        thumbnailUrl={listing.thumbnail_url}
+                        videoUrl={listing.video_url}
+                        previewFrameUrls={listing.preview_frame_urls ?? []}
+                        strokes={listing.strokes_json ?? []}
+                        captureWidth={listing.capture_width ?? 1}
+                        captureHeight={listing.capture_height ?? 1}
+                        strokeColor={listing.stroke_color}
+                        shellStyle={styles.profileListingThumbnail}
+                        mode="flipbook-once"
+                      />
+                    ) : (
+                      <View style={styles.thumbnailFallback}>
+                        <Text style={styles.thumbnailFallbackText}>Ophinia</Text>
+                      </View>
+                    )}
+                    {listing.sale_state === 'fixed' && (
+                      <View style={styles.cardOverlayBar}>
+                        <Text style={styles.cardOverlayPrice} numberOfLines={1}>
+                          {listing.offer_locked_until ? 'Sale Pending' : formatPublicVideoPrice(listing.price_cents)}
+                        </Text>
+                        {!listing.offer_locked_until && !isOwnProfile && canBuyNow(listing) ? (
+                          <Pressable
+                            style={styles.cardOverlayButton}
+                            onPress={(e) => { e.stopPropagation(); handleBuyNow(listing); }}
+                          >
+                            <Text style={styles.cardOverlayButtonText}>Buy</Text>
+                          </Pressable>
+                        ) : !listing.offer_locked_until && !isOwnProfile && canMakeOffer(listing) ? (
+                          <Pressable
+                            style={styles.cardOverlayButton}
+                            onPress={(e) => { e.stopPropagation(); setOfferItem(listing); setOfferInput(''); }}
+                          >
+                            <Text style={styles.cardOverlayButtonText}>Offer</Text>
+                          </Pressable>
+                        ) : null}
+                      </View>
+                    )}
+                  </View>
+                  <View style={styles.profileListingBody}>
+                    <NameWithSequence
+                      name={listing.creator_name}
+                      sequenceNumber={listing.creator_sequence_number}
+                      style={styles.profileListingName}
                     />
-                  ) : (
-                    <View style={publicVideoCardStyles.thumbnailShell}>
-                      {listing.thumbnail_url ? (
-                        <Image source={{ uri: listing.thumbnail_url }} style={styles.thumbnailImage} resizeMode="cover" />
-                      ) : (
-                        <View style={styles.thumbnailFallback}>
-                          <Text style={styles.thumbnailFallbackText}>TapnSign</Text>
-                        </View>
-                      )}
-                    </View>
-                  )
-                )}
-              />
+                    <CardMetadataBlock
+                      compact
+                      sequenceNumber={listing.creator_sequence_number}
+                      capturedAt={listing.created_at}
+                      printCount={listing.print_count ?? null}
+                      seriesName={listing.series_name}
+                      seriesEdition={
+                        listing.series_sequence_number != null && listing.series_max_size != null
+                          ? `${listing.series_sequence_number} of ${listing.series_max_size}`
+                          : null
+                      }
+                    />
+                  </View>
+                </Pressable>
+              ))}
+              {row.length === 1 ? <View style={styles.profileListingCardPlaceholder} /> : null}
             </View>
           ))}
-        </>
+        </View>
+      ) : (
+        <Text style={styles.emptyStateText}>No current listings</Text>
       )}
 
       <Modal
@@ -507,7 +737,7 @@ export default function ProfileScreen() {
               ))}
             </View>
             <View style={styles.detailsRow}>
-              <Text style={styles.detailsLabel}>TapnSign Status</Text>
+              <Text style={styles.detailsLabel}>Ophinia Status</Text>
               <Text style={styles.detailsValue}>{profileStatusLabel}</Text>
             </View>
             <View style={styles.detailsRow}>
@@ -561,22 +791,84 @@ export default function ProfileScreen() {
             </Pressable>
           </View>
 
-          {previewItem?.video_url ? (
+          {previewItem && (previewItem.video_url || previewItem.thumbnail_url || previewItem.preview_frame_urls?.length) ? (
             <>
               <AutographPlayer
                 videoUrl={previewItem.video_url}
+                thumbnailUrl={previewItem.thumbnail_url}
+                previewFrameUrls={previewItem.preview_frame_urls ?? []}
+                templateId={previewItem.template_id}
                 strokes={previewItem.strokes_json ?? []}
                 strokeColor={previewItem.stroke_color}
                 captureWidth={previewItem.capture_width ?? 1}
                 captureHeight={previewItem.capture_height ?? 1}
-                onCertificate={() => setCertItem(previewItem)}
                 onLongPress={() => setContextMenuVisible(true)}
               />
-              <View style={[styles.modalMetaText, { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: 'center' }]}>
-                <NameWithSequence name={previewItem.creator_name} sequenceNumber={previewItem.creator_sequence_number} style={styles.modalMetaTextInner} />
-                {previewItem.series_name ? <Text style={styles.modalMetaTextInner}>{` · ${previewItem.series_name}`}</Text> : null}
-                <Text style={styles.modalMetaTextInner}>{` · ${formatPublicVideoDate(previewItem.created_at)}`}</Text>
+              <View style={styles.modalMetadataBlock}>
+                <View style={styles.modalHeaderRow}>
+                  <View style={styles.modalHeaderMetaLeft}>
+                    <Text style={styles.modalHeaderMetaText}>{formatNumericDate(previewItem.created_at)}</Text>
+                  </View>
+                  <View style={styles.modalNameRow}>
+                    <NameWithSequence name={previewItem.creator_name} sequenceNumber={previewItem.creator_sequence_number} style={styles.modalMetaTextInner} />
+                    {previewItem.creator_name_verified && (
+                      <Image source={require('../../assets/images/Ophinia_badge_navy background.png')} style={styles.nameBadge} resizeMode="contain" />
+                    )}
+                  </View>
+                  <Pressable style={styles.certificateLink} onPress={() => setCertItem(previewItem)}>
+                    <Image source={require('../../assets/images/Ophinia_O.png')} style={styles.certificateLogo} resizeMode="contain" />
+                  </Pressable>
+                </View>
+                <View style={styles.modalInfoRow}>
+                  <View style={styles.modalInfoLeft}>
+                    {previewItem.print_count != null ? (
+                      <Text style={styles.modalInfoText}>{`Print #${previewItem.print_count + 1}`}</Text>
+                    ) : null}
+                  </View>
+                  <View style={styles.modalInfoCenter}>
+                    {previewItem.series_name || (previewItem.series_sequence_number != null && previewItem.series_max_size != null) ? (
+                      <Text style={styles.modalSeriesText} numberOfLines={1}>
+                        {previewItem.series_name ?? ''}
+                        {previewItem.series_name && previewItem.series_sequence_number != null && previewItem.series_max_size != null ? ' · ' : ''}
+                        {previewItem.series_sequence_number != null && previewItem.series_max_size != null
+                          ? `${previewItem.series_sequence_number} of ${previewItem.series_max_size}`
+                          : ''}
+                      </Text>
+                    ) : null}
+                  </View>
+                </View>
+                <View style={styles.modalInfoRow}>
+                  <View style={styles.modalInfoLeft}>
+                    <Text style={styles.modalInfoText}>{`Listed by ${isOwnProfile ? 'You' : (previewItem.owner_name ?? previewItem.creator_name)}`}</Text>
+                  </View>
+                  <View style={styles.modalInfoCenter} />
+                </View>
+                <View style={styles.modalUtilityRow}>
+                  <Pressable style={styles.modalUtilityButton} onPress={() => { void handleShare(previewItem); }}>
+                    <Text style={styles.modalUtilityButtonText}>Share</Text>
+                  </Pressable>
+                </View>
               </View>
+              {!isOwnProfile && (
+                <View style={styles.modalActionBar}>
+                  <Text style={styles.modalActionPrice}>
+                    {previewItem.offer_locked_until
+                      ? 'Sale Pending'
+                      : previewItem.sale_state === 'fixed'
+                        ? formatPublicVideoPrice(previewItem.price_cents)
+                        : null}
+                  </Text>
+                  {!previewItem.offer_locked_until && canBuyNow(previewItem) ? (
+                    <Pressable style={styles.modalActionButton} onPress={() => { setPreviewItem(null); handleBuyNow(previewItem); }}>
+                      <Text style={styles.modalActionButtonText}>Buy Now</Text>
+                    </Pressable>
+                  ) : !previewItem.offer_locked_until && canMakeOffer(previewItem) ? (
+                    <Pressable style={styles.modalActionButton} onPress={() => { const item = previewItem; setPreviewItem(null); setOfferItem(item); setOfferInput(''); }}>
+                      <Text style={styles.modalActionButtonText}>Make Offer</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+              )}
             </>
           ) : null}
 
@@ -595,7 +887,7 @@ export default function ProfileScreen() {
                   <Text style={styles.contextMenuItemText}>Share</Text>
                 </Pressable>
 
-                {!isOwnProfile && (
+                {!isOwnProfile && canMakeOffer(previewItem) && (
                   <Pressable
                     style={styles.contextMenuItem}
                     onPress={() => {
@@ -610,7 +902,7 @@ export default function ProfileScreen() {
                   </Pressable>
                 )}
 
-                {!isOwnProfile && previewItem.sale_state === 'fixed' && (
+                {!isOwnProfile && canBuyNow(previewItem) && (
                   <Pressable
                     style={styles.contextMenuItem}
                     onPress={() => {
@@ -644,6 +936,21 @@ export default function ProfileScreen() {
                 >
                   <Text style={styles.contextMenuItemText}>Creator Profile</Text>
                 </Pressable>
+
+                {!isOwnProfile && (
+                  <Pressable
+                    style={styles.contextMenuItem}
+                    onPress={() => {
+                      setContextMenuVisible(false);
+                      void handleToggleBlockedProfile(!isBlockedProfile);
+                    }}
+                    disabled={blockingProfile}
+                  >
+                    <Text style={[styles.contextMenuItemText, { color: '#FF3B30' }]}>
+                      {isBlockedProfile ? 'Unblock User' : 'Block User'}
+                    </Text>
+                  </Pressable>
+                )}
 
                 {!isOwnProfile && (
                   <Pressable
@@ -706,6 +1013,82 @@ export default function ProfileScreen() {
       </Modal>
 
       <Modal
+        visible={personalizedVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => {
+          if (!personalizedSubmitting) setPersonalizedVisible(false);
+        }}
+      >
+        <Pressable
+          style={styles.offerOverlay}
+          onPress={() => {
+            if (!personalizedSubmitting) setPersonalizedVisible(false);
+          }}
+        >
+          <View style={styles.offerSheet} onStartShouldSetResponder={() => true}>
+            <Text style={styles.offerTitle}>Request Personalized Autograph</Text>
+            <Text style={styles.offerSubtitle}>
+              {profile.display_name}
+              {' · '}Minimum {formatPublicVideoPrice(profile.personalized_min_price_cents ?? 1000)}
+            </Text>
+            <TextInput
+              style={styles.offerInput}
+              placeholder="Recipient name"
+              placeholderTextColor="#999"
+              value={personalizedRecipient}
+              onChangeText={setPersonalizedRecipient}
+              editable={!personalizedSubmitting}
+            />
+            <TextInput
+              style={styles.offerInput}
+              placeholder="Optional inscription"
+              placeholderTextColor="#999"
+              value={personalizedInscription}
+              onChangeText={setPersonalizedInscription}
+              editable={!personalizedSubmitting}
+            />
+            <TextInput
+              style={[styles.offerInput, styles.offerNoteInput]}
+              placeholder="Optional note to creator"
+              placeholderTextColor="#999"
+              value={personalizedNote}
+              onChangeText={setPersonalizedNote}
+              editable={!personalizedSubmitting}
+              multiline
+            />
+            <TextInput
+              style={styles.offerInput}
+              placeholder="Your offer in USD"
+              placeholderTextColor="#999"
+              keyboardType="decimal-pad"
+              value={personalizedAmount}
+              onChangeText={handlePersonalizedAmountChange}
+              editable={!personalizedSubmitting}
+            />
+            <Pressable
+              style={[styles.offerButton, personalizedSubmitting && { opacity: 0.6 }]}
+              onPress={handleCreatePersonalizedRequest}
+              disabled={personalizedSubmitting}
+            >
+              <Text style={styles.offerButtonText}>
+                {personalizedSubmitting ? 'Sending…' : 'Send Request'}
+              </Text>
+            </Pressable>
+            <Pressable
+              style={styles.offerCancelButton}
+              onPress={() => {
+                if (!personalizedSubmitting) setPersonalizedVisible(false);
+              }}
+              disabled={personalizedSubmitting}
+            >
+              <Text style={styles.offerCancelText}>Cancel</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
+
+      <Modal
         visible={!!offerItem}
         animationType="slide"
         transparent={true}
@@ -717,7 +1100,7 @@ export default function ProfileScreen() {
             <Text style={styles.offerSubtitle}>
               {offerItem?.creator_name ?? 'Autograph'}
               {offerItem?.sale_state === 'fixed' && offerItem.price_cents
-                ? ` · Estimated Value ${formatPublicVideoPrice(offerItem.price_cents)}`
+                ? ` · ${getListingPriceLabel(offerItem)} ${formatPublicVideoPrice(offerItem.price_cents)}`
                 : ''
               }
               {' · '}Expires in 24 hours if not accepted
@@ -767,21 +1150,23 @@ const styles = StyleSheet.create({
     fontFamily: BrandFonts.primary,
   },
   container: {
-    padding: 20,
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 20,
     backgroundColor: BrandColors.background,
     flexGrow: 1,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 28,
-    gap: 16,
+    marginBottom: 8,
+    gap: 12,
   },
   headerTapArea: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
+    gap: 12,
   },
   headerInfo: {
     flex: 1,
@@ -790,8 +1175,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 4,
+    gap: 6,
+    marginBottom: 1,
   },
   displayName: {
     fontSize: 24,
@@ -816,16 +1201,12 @@ const styles = StyleSheet.create({
     color: '#888',
     fontFamily: BrandFonts.primary,
   },
-  instagramLinkRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 6,
-  },
-  instagramLinkText: {
+  profileBio: {
     fontSize: 13,
     color: '#555',
     fontFamily: BrandFonts.primary,
+    marginTop: 4,
+    lineHeight: 18,
   },
   accountLink: {
     backgroundColor: BrandColors.background,
@@ -909,10 +1290,30 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#888',
-    textTransform: 'uppercase',
     letterSpacing: 1,
     marginBottom: 10,
-    marginTop: 4,
+    marginTop: 0,
+    fontFamily: BrandFonts.primary,
+  },
+  blockedStateCard: {
+    marginBottom: 14,
+    padding: 14,
+    borderRadius: 14,
+    backgroundColor: '#F7F7F7',
+    borderWidth: 1,
+    borderColor: '#E6E6E6',
+  },
+  blockedStateTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#111',
+    marginBottom: 4,
+    fontFamily: BrandFonts.primary,
+  },
+  blockedStateText: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#666',
     fontFamily: BrandFonts.primary,
   },
   statsGrid: {
@@ -941,7 +1342,189 @@ const styles = StyleSheet.create({
     fontFamily: BrandFonts.primary,
   },
   profileCardWrap: {
+    flexShrink: 0,
+    marginRight: 14,
     marginBottom: 14,
+  },
+  listingsRail: {
+    paddingRight: 24,
+  },
+  profileListingCard: {
+    flex: 1,
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    overflow: 'hidden',
+  },
+  profileListingThumbWrap: {
+    backgroundColor: '#050505',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    overflow: 'hidden',
+  },
+  profileListingThumbnail: {
+    width: '100%',
+    aspectRatio: 60 / 85,
+    height: undefined,
+    borderRadius: 0,
+  },
+  cardOverlayBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  cardOverlayPrice: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+    fontFamily: BrandFonts.primary,
+    flexShrink: 1,
+  },
+  cardOverlayButton: {
+    backgroundColor: BrandColors.primary,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginLeft: 6,
+  },
+  cardOverlayButtonText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '700',
+    fontFamily: BrandFonts.primary,
+  },
+  modalActionBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderTopColor: '#e9dcc1',
+  },
+  modalActionPrice: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111',
+    fontFamily: BrandFonts.primary,
+  },
+  modalActionButton: {
+    backgroundColor: BrandColors.primary,
+    borderRadius: 999,
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+  },
+  modalActionButtonText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+    fontFamily: BrandFonts.primary,
+  },
+  listingsGrid: {
+    paddingHorizontal: 12,
+    marginBottom: 12,
+  },
+  listingsGridRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 12,
+  },
+  profileListingCardPlaceholder: {
+    flex: 1,
+  },
+  profileListingBody: {
+    paddingHorizontal: 8,
+    paddingTop: 7,
+    paddingBottom: 8,
+  },
+  profileListingName: {
+    fontSize: 13,
+    lineHeight: 17,
+    fontWeight: '700',
+    color: '#111',
+    fontFamily: BrandFonts.primary,
+  },
+  profileListingSeriesSlot: {
+    minHeight: 18,
+    marginTop: 3,
+  },
+  profileListingSeries: {
+    fontSize: 14,
+    lineHeight: 15,
+    fontFamily: BrandFonts.primary,
+    fontStyle: 'italic',
+  },
+  profileListingSeriesName: {
+    color: '#111',
+    fontFamily: BrandFonts.primary,
+  },
+  profileListingSeriesEdition: {
+    color: '#888',
+    fontFamily: BrandFonts.primary,
+    fontStyle: 'normal',
+  },
+  profileListingBadgeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 6,
+  },
+  profileListingVerifiedBadge: {
+    fontSize: 11,
+    color: '#fff',
+    backgroundColor: '#111',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    alignSelf: 'flex-start',
+    overflow: 'hidden',
+    fontFamily: BrandFonts.primary,
+    fontWeight: '700',
+  },
+  profileListingGoldBadge: {
+    fontSize: 11,
+    color: '#7A4B00',
+    backgroundColor: '#F7E5BF',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    overflow: 'hidden',
+    fontFamily: BrandFonts.primary,
+    fontWeight: '700',
+  },
+  profileListingPriceRow: {
+    marginTop: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  profileListingPrice: {
+    fontSize: 23,
+    lineHeight: 27,
+    fontWeight: '800',
+    color: '#111',
+    fontFamily: BrandFonts.primary,
+    flex: 1,
+  },
+  profileListingActionButton: {
+    backgroundColor: '#111',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  profileListingActionButtonText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+    fontFamily: BrandFonts.primary,
   },
   thumbnailImage: {
     width: '100%',
@@ -1015,6 +1598,104 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: BrandFonts.primary,
   },
+  modalNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  nameBadge: {
+    width: 20,
+    height: 20,
+  },
+  modalMetadataBlock: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 16,
+    backgroundColor: 'black',
+    alignItems: 'center',
+  },
+  modalHeaderRow: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+    minHeight: 34,
+    marginBottom: 6,
+  },
+  modalHeaderMetaLeft: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    alignItems: 'flex-start',
+    gap: 2,
+  },
+  modalHeaderMetaText: {
+    fontSize: 12,
+    lineHeight: 15,
+    color: '#fff',
+    fontFamily: BrandFonts.primary,
+    fontWeight: '600',
+  },
+  modalInfoRow: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    minHeight: 18,
+    marginTop: 2,
+  },
+  modalInfoLeft: {
+    width: '44%',
+    alignItems: 'flex-start',
+  },
+  modalInfoCenter: {
+    width: '40%',
+    alignItems: 'center',
+  },
+  modalInfoText: {
+    fontSize: 12,
+    lineHeight: 15,
+    color: '#fff',
+    fontFamily: BrandFonts.primary,
+    fontWeight: '600',
+  },
+  modalSeriesText: {
+    fontSize: 12,
+    lineHeight: 15,
+    color: '#d9d9d9',
+    fontFamily: BrandFonts.primary,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  certificateLink: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    padding: 2,
+  },
+  certificateLogo: {
+    width: 34,
+    height: 34,
+    opacity: 0.85,
+    tintColor: '#fff',
+  },
+  modalUtilityRow: {
+    width: '100%',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  modalUtilityButton: {
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.28)',
+    borderRadius: 999,
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+  },
+  modalUtilityButtonText: {
+    color: '#fff',
+    fontSize: 13,
+    fontFamily: BrandFonts.primary,
+    fontWeight: '700',
+  },
   contextOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.55)',
@@ -1047,6 +1728,38 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontFamily: BrandFonts.primary,
     textAlign: 'center',
+  },
+  personalizedCard: {
+    marginTop: 4,
+    marginBottom: 18,
+    backgroundColor: '#fff1f0',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#f7c8c5',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+  },
+  personalizedEyebrow: {
+    fontSize: 12,
+    color: BrandColors.primary,
+    fontFamily: BrandFonts.primary,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  personalizedTitle: {
+    marginTop: 6,
+    fontSize: 18,
+    color: '#111',
+    fontWeight: '700',
+    fontFamily: BrandFonts.primary,
+  },
+  personalizedBody: {
+    marginTop: 6,
+    fontSize: 14,
+    lineHeight: 20,
+    color: '#555',
+    fontFamily: BrandFonts.primary,
   },
   offerOverlay: {
     flex: 1,
@@ -1082,6 +1795,10 @@ const styles = StyleSheet.create({
     color: '#111',
     fontFamily: BrandFonts.primary,
   },
+  offerNoteInput: {
+    minHeight: 92,
+    textAlignVertical: 'top',
+  },
   offerButton: {
     marginTop: 16,
     backgroundColor: BrandColors.primary,
@@ -1104,6 +1821,13 @@ const styles = StyleSheet.create({
     color: '#666',
     fontSize: 15,
     fontFamily: BrandFonts.primary,
+  },
+  emptyStateText: {
+    fontSize: 14,
+    color: '#777',
+    fontFamily: BrandFonts.primary,
+    marginTop: 4,
+    marginBottom: 8,
   },
   verificationCard: {
     width: '100%',

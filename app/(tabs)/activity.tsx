@@ -88,7 +88,9 @@ type PreviewAutograph = {
   createdAt: string;
   creatorName: string;
   creatorSequenceNumber?: number | null;
-  videoUrl: string;
+  videoUrl: string | null;
+  thumbnailUrl: string | null;
+  previewFrameUrls: string[];
   strokes: Stroke[];
   strokeColor: string;
   templateId?: string | null;
@@ -296,12 +298,12 @@ export default function ActivityScreen() {
     try {
       const { data, error } = await supabase
         .from('autographs')
-        .select('id, certificate_id, created_at, video_url, strokes_json, stroke_color, template_id, capture_width, capture_height')
+        .select('id, certificate_id, created_at, video_url, thumbnail_url, preview_frame_urls, strokes_json, stroke_color, template_id, capture_width, capture_height')
         .eq('id', entry.autographId)
         .single();
 
-      if (error || !data?.video_url) {
-        throw new Error('Could not load this video.');
+      if (error || (!data?.video_url && !data?.thumbnail_url && !(data?.preview_frame_urls?.length))) {
+        throw new Error('Could not load this autograph.');
       }
 
       setPreviewItem({
@@ -310,7 +312,9 @@ export default function ActivityScreen() {
         createdAt: data.created_at,
         creatorName: entry.creatorName,
         creatorSequenceNumber: entry.creatorSequenceNumber,
-        videoUrl: data.video_url,
+        videoUrl: data.video_url ?? null,
+        thumbnailUrl: data.thumbnail_url ?? null,
+        previewFrameUrls: data.preview_frame_urls ?? [],
         strokes: data.strokes_json ?? [],
         strokeColor: data.stroke_color ?? '#001B5C',
         templateId: data.template_id ?? 'classic',
@@ -318,7 +322,7 @@ export default function ActivityScreen() {
         captureHeight: data.capture_height ?? 1,
       });
     } catch {
-      Alert.alert('Preview Error', 'Could not load this video. Please try again.');
+      Alert.alert('Preview Error', 'Could not load this autograph. Please try again.');
     } finally {
       setPreviewLoadingId(null);
     }
@@ -554,6 +558,8 @@ export default function ActivityScreen() {
             <>
               <AutographPlayer
                 videoUrl={previewItem.videoUrl}
+                thumbnailUrl={previewItem.thumbnailUrl}
+                previewFrameUrls={previewItem.previewFrameUrls}
                 templateId={previewItem.templateId}
                 strokes={previewItem.strokes}
                 strokeColor={previewItem.strokeColor}

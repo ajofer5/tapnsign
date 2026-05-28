@@ -1,120 +1,220 @@
+import {
+  AutographCardCanvas,
+  CardStroke,
+} from '@/components/autograph-card-canvas';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BrandColors, BrandFonts } from '@/constants/theme';
 import { callEdgeFunction } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
+import { CAPTURE_COUNTDOWN_START, CAPTURE_DURATION_MS, PREVIEW_FRAME_TIMES_MS } from '@/lib/capture-timing';
+import { CardTemplate, DISPLAY_CARD_TEMPLATES, getCardTemplate, OPHINIA_O_CARD_TEMPLATE } from '@/lib/card-templates';
 import { supabase } from '@/lib/supabase';
-import { ResizeMode, Video } from 'expo-av';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { useNavigation, useRouter } from 'expo-router';
-import * as VideoThumbnails from 'expo-video-thumbnails';
+import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
   LayoutChangeEvent,
   PanResponder,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
-import Svg, { Path } from 'react-native-svg';
+import { captureRef } from 'react-native-view-shot';
 
-type Point = {
-  x: number;
-  y: number;
-  t: number;
-};
+type CapturePhase = 'style-pick' | 'idle' | 'recording' | 'snapshot' | 'review';
 
-type Stroke = {
+const GOLD_COLOR = '#F1C168';
+const NAVY_COLOR = '#001B5C';
+const BLUE_COLOR = '#FA0909';
+const VIOLET_COLOR = BrandColors.violet;
+const DEFAULT_TEMPLATE_STROKE = NAVY_COLOR;
+
+const STROKE_OPTIONS = [
+  { id: 'navy', label: 'Navy', color: NAVY_COLOR },
+  { id: 'blue', label: 'Red', color: BLUE_COLOR },
+  { id: 'violet', label: 'Violet', color: VIOLET_COLOR },
+  { id: 'gold', label: 'Gold', color: GOLD_COLOR },
+] as const;
+
+const CAPTURE_SETTINGS_KEY = 'capture:last-settings:v1';
+
+type PersonalizedRequestContext = {
   id: string;
-  points: Point[];
+  recipient_name: string;
+  inscription_text: string | null;
+  requester_note: string | null;
+  requester?: { display_name?: string | null } | null;
 };
 
-function buildSparkPath(cx: number, cy: number, r: number) {
-  const inner = r * 0.3;
-  return `M ${cx},${cy - r} L ${cx + inner},${cy - inner} L ${cx + r},${cy} L ${cx + inner},${cy + inner} L ${cx},${cy + r} L ${cx - inner},${cy + inner} L ${cx - r},${cy} L ${cx - inner},${cy - inner} Z`;
+type Stroke = CardStroke;
+type CapturedFrame = { uri: string; t: number };
+
+const FLATTENED_FRAME_EXPORT_WIDTH = 1200;
+
+function normalizeCapturedFrames(rawFrames: CapturedFrame[]): CapturedFrame[] {
+  if (!rawFrames.length) return [];
+
+  const sorted = [...rawFrames].sort((a, b) => a.t - b.t);
+  return PREVIEW_FRAME_TIMES_MS.map((timeMs) => {
+    const targetTimeSeconds = timeMs / 1000;
+    let best = sorted[0];
+    let bestDistance = Math.abs(sorted[0].t - targetTimeSeconds);
+
+    for (let index = 1; index < sorted.length; index += 1) {
+      const candidate = sorted[index];
+      const distance = Math.abs(candidate.t - targetTimeSeconds);
+      if (distance < bestDistance) {
+        best = candidate;
+        bestDistance = distance;
+      }
+    }
+
+    return { uri: best.uri, t: targetTimeSeconds };
+  });
 }
 
 export default function CaptureScreen() {
+  const { personalized_request_id } = useLocalSearchParams<{ personalized_request_id?: string }>();
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
 
-  const GOLD_COLOR = '#C9A84C';
-  const RED_COLOR = '#FA0909';
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>(OPHINIA_O_CARD_TEMPLATE.id);
+  const captureTemplate = getCardTemplate(selectedTemplateId);
 
+  const [capturePhase, setCapturePhase] = useState<CapturePhase>('idle');
+  const [strokeColor, setStrokeColor] = useState<string>(NAVY_COLOR);
+  const [settingsReady, setSettingsReady] = useState(false);
   const [started, setStarted] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(5);
+  const [timeLeft, setTimeLeft] = useState(CAPTURE_COUNTDOWN_START);
   const [strokes, setStrokes] = useState<Stroke[]>([]);
   const [currentStroke, setCurrentStroke] = useState<Stroke | null>(null);
   const [captureSize, setCaptureSize] = useState({ width: 1, height: 1 });
   const [uploading, setUploading] = useState(false);
-  const [isGold, setIsGold] = useState(false);
-  const [reviewData, setReviewData] = useState<{ uri: string; strokes: Stroke[]; strokeColor: string } | null>(null);
-  const [thumbnailUri, setThumbnailUri] = useState<string | null>(null);
+  const [submittingReview, setSubmittingReview] = useState(false);
+  // Camera photos captured during recording, with stroke timestamps for replay
+  const [capturedFrames, setCapturedFrames] = useState<CapturedFrame[]>([]);
+  // Set when recording ends; drives review phase
+  const [reviewData, setReviewData] = useState<{ strokes: Stroke[]; strokeColor: string } | null>(null);
+  // Selfie captured after recording ends
+  const [personalizedRequest, setPersonalizedRequest] = useState<PersonalizedRequestContext | null>(null);
+  const [loadingPersonalizedRequest, setLoadingPersonalizedRequest] = useState(false);
 
-  // Refs used by PanResponder and recording callbacks (closures that can't see state updates)
   const startedRef = useRef(false);
   const strokesRef = useRef<Stroke[]>([]);
   const currentStrokeRef = useRef<Stroke | null>(null);
   const recordingStartTimeRef = useRef<number | null>(null);
   const stopTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const cameraRef = useRef<any>(null);
+  // Holds the per-frame capture timeouts so we can clear them on retake
+  const frameTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const capturedFramesRef = useRef<CapturedFrame[]>([]);
+  const cameraRef = useRef<CameraView>(null);
+  const flattenedFrameCardRefs = useRef<(View | null)[]>([]);
 
   const router = useRouter();
   const navigation = useNavigation();
   const { user, profile } = useAuth();
 
-  const isBirthday = (() => {
-    if (!profile?.birthday_month || !profile?.birthday_day) return false;
-    const now = new Date();
-    return now.getMonth() + 1 === profile.birthday_month && now.getDate() === profile.birthday_day;
-  })();
+  useEffect(() => {
+    let alive = true;
+
+    AsyncStorage.getItem(CAPTURE_SETTINGS_KEY)
+      .then((raw) => {
+        if (!alive || !raw) return;
+        try {
+          const parsed = JSON.parse(raw) as { templateId?: string; strokeColor?: string };
+          if (parsed.templateId) {
+            setSelectedTemplateId(getCardTemplate(parsed.templateId).id);
+          }
+          if (parsed.strokeColor && STROKE_OPTIONS.some((option) => option.color === parsed.strokeColor)) {
+            setStrokeColor(parsed.strokeColor);
+          }
+        } catch {}
+      })
+      .finally(() => {
+        if (alive) setSettingsReady(true);
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   useEffect(() => {
-    if (isBirthday) setIsGold(true);
-  }, [isBirthday]);
+    let alive = true;
+
+    const loadPersonalizedRequest = async () => {
+      if (!user || !personalized_request_id || typeof personalized_request_id !== 'string') {
+        if (alive) setPersonalizedRequest(null);
+        return;
+      }
+
+      setLoadingPersonalizedRequest(true);
+      const { data, error } = await supabase
+        .from('personalized_autograph_requests')
+        .select(`
+          id,
+          creator_id,
+          recipient_name,
+          inscription_text,
+          requester_note,
+          status,
+          requester:requester_id ( display_name )
+        `)
+        .eq('id', personalized_request_id)
+        .eq('creator_id', user.id)
+        .eq('status', 'accepted')
+        .maybeSingle();
+
+      if (!alive) return;
+      if (error || !data) {
+        setPersonalizedRequest(null);
+        Alert.alert('Personalized Request Unavailable', 'That personalized request is no longer ready for capture.');
+        router.replace('/personalized-requests');
+      } else {
+        setPersonalizedRequest(data as PersonalizedRequestContext);
+      }
+      setLoadingPersonalizedRequest(false);
+    };
+
+    void loadPersonalizedRequest();
+    return () => {
+      alive = false;
+    };
+  }, [user, personalized_request_id, router]);
 
   useLayoutEffect(() => {
     navigation.setOptions({
-      headerShown: !started && !uploading && !reviewData,
+      headerShown: capturePhase === 'idle' && !uploading,
     });
-
     return () => {
-      navigation.setOptions({
-        headerShown: true,
-      });
+      navigation.setOptions({ headerShown: true });
     };
-  }, [navigation, started, uploading, reviewData]);
-
+  }, [navigation, capturePhase, uploading]);
 
   useEffect(() => {
     if (!started) return;
-    if (timeLeft > 0) {
-      const timer = setTimeout(() => setTimeLeft((prev) => prev - 1), 1000);
-      return () => clearTimeout(timer);
-    }
-  }, [started, timeLeft]);
+    const updateTimeLeft = () => {
+      if (!recordingStartTimeRef.current) return;
+      const elapsedMs = Date.now() - recordingStartTimeRef.current;
+      const remainingMs = Math.max(0, CAPTURE_DURATION_MS - elapsedMs);
+      setTimeLeft(Math.min(7, Math.ceil(remainingMs / 1000)));
+    };
+
+    updateTimeLeft();
+    const timer = setInterval(updateTimeLeft, 100);
+    return () => clearInterval(timer);
+  }, [started]);
 
   const getElapsedTimeSeconds = () => {
     if (!recordingStartTimeRef.current) return 0;
     return Number(((Date.now() - recordingStartTimeRef.current) / 1000).toFixed(3));
   };
 
-  const buildSvgPath = (points: Point[]) => {
-    if (!points.length) return '';
-    if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
-    let d = `M ${points[0].x} ${points[0].y}`;
-    for (let i = 1; i < points.length - 1; i++) {
-      const mx = (points[i].x + points[i + 1].x) / 2;
-      const my = (points[i].y + points[i + 1].y) / 2;
-      d += ` Q ${points[i].x} ${points[i].y} ${mx} ${my}`;
-    }
-    const last = points[points.length - 1];
-    d += ` L ${last.x} ${last.y}`;
-    return d;
-  };
-
   const resetState = () => {
-    // Reset refs first so PanResponder stops accepting touches immediately
     startedRef.current = false;
     strokesRef.current = [];
     currentStrokeRef.current = null;
@@ -123,14 +223,18 @@ export default function CaptureScreen() {
       clearTimeout(stopTimeoutRef.current);
       stopTimeoutRef.current = null;
     }
-
+    for (const t of frameTimeoutsRef.current) clearTimeout(t);
+    frameTimeoutsRef.current = [];
+    capturedFramesRef.current = [];
     setStarted(false);
-    setTimeLeft(5);
+    setTimeLeft(CAPTURE_COUNTDOWN_START);
     setStrokes([]);
     setCurrentStroke(null);
     setUploading(false);
+    setSubmittingReview(false);
+    setCapturePhase('idle');
+    setCapturedFrames([]);
     setReviewData(null);
-    setThumbnailUri(null);
   };
 
   const finalizeCurrentStroke = () => {
@@ -142,6 +246,12 @@ export default function CaptureScreen() {
       currentStrokeRef.current = null;
       setCurrentStroke(null);
     }
+  };
+
+  const isPointInsideSignaturePad = (x: number, y: number) => {
+    void x;
+    void y;
+    return true;
   };
 
   const beginStroke = (x: number, y: number) => {
@@ -173,6 +283,7 @@ export default function CaptureScreen() {
       onMoveShouldSetPanResponder: () => startedRef.current,
       onPanResponderGrant: (evt) => {
         const { locationX, locationY } = evt.nativeEvent;
+        if (!isPointInsideSignaturePad(locationX, locationY)) return;
         beginStroke(locationX, locationY);
       },
       onPanResponderMove: (evt) => {
@@ -184,13 +295,13 @@ export default function CaptureScreen() {
     })
   ).current;
 
-  const handleLayout = (event: LayoutChangeEvent) => {
+  const handleCaptureShellLayout = (event: LayoutChangeEvent) => {
     const { width, height } = event.nativeEvent.layout;
     if (width > 0 && height > 0) setCaptureSize({ width, height });
   };
 
   const handleStart = async () => {
-if (!cameraRef.current || startedRef.current) return;
+    if (startedRef.current) return;
 
     if (!user) {
       Alert.alert('Not signed in', 'Please sign in before capturing an autograph.');
@@ -203,79 +314,115 @@ if (!cameraRef.current || startedRef.current) return;
     }
 
     try {
+      capturedFramesRef.current = [];
+      setCapturedFrames([]);
       setStarted(true);
+      setCapturePhase('recording');
       startedRef.current = true;
-      setTimeLeft(5);
+      setTimeLeft(CAPTURE_COUNTDOWN_START);
       setStrokes([]);
       setCurrentStroke(null);
       strokesRef.current = [];
       currentStrokeRef.current = null;
       recordingStartTimeRef.current = Date.now();
+      // Capture raw front-camera frames; card composition happens in the shared renderer.
+      for (const ms of PREVIEW_FRAME_TIMES_MS) {
+        const frameT = ms / 1000; // seconds into recording
+        const t = setTimeout(async () => {
+          if (!startedRef.current || !cameraRef.current) return;
+          try {
+            const photo = await cameraRef.current.takePictureAsync({ quality: 0.82, shutterSound: false });
+            if (photo?.uri) {
+              capturedFramesRef.current = [...capturedFramesRef.current, { uri: photo.uri, t: frameT }];
+            }
+          } catch {
+            // missed frame — continue
+          }
+        }, ms);
+        frameTimeoutsRef.current.push(t);
+      }
 
-      stopTimeoutRef.current = setTimeout(() => {
+      // Stop after the capture window — wait briefly for the last camera frame, then enter review
+      stopTimeoutRef.current = setTimeout(async () => {
         finalizeCurrentStroke();
-        cameraRef.current?.stopRecording();
-      }, 5000);
+        startedRef.current = false;
+        setStarted(false);
+        setCapturePhase('snapshot');
 
-      const video = await cameraRef.current.recordAsync({ maxDuration: 5 });
+        const finalizedStrokes = [...strokesRef.current];
+        const finalColor = strokeColor;
 
-      finalizeCurrentStroke();
-      const finalizedStrokes = [...strokesRef.current];
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        const allFrames = normalizeCapturedFrames(capturedFramesRef.current);
 
-      startedRef.current = false;
-      setStarted(false);
-      setReviewData({ uri: video.uri, strokes: finalizedStrokes, strokeColor: isGold ? GOLD_COLOR : RED_COLOR });
-      VideoThumbnails.getThumbnailAsync(video.uri, { time: 1000 })
-        .then((thumb) => setThumbnailUri(thumb.uri))
-        .catch(() => setThumbnailUri(null));
+        setCapturedFrames(allFrames);
+        setReviewData({
+          strokes: finalizedStrokes,
+          strokeColor: finalColor,
+        });
+        setCapturePhase('review');
+      }, CAPTURE_DURATION_MS);
     } catch {
       Alert.alert('Capture Failed', 'Something went wrong while capturing. Please try again.');
       resetState();
     }
   };
 
-  const handleSubmit = async (pickedThumbnailUri: string | null) => {
-    if (!reviewData || !user) return;
-    const { uri, strokes: finalizedStrokes, strokeColor } = reviewData;
-    setReviewData(null);
-    setThumbnailUri(null);
+  const handleSubmit = async () => {
+    if (!reviewData || !user || capturedFrames.length === 0) return;
+    const { strokes: finalizedStrokes, strokeColor } = reviewData;
+
+    setSubmittingReview(true);
     setUploading(true);
 
     try {
+      const flattenedFrameUris = await Promise.all(
+        capturedFrames.map(async (_frame, index) => {
+          const ref = flattenedFrameCardRefs.current[index];
+          if (!ref) {
+            throw new Error('Could not prepare the autograph card preview frames.');
+          }
+
+          const exportHeight = Math.round(
+            FLATTENED_FRAME_EXPORT_WIDTH * (captureTemplate.aspectRatio.height / captureTemplate.aspectRatio.width)
+          );
+
+          return captureRef(ref, {
+            format: 'jpg',
+            quality: 0.98,
+            result: 'tmpfile',
+            width: FLATTENED_FRAME_EXPORT_WIDTH,
+            height: exportHeight,
+          });
+        })
+      );
+
       const uploadTargets = await callEdgeFunction<{
-        video: { path: string; signedUrl: string; token: string };
-        thumbnail: { path: string; signedUrl: string; token: string } | null;
+        preview_frames: { path: string; signedUrl: string; token: string }[];
       }>('create-capture-upload-targets', {
-        include_thumbnail: !!pickedThumbnailUri,
+        include_video: false,
+        include_thumbnail: false,
+        preview_frame_count: flattenedFrameUris.length,
       });
 
-      // Upload video
-      const formData = new FormData();
-      formData.append('', { uri, name: uploadTargets.video.path.split('/').pop() ?? 'capture.mov', type: 'video/quicktime' } as any);
-      const { error: videoUploadError } = await supabase.storage
-        .from('autograph-videos')
-        .uploadToSignedUrl(
-          uploadTargets.video.path,
-          uploadTargets.video.token,
-          formData
-        );
-      if (videoUploadError) {
-        throw new Error(videoUploadError.message ?? 'Upload failed');
-      }
+      const uploadPreviewFramesPromise = Promise.all(
+        flattenedFrameUris.map(async (frameUri, index) => {
+          const target = uploadTargets.preview_frames?.[index];
+          if (!target || !frameUri) return;
+          const frameForm = new FormData();
+          frameForm.append('', {
+            uri: frameUri,
+            name: target.path.split('/').pop() ?? `capture-preview-${index + 1}.jpg`,
+            type: 'image/jpeg',
+          } as any);
+          const { error: previewUploadError } = await supabase.storage
+            .from('autograph-videos')
+            .uploadToSignedUrl(target.path, target.token, frameForm);
+          if (previewUploadError) throw new Error(previewUploadError.message ?? 'Preview frame upload failed');
+        })
+      );
 
-      // Upload thumbnail if one was picked
-      if (pickedThumbnailUri && uploadTargets.thumbnail) {
-        const thumbForm = new FormData();
-        thumbForm.append('', { uri: pickedThumbnailUri, name: uploadTargets.thumbnail.path.split('/').pop() ?? 'capture-thumb.jpg', type: 'image/jpeg' } as any);
-        const { error: thumbnailUploadError } = await supabase.storage
-          .from('autograph-videos')
-          .uploadToSignedUrl(
-            uploadTargets.thumbnail.path,
-            uploadTargets.thumbnail.token,
-            thumbForm
-          );
-        if (thumbnailUploadError) console.log('Thumbnail upload skipped', thumbnailUploadError.message);
-      }
+      await uploadPreviewFramesPromise;
 
       const insertedAutograph = await callEdgeFunction<{
         autograph: {
@@ -285,31 +432,58 @@ if (!cameraRef.current || startedRef.current) return;
           sale_state: 'not_for_sale' | 'fixed';
           is_for_sale: boolean;
           content_hash: string;
+          creator_sequence_number: number | null;
         };
       }>('mint-autograph', {
-        video_path: uploadTargets.video.path,
-        thumbnail_path: uploadTargets.thumbnail?.path ?? null,
+        video_path: null,
+        thumbnail_path: null,
+        preview_frame_paths: (uploadTargets.preview_frames ?? []).map((frame: { path: string }) => frame.path),
         strokes_json: finalizedStrokes,
-        capture_width: captureSize.width,
-        capture_height: captureSize.height,
+        capture_width: Math.max(1, Math.round(captureSize.width)),
+        capture_height: Math.max(1, Math.round(captureSize.height)),
         stroke_color: strokeColor,
+        template_id: captureTemplate.id,
+        personalized_request_id: personalizedRequest?.id ?? null,
       });
 
       console.log('Autograph mint succeeded', insertedAutograph);
-
       resetState();
-      router.push('/thankyou');
+      router.replace(personalizedRequest ? '/personalized-requests' : '/autographs');
     } catch (error: any) {
       console.log('Capture error:', { message: error?.message, details: error?.details, hint: error?.hint, code: error?.code });
-      Alert.alert('Capture Failed', 'Something went wrong while saving your autograph. Please try again.');
+      const detail = error?.message || error?.details || error?.hint || 'Something went wrong while saving your autograph. Please try again.';
+      Alert.alert('Capture Failed', detail);
       resetState();
     }
   };
 
   const allStrokes = currentStroke ? [...strokes, currentStroke] : strokes;
 
+  const persistCaptureSettings = async (templateId: string, nextStrokeColor: string) => {
+    try {
+      await AsyncStorage.setItem(
+        CAPTURE_SETTINGS_KEY,
+        JSON.stringify({ templateId, strokeColor: nextStrokeColor })
+      );
+    } catch {}
+  };
+
+  const handleStylePickerContinue = async () => {
+    await persistCaptureSettings(selectedTemplateId, strokeColor);
+    setCapturePhase('idle');
+  };
+
   if (!cameraPermission) {
     return <View style={styles.permissionContainer} />;
+  }
+
+  if (!settingsReady) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={BrandColors.primary} />
+        <Text style={styles.loadingText}>Loading capture…</Text>
+      </View>
+    );
   }
 
   if (!cameraPermission.granted) {
@@ -323,17 +497,55 @@ if (!cameraRef.current || startedRef.current) return;
     );
   }
 
-  if (reviewData) {
+  if (loadingPersonalizedRequest) {
     return (
-      <ReviewScreen
-        uri={reviewData.uri}
-        strokes={reviewData.strokes}
-        strokeColor={reviewData.strokeColor}
-        captureWidth={captureSize.width}
-        captureHeight={captureSize.height}
-        onRetake={resetState}
-        onSubmit={() => handleSubmit(thumbnailUri)}
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={BrandColors.primary} />
+        <Text style={styles.loadingText}>Loading request…</Text>
+      </View>
+    );
+  }
+
+  // Style picker — shown before capture begins
+  if (capturePhase === 'style-pick') {
+    return (
+      <StylePickScreen
+        selectedTemplateId={selectedTemplateId}
+        onSelectTemplate={setSelectedTemplateId}
+        selectedStrokeColor={strokeColor}
+        onSelectStrokeColor={setStrokeColor}
+        onContinue={handleStylePickerContinue}
       />
+    );
+  }
+
+  // Snapshot phase — brief spinner while selfie is captured
+  // The loading spinner is shown to the user while selfie + card assembly completes
+  if (capturePhase === 'snapshot') {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={BrandColors.primary} />
+        <Text style={styles.loadingText}>Preparing your card…</Text>
+      </View>
+    );
+  }
+
+  // Review phase
+  if (capturePhase === 'review' && reviewData) {
+    return (
+      <>
+        <ReviewScreen
+          template={captureTemplate}
+          creatorName={profile?.display_name ?? ''}
+          flattenedFrameCardRefs={flattenedFrameCardRefs}
+          capturedFrames={capturedFrames}
+          reviewData={reviewData}
+          captureSize={captureSize}
+          onRetake={resetState}
+          onSubmit={handleSubmit}
+          submitting={submittingReview}
+        />
+      </>
     );
   }
 
@@ -346,90 +558,468 @@ if (!cameraRef.current || startedRef.current) return;
     );
   }
 
+  // Idle / recording — the live card view
   return (
-    <View style={styles.container} onLayout={handleLayout}>
-      <CameraView ref={cameraRef} style={styles.camera} facing="front" mode="video" />
-
-      <View style={StyleSheet.absoluteFill} {...panResponder.panHandlers}>
-        <Svg style={{ flex: 1 }}>
-          {allStrokes.map((stroke) => {
-            const d = buildSvgPath(stroke.points);
-            if (!d) return null;
-            if (!isGold) {
-              return (
-                <Path
-                  key={stroke.id}
-                  d={d}
-                  stroke={RED_COLOR}
-                  strokeWidth={5}
-                  fill="none"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  opacity={0.9}
-                />
-              );
-            }
-            const last = stroke.points[stroke.points.length - 1];
-            const lx = last?.x ?? 0;
-            const ly = last?.y ?? 0;
-            return [
-              <Path key={`${stroke.id}-g1`} d={d} stroke="#C9A84C" strokeWidth={16} fill="none" strokeLinecap="round" strokeLinejoin="round" opacity={0.10} />,
-              <Path key={`${stroke.id}-g2`} d={d} stroke="#C9A84C" strokeWidth={10} fill="none" strokeLinecap="round" strokeLinejoin="round" opacity={0.25} />,
-              <Path key={`${stroke.id}-g3`} d={d} stroke="#E8C56E" strokeWidth={5} fill="none" strokeLinecap="round" strokeLinejoin="round" opacity={0.9} />,
-              <Path key={`${stroke.id}-g4`} d={d} stroke="#FFF0A0" strokeWidth={2} fill="none" strokeLinecap="round" strokeLinejoin="round" opacity={0.85} />,
-              <Path key={`${stroke.id}-s1`} d={buildSparkPath(lx, ly, 10)} fill="#FFF0A0" opacity={0.95} />,
-              <Path key={`${stroke.id}-s2`} d={buildSparkPath(lx + 12, ly - 8, 5)} fill="#E8C56E" opacity={0.7} />,
-            ];
-          })}
-        </Svg>
-      </View>
-
+    <View style={styles.container}>
+      {!started && (
+        <Pressable style={styles.editStyleButton} onPress={() => setCapturePhase('style-pick')}>
+          <Text style={styles.editStyleButtonText}>Edit Capture Style</Text>
+        </Pressable>
+      )}
       {started && (
         <View style={styles.timerCircle}>
           <Text style={styles.timerText}>{timeLeft}</Text>
         </View>
       )}
+      <View
+        style={[
+          styles.captureShell,
+          { aspectRatio: captureTemplate.aspectRatio.width / captureTemplate.aspectRatio.height },
+        ]}
+        onLayout={handleCaptureShellLayout}
+      >
+        <AutographCardCanvas
+          template={captureTemplate}
+          creatorName={profile?.display_name ?? ''}
+          captureWidth={captureSize.width}
+          captureHeight={captureSize.height}
+          strokes={allStrokes}
+          strokeColor={strokeColor}
+          cameraContent={
+            <CameraView ref={cameraRef} style={styles.camera} facing="front" zoom={0} />
+          }
+        />
 
-      {!started && (
-        <View style={styles.center}>
-          <Pressable style={styles.tapButton} onPress={handleStart}>
-            <Text style={[styles.tapText, isGold && { color: GOLD_COLOR }]} adjustsFontSizeToFit numberOfLines={1}>TapnSign </Text>
-          </Pressable>
-          <Text style={styles.instructions}>
-            Tap TapnSign, then sign the screen for 5 seconds
-          </Text>
-          {isBirthday ? (
-            <View style={styles.birthdayBanner}>
-              <Text style={styles.birthdayBannerText}>Happy Birthday — your signature is gold today</Text>
-              <Pressable style={styles.goldToggle} onPress={() => setIsGold((prev: boolean) => !prev)}>
-                <View style={[styles.goldToggleBox, isGold && styles.goldToggleBoxActive]}>
-                  {isGold && <Text style={styles.goldToggleTick}>✓</Text>}
-                </View>
-                <Text style={[styles.goldToggleLabel, isGold && { color: GOLD_COLOR }]}>
-                  Gold Signature
-                </Text>
-              </Pressable>
+        {!started && capturePhase === 'idle' ? (
+          <Pressable style={styles.startOverlay} onPress={handleStart} />
+        ) : null}
+
+        <View
+          style={styles.captureGestureLayer}
+          pointerEvents={started ? 'auto' : 'none'}
+          {...panResponder.panHandlers}
+        />
+      </View>
+
+      {!started && capturePhase === 'idle' ? (
+        <Pressable onPress={handleStart}>
+          <Text style={styles.tapToSignText}>Tap the screen to sign</Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
+// ─── StylePickScreen ──────────────────────────────────────────────────────────
+
+function StylePickScreen({
+  selectedTemplateId,
+  onSelectTemplate,
+  selectedStrokeColor,
+  onSelectStrokeColor,
+  onContinue,
+}: {
+  selectedTemplateId: string;
+  onSelectTemplate: (templateId: string) => void;
+  selectedStrokeColor: string;
+  onSelectStrokeColor: (color: string) => void;
+  onContinue: () => void;
+}) {
+  const selectedTemplate = DISPLAY_CARD_TEMPLATES.find((template) => template.id === selectedTemplateId) ?? DISPLAY_CARD_TEMPLATES[0];
+
+  return (
+    <View style={stylePickStyles.container}>
+      <Text style={stylePickStyles.heading}>Choose your card template</Text>
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={stylePickStyles.carouselContent}
+        snapToInterval={244}
+        decelerationRate="fast"
+      >
+        {DISPLAY_CARD_TEMPLATES.map((template) => {
+          const isSelected = selectedTemplateId === template.id;
+          return (
+            <Pressable
+              key={template.id}
+              style={[stylePickStyles.optionTile, isSelected && stylePickStyles.optionTileSelected]}
+              onPress={() => onSelectTemplate(template.id)}
+            >
+              <View style={stylePickStyles.cardPreviewWrapper}>
+                {template.id === 'ophinia_o' ? (
+                  <Image
+                    source={require('../assets/images/Ophinia_O template.png')}
+                    style={stylePickStyles.logoPreviewImage}
+                    resizeMode="contain"
+                  />
+                ) : (
+                  <AutographCardCanvas
+                    template={template}
+                    creatorName=""
+                    captureWidth={template.baseWidth}
+                    captureHeight={template.baseHeight}
+                    strokes={[]}
+                    strokeColor={NAVY_COLOR}
+                    style={stylePickStyles.cardPreview}
+                  />
+                )}
+              </View>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+
+      <View style={stylePickStyles.selectionMeta}>
+        <Text style={stylePickStyles.optionLabelSelected}>{selectedTemplate.name}</Text>
+        <View style={stylePickStyles.selectedDot} />
+      </View>
+
+      <Text style={stylePickStyles.subheading}>Choose your stroke color</Text>
+      <View style={stylePickStyles.swatchRow}>
+        {STROKE_OPTIONS.map((option) => {
+          const isSelected = selectedStrokeColor === option.color;
+          return (
+            <Pressable
+              key={option.id}
+              style={stylePickStyles.swatchOption}
+              onPress={() => onSelectStrokeColor(option.color)}
+            >
+              <View style={[stylePickStyles.swatchCircle, { backgroundColor: option.color }, isSelected && stylePickStyles.swatchCircleSelected]} />
+              <Text style={[stylePickStyles.swatchLabel, isSelected && stylePickStyles.swatchLabelSelected]}>{option.label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      <Pressable style={stylePickStyles.continueButton} onPress={onContinue}>
+        <Text style={stylePickStyles.continueButtonText}>Continue</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+const stylePickStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#0C132B',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 40,
+  },
+  heading: {
+    color: '#F6F6F2',
+    fontFamily: BrandFonts.primary,
+    fontSize: 20,
+    fontWeight: '600',
+    marginBottom: 28,
+    textAlign: 'center',
+    letterSpacing: 0.3,
+  },
+  subheading: {
+    color: '#F6F6F2',
+    fontFamily: BrandFonts.primary,
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 18,
+    textAlign: 'center',
+    letterSpacing: 0.2,
+  },
+  carouselContent: {
+    paddingHorizontal: 28,
+    gap: 20,
+    alignItems: 'center',
+    marginBottom: 22,
+  },
+  optionTile: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 224,
+    padding: 14,
+    borderRadius: 18,
+    borderWidth: 2,
+    borderColor: 'transparent',
+    backgroundColor: 'rgba(255,255,255,0.02)',
+  },
+  optionTileSelected: {
+    borderColor: '#F1C168',
+    backgroundColor: 'rgba(241,193,104,0.06)',
+  },
+  cardPreviewWrapper: {
+    width: 180,
+    aspectRatio: 60 / 85,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  cardPreview: {
+    flex: 1,
+  },
+  logoPreviewImage: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#fff',
+  },
+  selectionMeta: {
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 26,
+  },
+  optionLabel: {
+    color: 'rgba(246,246,242,0.6)',
+    fontFamily: BrandFonts.primary,
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  optionLabelSelected: {
+    color: '#F6F6F2',
+    fontFamily: BrandFonts.primary,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  selectedDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#F1C168',
+  },
+  swatchRow: {
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginBottom: 34,
+  },
+  swatchOption: {
+    alignItems: 'center',
+    flex: 1,
+    gap: 10,
+  },
+  swatchCircle: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.28)',
+  },
+  swatchCircleSelected: {
+    borderColor: '#F6F6F2',
+    transform: [{ scale: 1.06 }],
+  },
+  swatchLabel: {
+    color: 'rgba(246,246,242,0.62)',
+    fontFamily: BrandFonts.primary,
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  swatchLabelSelected: {
+    color: '#F6F6F2',
+  },
+  continueButton: {
+    backgroundColor: '#FA0909',
+    paddingVertical: 16,
+    paddingHorizontal: 64,
+    borderRadius: 12,
+  },
+  continueButtonText: {
+    color: '#F6F6F2',
+    fontFamily: BrandFonts.primary,
+    fontSize: 17,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+});
+
+// ─── ReviewScreen ─────────────────────────────────────────────────────────────
+
+// Returns only the points of each stroke that were drawn at or before `timeSec`
+function getStrokesUpToTime(strokes: Stroke[], timeSec: number): Stroke[] {
+  return strokes
+    .map((s) => ({ ...s, points: s.points.filter((p) => (p.t ?? 0) <= timeSec) }))
+    .filter((s) => s.points.length > 0);
+}
+
+function ReviewScreen({
+  creatorName,
+  template,
+  flattenedFrameCardRefs,
+  capturedFrames,
+  reviewData,
+  captureSize,
+  onRetake,
+  onSubmit,
+  submitting,
+}: {
+  creatorName: string;
+  template: CardTemplate;
+  flattenedFrameCardRefs: { current: (View | null)[] };
+  capturedFrames: CapturedFrame[];
+  reviewData: { strokes: Stroke[]; strokeColor: string } | null;
+  captureSize: { width: number; height: number };
+  onRetake: () => void;
+  onSubmit: () => void;
+  submitting: boolean;
+}) {
+  // replayFrameIndex: index into capturedFrames during replay, null = not replaying
+  const [replayFrameIndex, setReplayFrameIndex] = useState<number | null>(null);
+  const replayIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const startReplay = () => {
+    if (replayFrameIndex !== null || !capturedFrames.length) return;
+
+    let idx = 0;
+    setReplayFrameIndex(0);
+    // Step through frames at ~8fps (120ms each)
+    replayIntervalRef.current = setInterval(() => {
+      idx += 1;
+      if (idx >= capturedFrames.length) {
+        clearInterval(replayIntervalRef.current!);
+        replayIntervalRef.current = null;
+        setReplayFrameIndex(null); // back to static card
+      } else {
+        setReplayFrameIndex(idx);
+      }
+    }, 120);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (replayIntervalRef.current) clearInterval(replayIntervalRef.current);
+    };
+  }, []);
+
+  const isReplaying = replayFrameIndex !== null;
+  const replayFrame = isReplaying ? capturedFrames[replayFrameIndex!] : null;
+  // During replay: show strokes up to the current frame's timestamp
+  // At rest: show all strokes
+  const displayStrokes = reviewData
+    ? (replayFrame !== null && replayFrame !== undefined
+        ? getStrokesUpToTime(reviewData.strokes, replayFrame.t)
+        : reviewData.strokes)
+    : [];
+  // Photo to show in the top panel: current replay frame or last captured frame
+  const photoUri = replayFrame?.uri ?? capturedFrames[capturedFrames.length - 1]?.uri ?? null;
+
+  return (
+    <View style={styles.reviewContainer}>
+      <Pressable style={styles.reviewCardWrapper} onPress={startReplay}>
+        <AutographCardCanvas
+          template={template}
+          creatorName={creatorName}
+          photoSource={photoUri ? { uri: photoUri } : undefined}
+          captureWidth={captureSize.width}
+          captureHeight={captureSize.height}
+          strokes={displayStrokes}
+          strokeColor={reviewData?.strokeColor ?? DEFAULT_TEMPLATE_STROKE}
+          style={styles.reviewCardCanvas}
+        />
+      </Pressable>
+
+      <View style={styles.hiddenFlattenedFramesStage} pointerEvents="none">
+        {capturedFrames.map((frame, index) => (
+          <View
+            key={`${frame.t}-${index}`}
+            ref={(value) => {
+              flattenedFrameCardRefs.current[index] = value;
+            }}
+            collapsable={false}
+            style={[
+              styles.hiddenFlattenedFrame,
+              {
+                width: FLATTENED_FRAME_EXPORT_WIDTH,
+                aspectRatio: template.aspectRatio.width / template.aspectRatio.height,
+              },
+            ]}
+          >
+            <AutographCardCanvas
+              template={template}
+              creatorName={creatorName}
+              photoSource={{ uri: frame.uri }}
+              captureWidth={captureSize.width}
+              captureHeight={captureSize.height}
+              strokes={reviewData ? getStrokesUpToTime(reviewData.strokes, frame.t) : []}
+              strokeColor={reviewData?.strokeColor ?? DEFAULT_TEMPLATE_STROKE}
+              style={styles.reviewCardCanvas}
+            />
+          </View>
+        ))}
+      </View>
+
+      <View style={styles.reviewButtons}>
+        <Pressable style={[styles.retakeButton, submitting && styles.reviewButtonDisabled]} onPress={onRetake} disabled={submitting}>
+          <Text style={styles.retakeButtonText}>Retake</Text>
+        </Pressable>
+        <Pressable style={[styles.submitButton, submitting && styles.reviewButtonDisabled]} onPress={onSubmit} disabled={submitting}>
+          {submitting ? (
+            <View style={styles.submitLoadingRow}>
+              <ActivityIndicator size="small" color="#111" />
+              <Text style={styles.submitButtonText}>Submitting…</Text>
             </View>
-          ) : null}
-        </View>
+          ) : (
+            <Text style={styles.submitButtonText}>Submit</Text>
+          )}
+        </Pressable>
+      </View>
+
+      {!isReplaying && (
+        <Pressable onPress={startReplay} style={styles.tapHint}>
+          <Text style={styles.tapHintText}>▶  Tap to watch signing</Text>
+        </Pressable>
       )}
     </View>
   );
 }
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: 'black',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  editStyleButton: {
+    position: 'absolute',
+    top: 16,
+    zIndex: 60,
+    elevation: 60,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+  },
+  editStyleButtonText: {
+    color: '#111',
+    fontFamily: BrandFonts.primary,
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
+  captureShell: {
+    width: '100%',
+    aspectRatio: 60 / 85,
+    backgroundColor: 'white',
+  },
+  captureGestureLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 20,
+    elevation: 20,
+  },
+  startOverlay: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 40,
+    elevation: 40,
+    justifyContent: 'flex-start',
+    alignItems: 'center',
   },
   camera: {
     flex: 1,
-  },
-  center: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   loadingContainer: {
     flex: 1,
@@ -444,11 +1034,11 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   instructions: {
-    color: 'white',
+    color: '#2a3136',
     fontFamily: BrandFonts.primary,
-    fontSize: 18,
+    fontSize: 17,
     textAlign: 'center',
-    marginBottom: 20,
+    marginTop: 4,
   },
   tapButton: {
     paddingVertical: 12,
@@ -456,27 +1046,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   tapText: {
-    fontSize: 120,
-    lineHeight: 155,
+    fontSize: 96,
+    lineHeight: 124,
     fontWeight: '700',
     fontFamily: BrandFonts.script,
     color: BrandColors.primary,
     includeFontPadding: false,
   },
   timerCircle: {
-    position: 'absolute',
-    top: 24,
-    left: 24,
+    alignSelf: 'center',
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: 'rgba(200, 200, 200, 0.45)',
+    backgroundColor: 'rgba(255,255,255,0.15)',
     justifyContent: 'center',
     alignItems: 'center',
+    marginBottom: 12,
   },
   timerText: {
     fontSize: 32,
-    color: '#111',
+    color: '#fff',
     fontWeight: 'bold',
   },
   permissionText: {
@@ -503,19 +1092,32 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 24,
   },
+  hiddenFlattenedFramesStage: {
+    position: 'absolute',
+    left: -10000,
+    top: -10000,
+  },
+  hiddenFlattenedFrame: {
+    backgroundColor: '#fff',
+  },
+  // Review screen
   reviewContainer: {
     flex: 1,
     backgroundColor: 'black',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  reviewVideoWrapper: {
+  reviewCardWrapper: {
     width: '100%',
+    aspectRatio: 60 / 85,
+  },
+  reviewCardCanvas: {
     flex: 1,
   },
   reviewButtons: {
     flexDirection: 'row',
     gap: 16,
+    paddingVertical: 16,
   },
   retakeButton: {
     paddingVertical: 14,
@@ -536,50 +1138,45 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: '#fff',
   },
+  reviewButtonDisabled: {
+    opacity: 0.7,
+  },
   submitButtonText: {
     color: '#111',
     fontFamily: BrandFonts.primary,
     fontSize: 17,
     fontWeight: '600',
   },
-  goldToggle: {
+  submitLoadingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 24,
     gap: 10,
   },
-  goldToggleBox: {
-    width: 26,
-    height: 26,
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.6)',
-    backgroundColor: 'transparent',
-    justifyContent: 'center',
+  tapHint: {
     alignItems: 'center',
+    marginTop: 16,
   },
-  goldToggleBoxActive: {
-    borderColor: '#C9A84C',
-    backgroundColor: 'rgba(201,168,76,0.2)',
-  },
-  goldToggleTick: {
-    color: '#C9A84C',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  goldToggleLabel: {
-    color: 'rgba(255,255,255,0.8)',
+  tapHintText: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 13,
     fontFamily: BrandFonts.primary,
-    fontSize: 16,
-    fontWeight: '600',
   },
   birthdayBanner: {
     alignItems: 'center',
-    marginTop: 24,
+    marginTop: 22,
     gap: 12,
   },
+  tapToSignText: {
+    fontFamily: BrandFonts.primary,
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#fff',
+    textAlign: 'center',
+    letterSpacing: 0.5,
+    marginTop: 20,
+  },
   birthdayBannerText: {
-    color: '#C9A84C',
+    color: '#F1C168',
     fontFamily: BrandFonts.primary,
     fontSize: 14,
     fontWeight: '600',
@@ -587,101 +1184,3 @@ const styles = StyleSheet.create({
     opacity: 0.9,
   },
 });
-
-function ReviewScreen({
-  uri, strokes, strokeColor, captureWidth, captureHeight, onRetake, onSubmit,
-}: {
-  uri: string;
-  strokes: Stroke[];
-  strokeColor: string;
-  captureWidth: number;
-  captureHeight: number;
-  onRetake: () => void;
-  onSubmit: () => void;
-}) {
-  const [currentTime, setCurrentTime] = useState(0);
-  const [displaySize, setDisplaySize] = useState({ width: 1, height: 1 });
-
-  return (
-    <View style={styles.reviewContainer}>
-      <View
-        style={styles.reviewVideoWrapper}
-        onLayout={(e) => {
-          const { width, height } = e.nativeEvent.layout;
-          setDisplaySize({ width, height });
-        }}
-      >
-        <Video
-          source={{ uri }}
-          style={StyleSheet.absoluteFill}
-          resizeMode={ResizeMode.CONTAIN}
-          shouldPlay
-          isLooping
-          isMuted
-          onPlaybackStatusUpdate={(status) => {
-            if (status.isLoaded) setCurrentTime(status.positionMillis / 1000);
-          }}
-        />
-        <Svg
-          width={displaySize.width}
-          height={displaySize.height}
-          style={StyleSheet.absoluteFill}
-          pointerEvents="none"
-        >
-          {strokes.map((stroke) => {
-            const scaleX = displaySize.width / (captureWidth || 1);
-            const scaleY = displaySize.height / (captureHeight || 1);
-            const visible = stroke.points.filter((p) => p.t <= currentTime);
-            if (!visible.length) return null;
-            const scaled = visible.map((p) => ({ x: p.x * scaleX, y: p.y * scaleY }));
-            let d = `M ${scaled[0].x} ${scaled[0].y}`;
-            for (let i = 1; i < scaled.length - 1; i++) {
-              const mx = (scaled[i].x + scaled[i + 1].x) / 2;
-              const my = (scaled[i].y + scaled[i + 1].y) / 2;
-              d += ` Q ${scaled[i].x} ${scaled[i].y} ${mx} ${my}`;
-            }
-            if (scaled.length > 1) d += ` L ${scaled[scaled.length - 1].x} ${scaled[scaled.length - 1].y}`;
-            const isGoldStroke = strokeColor === '#C9A84C';
-            if (!isGoldStroke) {
-              return (
-                <Path
-                  key={stroke.id}
-                  d={d}
-                  stroke={strokeColor}
-                  strokeWidth={5}
-                  fill="none"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  opacity={0.9}
-                />
-              );
-            }
-            const first = visible[0];
-            const last = visible[visible.length - 1];
-            const fx = first.x * scaleX;
-            const fy = first.y * scaleY;
-            const lx = last.x * scaleX;
-            const ly = last.y * scaleY;
-            return [
-              <Path key={`${stroke.id}-g1`} d={d} stroke="#C9A84C" strokeWidth={16} fill="none" strokeLinecap="round" strokeLinejoin="round" opacity={0.10} />,
-              <Path key={`${stroke.id}-g2`} d={d} stroke="#C9A84C" strokeWidth={10} fill="none" strokeLinecap="round" strokeLinejoin="round" opacity={0.25} />,
-              <Path key={`${stroke.id}-g3`} d={d} stroke="#E8C56E" strokeWidth={5} fill="none" strokeLinecap="round" strokeLinejoin="round" opacity={0.9} />,
-              <Path key={`${stroke.id}-g4`} d={d} stroke="#FFF0A0" strokeWidth={2} fill="none" strokeLinecap="round" strokeLinejoin="round" opacity={0.85} />,
-              <Path key={`${stroke.id}-s1`} d={buildSparkPath(fx, fy, 8)} fill="#FFF0A0" opacity={0.9} />,
-              <Path key={`${stroke.id}-s2`} d={buildSparkPath(lx, ly, 10)} fill="#FFF0A0" opacity={0.95} />,
-              <Path key={`${stroke.id}-s3`} d={buildSparkPath(lx + 12, ly - 8, 5)} fill="#E8C56E" opacity={0.7} />,
-            ];
-          })}
-        </Svg>
-      </View>
-      <View style={styles.reviewButtons}>
-        <Pressable style={styles.retakeButton} onPress={onRetake}>
-          <Text style={styles.retakeButtonText}>Retake</Text>
-        </Pressable>
-        <Pressable style={styles.submitButton} onPress={onSubmit}>
-          <Text style={styles.submitButtonText}>Submit</Text>
-        </Pressable>
-      </View>
-    </View>
-  );
-}

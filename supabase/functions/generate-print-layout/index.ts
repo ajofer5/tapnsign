@@ -8,14 +8,13 @@
  *   Card area:   1200×1800px (4×6 @ 300 DPI), centered horizontally
  *                150px from top, 150px left/right (0.5" borders)
  *   Bottom strip: 300px (1") — logo left, metadata center, QR right (white on black)
- *   Card:        frame 12 photo (cover-fit) + full signature strokes overlay
+ *   Card:        final hero card frame (cover-fit) + legacy strokes overlay when needed
  */
 
-import { Resvg, initWasm } from 'https://esm.sh/@resvg/resvg-wasm@2.4.1';
+import { Resvg, initWasm } from 'https://esm.sh/@resvg/resvg-wasm@2.4.1?target=deno';
 import {
   assert,
   handleRequest,
-  HttpError,
   json,
   parseJson,
   requireString,
@@ -28,7 +27,7 @@ import { OPHINIA_LOGO_WHITE_DATA_URI } from '../_shared/ophinia-logo-white.ts';
 // Constants
 // ---------------------------------------------------------------------------
 
-const OUTPUT_BUCKET = 'autograph-videos';
+const OUTPUT_BUCKET = 'print-layouts';
 
 // Canvas: 5×7.5 inches @ 300 DPI
 const CANVAS_W = 1500;
@@ -144,7 +143,7 @@ function getStoragePublicUrl(path: string): string {
 let _wasmReady = false;
 async function ensureWasm() {
   if (!_wasmReady) {
-    await initWasm(fetch('https://esm.sh/@resvg/resvg-wasm@2.4.1/index_bg.wasm'));
+    await initWasm(fetch('https://esm.sh/@resvg/resvg-wasm@2.4.1/index_bg.wasm?target=deno'));
     _wasmReady = true;
   }
 }
@@ -374,17 +373,19 @@ Deno.serve((req) =>
       seriesName = series?.name ?? null;
     }
 
-    // Fetch frame 12 (index 11) — the final signed frame
+    // Fetch the final hero card frame.
     const frameUrls: string[] = autograph.preview_frame_urls ?? [];
     assert(frameUrls.length > 0, 422, 'No preview frames available for this autograph.');
 
-    const frame12Url = frameUrls[11] ?? frameUrls[frameUrls.length - 1];
-    const transformedUrl = toTransformUrl(frame12Url, CARD_W, CARD_H);
-    console.log('[generate-print-layout] fetching frame 12');
+    const finalFrameUrl = frameUrls[frameUrls.length - 1];
+    const transformedUrl = toTransformUrl(finalFrameUrl, CARD_W, CARD_H);
+    console.log('[generate-print-layout] fetching hero frame');
     const frameDataUri = await fetchAsBase64(transformedUrl);
-    console.log('[generate-print-layout] frame fetched, building SVG');
+    console.log('[generate-print-layout] hero frame fetched, building SVG');
 
-    const strokes = Array.isArray(autograph.strokes_json) ? autograph.strokes_json : [];
+    const strokes = frameUrls.length <= 5
+      ? []
+      : (Array.isArray(autograph.strokes_json) ? autograph.strokes_json : []);
 
     const svgContent = buildLayoutSvg({
       frameDataUri,
