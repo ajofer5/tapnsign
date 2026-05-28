@@ -1238,7 +1238,7 @@ const styles = StyleSheet.create({
   },
   marketplaceThumbnail: {
     width: '100%',
-    aspectRatio: 60 / 85,
+    aspectRatio: 60 / 100,
     height: undefined,
     borderRadius: 0,
   },

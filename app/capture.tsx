@@ -79,6 +79,14 @@ function normalizeCapturedFrames(rawFrames: CapturedFrame[]): CapturedFrame[] {
   });
 }
 
+function getFlattenedNameScale(template: CardTemplate, creatorName: string) {
+  const baseScale = (FLATTENED_PREVIEW_FRAME_EXPORT_WIDTH / template.baseWidth) * 0.82;
+  const trimmedName = creatorName.trim();
+  if (trimmedName.length <= 18) return baseScale;
+  if (trimmedName.length <= 24) return baseScale * 0.94;
+  return baseScale * 0.9;
+}
+
 export default function CaptureScreen() {
   const { personalized_request_id } = useLocalSearchParams<{ personalized_request_id?: string }>();
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
@@ -755,7 +763,7 @@ const stylePickStyles = StyleSheet.create({
   },
   cardPreviewWrapper: {
     width: 180,
-    aspectRatio: 60 / 85,
+    aspectRatio: 60 / 100,
     borderRadius: 12,
     overflow: 'hidden',
   },
@@ -942,7 +950,7 @@ function ReviewScreen({
             <AutographCardCanvas
               template={template}
               creatorName={creatorName}
-              nameScale={FLATTENED_PREVIEW_FRAME_EXPORT_WIDTH / template.baseWidth}
+              nameScale={getFlattenedNameScale(template, creatorName)}
               photoSource={{ uri: frame.uri }}
               captureWidth={captureSize.width}
               captureHeight={captureSize.height}
@@ -1007,7 +1015,7 @@ const styles = StyleSheet.create({
   },
   captureShell: {
     width: '100%',
-    aspectRatio: 60 / 85,
+    aspectRatio: 60 / 100,
     backgroundColor: 'white',
   },
   captureGestureLayer: {
@@ -1120,7 +1128,7 @@ const styles = StyleSheet.create({
   },
   reviewCardWrapper: {
     width: '100%',
-    aspectRatio: 60 / 85,
+    aspectRatio: 60 / 100,
   },
   reviewCardCanvas: {
     flex: 1,

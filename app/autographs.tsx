@@ -1969,7 +1969,7 @@ const styles = StyleSheet.create({
   },
   thumbnail: {
     width: '100%',
-    aspectRatio: 60 / 85,
+    aspectRatio: 60 / 100,
     borderRadius: 0,
     backgroundColor: '#d9d9d9',
     justifyContent: 'center',

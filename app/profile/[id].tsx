@@ -1366,7 +1366,7 @@ const styles = StyleSheet.create({
   },
   profileListingThumbnail: {
     width: '100%',
-    aspectRatio: 60 / 85,
+    aspectRatio: 60 / 100,
     height: undefined,
     borderRadius: 0,
   },
