@@ -1,3 +1,5 @@
+drop function if exists public.get_public_certificate(text);
+
 create or replace function public.get_public_certificate(p_certificate_id text)
 returns table (
   certificate_id text,
