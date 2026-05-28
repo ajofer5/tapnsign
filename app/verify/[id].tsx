@@ -16,6 +16,7 @@ type AutographRecord = {
   video_url: string | null;
   thumbnail_url: string | null;
   preview_frame_urls: string[] | null;
+  preview_frame_times_ms: number[] | null;
   strokes_json: Stroke[];
   capture_width: number;
   capture_height: number;
@@ -320,6 +321,7 @@ export default function VerifyScreen() {
             videoUrl={r.video_url}
             thumbnailUrl={r.thumbnail_url}
             previewFrameUrls={r.preview_frame_urls ?? []}
+            previewFrameTimesMs={r.preview_frame_times_ms ?? []}
             templateId={r.template_id ?? 'classic'}
             strokes={r.strokes_json ?? []}
             strokeColor={r.stroke_color ?? '#001B5C'}

@@ -1,10 +1,13 @@
 import { AutographPlayer } from '@/components/autograph-player';
+import { CardMetadataBlock } from '@/components/card-metadata-block';
 import { CertificateSheet } from '@/components/certificate-sheet';
 import { NameWithSequence } from '@/components/public-video-card';
 import { PublicVideoThumbnail } from '@/components/public-video-thumbnail';
 import { BrandColors, BrandFonts } from '@/constants/theme';
+import { fetchAutographTemplateIds } from '@/lib/autograph-template';
 import { callEdgeFunction } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
+import { buildAutographUrl, buildVerifyUrl } from '@/lib/public-links';
 import { supabase } from '@/lib/supabase';
 import { useStripe } from '@stripe/stripe-react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -57,22 +60,31 @@ type AutographItem = {
   creatorId: string;
   certificateId: string;
   createdAt: string;
-  videoUri: string;
+  videoUri: string | null;
+  previewFrameUrls: string[];
+  previewFrameTimesMs: number[];
+  thumbnailUrl: string | null;
   strokes: Stroke[];
   captureWidth?: number;
   captureHeight?: number;
   visibility: 'private' | 'public';
   saleState: 'not_for_sale' | 'fixed';
+  listingMode: 'buy_now' | 'make_offer';
   isForSale: boolean;
   priceCents: number | null;
   openToTrade: boolean;
+  autoDeclineBelow: boolean;
+  autoAcceptAbove: boolean;
   strokeColor: string;
+  templateId?: string | null;
   creatorName: string | null;
+  creatorNameVerified: boolean;
   creatorSequenceNumber: number | null;
   seriesName: string | null;
   seriesSequenceNumber: number | null;
   seriesMaxSize: number | null;
   seriesId: string | null;
+  printCount: number | null;
 };
 
 type IncomingOfferItem = {
@@ -81,12 +93,10 @@ type IncomingOfferItem = {
   creatorName: string;
   creatorSequenceNumber: number | null;
   amountCents: number;
+  status: 'pending' | 'accepted' | 'on_hold';
   expiresAt: string | null;
-};
-
-type AcceptedOfferItem = {
-  autographId: string;
   paymentDueAt: string | null;
+  createdAt: string;
 };
 
 type PrintPreview = {
@@ -94,13 +104,58 @@ type PrintPreview = {
   total_print_count: number;
   next_print_sequence_number: number;
   next_print_label: string;
-  owner_has_printed: boolean;
-  owner_print: {
+  owner_print_count: number;
+  latest_owner_print: {
     id: string;
     print_sequence_number: number;
     print_label: string;
     created_at: string;
   } | null;
+  item_cents: number | null;
+  shipping_cents: number | null;
+};
+
+type OwnedListingRow = {
+  id: string;
+  creator_id: string;
+  owner_id: string;
+  certificate_id: string;
+  created_at: string;
+  thumbnail_url: string | null;
+  video_url: string | null;
+  preview_frame_urls: string[] | null;
+  preview_frame_times_ms: number[] | null;
+  strokes_json: Stroke[] | null;
+  capture_width: number | null;
+  capture_height: number | null;
+  stroke_color: string | null;
+  template_id?: string | null;
+  creator_display_name: string | null;
+  creator_name_verified: boolean | null;
+  creator_sequence_number: number | null;
+  series_name: string | null;
+  series_sequence_number: number | null;
+  series_max_size: number | null;
+  sale_state: 'not_for_sale' | 'fixed' | null;
+  listing_mode: 'buy_now' | 'make_offer' | null;
+  is_for_sale: boolean | null;
+  price_cents: number | null;
+  auto_decline_below: boolean | null;
+  auto_accept_above: boolean | null;
+  offer_locked_until: string | null;
+  print_count: number | null;
+};
+
+type OfferQueueRow = {
+  autograph_id: string;
+  offer_id: string;
+  amount_cents: number;
+  status: 'pending' | 'accepted' | 'on_hold';
+  expires_at: string | null;
+  payment_due_at: string | null;
+  created_at: string;
+  creator_name: string | null;
+  creator_sequence_number: number | null;
 };
 
 function formatDateTime(value: string) {
@@ -114,6 +169,25 @@ function formatDateTime(value: string) {
   });
 }
 
+function formatDateTimeWithClock(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return date.toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+function formatCardDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return `${date.getMonth() + 1}/${date.getDate()}/${String(date.getFullYear()).slice(-2)}`;
+}
+
 function formatSeriesEdition(item: Pick<AutographItem, 'seriesSequenceNumber' | 'seriesMaxSize'>) {
   if (item.seriesSequenceNumber != null && item.seriesMaxSize != null) {
     return `${item.seriesSequenceNumber} of ${item.seriesMaxSize}`;
@@ -121,15 +195,72 @@ function formatSeriesEdition(item: Pick<AutographItem, 'seriesSequenceNumber' | 
   return null;
 }
 
+function getErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+  if (typeof error === 'string' && error.trim()) {
+    return error;
+  }
+  return fallback;
+}
+
+function mapOwnedListingRow(row: OwnedListingRow): AutographItem {
+  return {
+    id: row.id,
+    creatorId: row.creator_id,
+    certificateId: row.certificate_id,
+    createdAt: row.created_at,
+    videoUri: row.video_url ?? null,
+    previewFrameUrls: row.preview_frame_urls ?? [],
+    previewFrameTimesMs: row.preview_frame_times_ms ?? [],
+    thumbnailUrl: row.thumbnail_url ?? null,
+    strokes: row.strokes_json ?? [],
+    captureWidth: row.capture_width ?? undefined,
+    captureHeight: row.capture_height ?? undefined,
+    visibility: 'public',
+    saleState: row.sale_state ?? (row.is_for_sale ? 'fixed' : 'not_for_sale'),
+    listingMode: row.listing_mode === 'buy_now' ? 'buy_now' : 'make_offer',
+    isForSale: !!row.is_for_sale,
+    priceCents: row.price_cents ?? null,
+    openToTrade: false,
+    autoDeclineBelow: !!row.auto_decline_below,
+    autoAcceptAbove: !!row.auto_accept_above,
+    strokeColor: row.stroke_color ?? '#001B5C',
+    templateId: row.template_id ?? null,
+    creatorName: row.creator_display_name ?? null,
+    creatorNameVerified: !!row.creator_name_verified,
+    creatorSequenceNumber: row.creator_sequence_number ?? null,
+    seriesName: row.series_name ?? null,
+    seriesSequenceNumber: row.series_sequence_number ?? null,
+    seriesMaxSize: row.series_max_size ?? null,
+    seriesId: null,
+    printCount: row.print_count ?? null,
+  };
+}
+
+function mapOfferQueueRow(row: OfferQueueRow): IncomingOfferItem {
+  return {
+    id: row.offer_id,
+    autographId: row.autograph_id,
+    creatorName: row.creator_name ?? 'Unknown',
+    creatorSequenceNumber: row.creator_sequence_number ?? null,
+    amountCents: row.amount_cents,
+    status: row.status,
+    expiresAt: row.expires_at ?? null,
+    paymentDueAt: row.payment_due_at ?? null,
+    createdAt: row.created_at,
+  };
+}
+
 export default function AutographsScreen() {
   const router = useRouter();
   const [data, setData] = useState<AutographItem[]>([]);
   const [incomingOffers, setIncomingOffers] = useState<IncomingOfferItem[]>([]);
-  const [acceptedOffers, setAcceptedOffers] = useState<Record<string, AcceptedOfferItem>>({});
   const [selectedItem, setSelectedItem] = useState<AutographItem | null>(null);
   const [certItem, setCertItem] = useState<AutographItem | null>(null);
-  const [shareItem, setShareItem] = useState<AutographItem | null>(null);
   const [sellItems, setSellItems] = useState<AutographItem[]>([]);
+  const [listingMode, setListingMode] = useState<'buy_now' | 'make_offer'>('buy_now');
   const [priceInput, setPriceInput] = useState('');
   const [autoDeclineBelow, setAutoDeclineBelow] = useState(false);
   const [autoAcceptAbove, setAutoAcceptAbove] = useState(false);
@@ -159,6 +290,7 @@ export default function AutographsScreen() {
   const [printPreview, setPrintPreview] = useState<PrintPreview | null>(null);
   const [loadingPrintPreview, setLoadingPrintPreview] = useState(false);
   const [creatingPrint, setCreatingPrint] = useState(false);
+  const [printSessionKey, setPrintSessionKey] = useState('');
 
   // Print order flow
   const [printStep, setPrintStep] = useState<'preview' | 'shipping' | 'processing'>('preview');
@@ -186,6 +318,25 @@ export default function AutographsScreen() {
 
   const closeSellSheet = () => {
     setSellItems([]);
+    setListingMode('buy_now');
+    setPriceInput('');
+    setAutoDeclineBelow(false);
+    setAutoAcceptAbove(false);
+  };
+
+  const openSellSheet = (items: AutographItem[]) => {
+    setSellItems(items);
+
+    if (items.length === 1) {
+      const item = items[0];
+      setListingMode(item.isForSale ? item.listingMode : 'buy_now');
+      setPriceInput(item.priceCents != null ? (item.priceCents / 100).toFixed(2) : '');
+      setAutoDeclineBelow(item.isForSale ? item.autoDeclineBelow : false);
+      setAutoAcceptAbove(item.isForSale ? item.autoAcceptAbove : false);
+      return;
+    }
+
+    setListingMode('buy_now');
     setPriceInput('');
     setAutoDeclineBelow(false);
     setAutoAcceptAbove(false);
@@ -195,8 +346,8 @@ export default function AutographsScreen() {
     if (sellItems.length === 0) return;
 
     const dollars = parseFloat(priceInput);
-    if (isNaN(dollars) || dollars < 10) {
-      Alert.alert('Invalid price', 'Estimated value must be at least $10.00.');
+    if (isNaN(dollars) || dollars < 5) {
+      Alert.alert('Invalid price', 'Estimated value must be at least $5.00.');
       return;
     }
     setSaving(true);
@@ -208,13 +359,14 @@ export default function AutographsScreen() {
         await callEdgeFunction('create-listing', {
           autograph_id: item.id,
           price_cents: priceCents,
+          listing_mode: listingMode,
           open_to_trade: false,
           auto_decline_below: autoDeclineBelow,
           auto_accept_above: autoAcceptAbove,
         });
         setData((prev) => prev.map((i) =>
           i.id === item.id
-            ? { ...i, visibility: 'public', saleState: 'fixed', isForSale: true, priceCents, openToTrade: false }
+            ? { ...i, visibility: 'public', saleState: 'fixed', listingMode, isForSale: true, priceCents, openToTrade: false }
             : i
         ));
       } catch (error) {
@@ -231,25 +383,28 @@ export default function AutographsScreen() {
       const message = `${succeeded} listed, ${failed} failed.`;
       Alert.alert('Partially listed', firstError ? `${message}\n\n${firstError}` : message);
     } else {
-      Alert.alert('Listed!', `${succeeded} autograph${succeeded !== 1 ? 's' : ''} listed with an estimated value of $${dollars.toFixed(2)} each.`);
+      const listingDescription = listingMode === 'buy_now'
+        ? `at a fixed price of $${dollars.toFixed(2)} each`
+        : `with an estimated value of $${dollars.toFixed(2)} each`;
+      Alert.alert('Listed!', `${succeeded} autograph${succeeded !== 1 ? 's' : ''} listed ${listingDescription}.`);
     }
   };
 
   const handleRemoveFromSale = (item: AutographItem) => {
     Alert.alert(
-      'Make Not for Sale',
+      'Remove Listing',
       'Remove this autograph from the marketplace and keep it in your collection?',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Make Not for Sale',
+          text: 'Remove Listing',
           style: 'destructive',
           onPress: async () => {
             try {
               await callEdgeFunction('remove-listing', { autograph_id: item.id });
               setData((prev) => prev.map((i) =>
                 i.id === item.id
-                  ? { ...i, saleState: 'not_for_sale', isForSale: false, priceCents: null, openToTrade: false }
+                  ? { ...i, saleState: 'not_for_sale', listingMode: 'make_offer', isForSale: false, priceCents: null, openToTrade: false }
                   : i
               ));
             } catch {
@@ -259,29 +414,6 @@ export default function AutographsScreen() {
         },
       ]
     );
-  };
-
-  const handleSetVisibility = async (item: AutographItem, visibility: 'private' | 'public') => {
-    if (item.saleState !== 'not_for_sale') {
-      Alert.alert('Unavailable', 'Only not-for-sale autographs can change visibility directly.');
-      return;
-    }
-
-    try {
-      await callEdgeFunction('set-autograph-visibility', {
-        autograph_id: item.id,
-        visibility,
-      });
-
-      setData((prev) => prev.map((i) => (
-        i.id === item.id ? { ...i, visibility } : i
-      )));
-      setSelectedItem((prev) => (
-        prev?.id === item.id ? { ...prev, visibility } : prev
-      ));
-    } catch {
-      Alert.alert('Error', 'Could not update visibility. Please try again.');
-    }
   };
 
   const handleDelete = (item: AutographItem) => {
@@ -318,6 +450,7 @@ export default function AutographsScreen() {
 
   const openPrintPreview = async (item: AutographItem) => {
     setLoadingPrintPreview(true);
+    setPrintSessionKey(`${Date.now()}-${Math.random().toString(36).slice(2)}`);
     try {
       const preview = await callEdgeFunction<PrintPreview>('preview-autograph-print', {
         autograph_id: item.id,
@@ -345,7 +478,7 @@ export default function AutographsScreen() {
   };
 
   const handleProceedToShipping = () => {
-    if (!printPreview || printPreview.owner_has_printed) return;
+    if (!printPreview) return;
     setPrintStep('shipping');
   };
 
@@ -375,12 +508,12 @@ export default function AutographsScreen() {
         payment_intent_id: string;
         payment_event_id: string;
         amount_cents: number;
-      }>('create-print-payment-intent', { autograph_id: printItem.id });
+      }>('create-print-payment-intent', { autograph_id: printItem.id, idempotency_key: printSessionKey });
 
       // Step 2: present Stripe payment sheet
       const { error: initError } = await initPaymentSheet({
         paymentIntentClientSecret: paymentData.client_secret,
-        merchantDisplayName: 'TapnSign',
+        merchantDisplayName: 'Ophinia',
       });
 
       if (initError) {
@@ -400,10 +533,7 @@ export default function AutographsScreen() {
         return;
       }
 
-      // Step 3: submit print order to Prodigi via edge function
-      // Note: image generation (view-shot + Replicate upscale) will be wired in
-      // once the Apple Developer account is active and native modules are testable.
-      // For now we pass placeholder URLs that will be replaced.
+      // Step 3: submit print order — edge function generates the 8×12 layout automatically
       await callEdgeFunction('submit-print-order', {
         autograph_id: printItem.id,
         payment_event_id: paymentData.payment_event_id,
@@ -413,17 +543,19 @@ export default function AutographsScreen() {
         shipping_city: shippingCity.trim(),
         shipping_state: shippingState.trim(),
         shipping_zip: shippingZip.trim(),
-        image_url_8x12: `${process.env.EXPO_PUBLIC_APP_URL ?? 'https://tapnsign.app'}/prints/${printItem.id}/8x12.jpg`,
       });
 
-      setPrintPreview((prev) => prev ? ({ ...prev, owner_has_printed: true }) : prev);
+      setPrintPreview((prev) => prev ? ({ ...prev, owner_print_count: (prev.owner_print_count ?? 0) + 1 }) : prev);
       Alert.alert(
         'Print Order Placed!',
         "Your official print is on its way. You'll receive a shipping confirmation from our print partner."
       );
       closePrintPreview();
-    } catch {
-      Alert.alert('Print Order Failed', 'Could not place your print order. Please try again.');
+    } catch (error) {
+      Alert.alert(
+        'Print Order Failed',
+        getErrorMessage(error, 'Could not place your print order. Please try again.')
+      );
       setPrintStep('shipping');
     } finally {
       setCreatingPrint(false);
@@ -622,14 +754,28 @@ export default function AutographsScreen() {
     }
   };
 
-  const appUrl = process.env.EXPO_PUBLIC_APP_URL ?? 'https://tapnsign.app';
-
   const openVideo = (item: AutographItem) => {
     setSelectedItem(item);
   };
 
   const closeModal = () => {
     setSelectedItem(null);
+  };
+
+  const shareAutograph = async (item: AutographItem) => {
+    const autographUrl = buildAutographUrl(item.id);
+    try {
+      await Share.share(
+        Platform.OS === 'ios'
+          ? {
+              message: `Check out this verified autograph from ${item.creatorName ?? 'a creator'} on Ophinia.`,
+              url: autographUrl,
+            }
+          : {
+              message: `Check out this verified autograph from ${item.creatorName ?? 'a creator'} on Ophinia.\n${autographUrl}`,
+            }
+      );
+    } catch {}
   };
 
   const handleModalShow = () => {};
@@ -643,89 +789,34 @@ export default function AutographsScreen() {
         } catch {}
 
         Promise.all([
-          supabase
-            .from('autographs')
-            .select('*, creator:creator_id ( display_name )')
-            .eq('owner_id', user.id)
-            .eq('status', 'active')
-            .order('created_at', { ascending: false }),
-          supabase
-            .from('autograph_offers')
-            .select('id, autograph_id, amount_cents, expires_at, autograph:autograph_id ( creator_sequence_number, creator:creator_id ( display_name ) )')
-            .eq('owner_id', user.id)
-            .eq('status', 'pending')
-            .order('created_at', { ascending: false }),
-          supabase
-            .from('autograph_offers')
-            .select('autograph_id, payment_due_at')
-            .eq('owner_id', user.id)
-            .eq('status', 'accepted')
-            .is('accepted_transfer_id', null),
-        ]).then(async ([autographsRes, offersRes, acceptedOffersRes]) => {
+          supabase.rpc('get_owned_listing_feed', {
+            p_owner_id: user.id,
+            p_limit: 200,
+            p_before_created_at: null,
+            p_before_id: null,
+          }),
+          supabase.rpc('get_offer_queue_feed', {
+            p_owner_id: user.id,
+            p_limit: 200,
+            p_before_headline_amount: null,
+            p_before_headline_created_at: null,
+            p_before_autograph_id: null,
+          }),
+        ]).then(async ([autographsRes, offersRes]) => {
           const rows = autographsRes.data;
           const error = autographsRes.error;
           if (error) { console.log('Load autographs error:', error); setData([]); return; }
-          const items: AutographItem[] = (rows ?? []).map((row: any) => ({
-            id: row.id,
-            creatorId: row.creator_id,
-            certificateId: row.certificate_id,
-            createdAt: row.created_at,
-            videoUri: row.video_url,
-            strokes: row.strokes_json ?? [],
-            captureWidth: row.capture_width,
-            captureHeight: row.capture_height,
-            visibility: row.visibility ?? 'private',
-            saleState: row.sale_state ?? (row.is_for_sale ? 'fixed' : 'not_for_sale'),
-            isForSale: row.is_for_sale ?? false,
-            priceCents: row.price_cents ?? null,
-            openToTrade: row.open_to_trade ?? false,
-            strokeColor: row.stroke_color ?? '#FA0909',
-            creatorName: (row.creator as any)?.display_name ?? null,
-            creatorSequenceNumber: row.creator_sequence_number ?? null,
-            seriesName: null,
-            seriesSequenceNumber: row.series_sequence_number ?? null,
-            seriesMaxSize: null,
-            seriesId: row.series_id ?? null,
+          const items: AutographItem[] = (rows as OwnedListingRow[] ?? []).map(mapOwnedListingRow);
+          const templateIds = await fetchAutographTemplateIds(items.map((item) => item.id));
+          const enrichedItems = items.map((item) => ({
+            ...item,
+            templateId: templateIds[item.id] ?? item.templateId ?? 'classic',
           }));
+          const offerRows = (offersRes.data as OfferQueueRow[] ?? []);
+          const offers = offerRows.map(mapOfferQueueRow);
 
-          const offers: IncomingOfferItem[] = (offersRes.data ?? []).map((offer: any) => ({
-            id: offer.id,
-            autographId: offer.autograph_id,
-            creatorName: (offer.autograph as any)?.creator?.display_name ?? 'Unknown',
-            creatorSequenceNumber: (offer.autograph as any)?.creator_sequence_number ?? null,
-            amountCents: offer.amount_cents,
-            expiresAt: offer.expires_at ?? null,
-          }));
-
-          const acceptedOfferMap: Record<string, AcceptedOfferItem> = {};
-          for (const offer of acceptedOffersRes.data ?? []) {
-            acceptedOfferMap[offer.autograph_id] = {
-              autographId: offer.autograph_id,
-              paymentDueAt: offer.payment_due_at ?? null,
-            };
-          }
-
-          // Fetch series names for any autographs that belong to a series
-          const seriesIds = [...new Set(items.map((i) => i.seriesId).filter(Boolean))] as string[];
-          if (seriesIds.length > 0) {
-            const { data: seriesRows } = await supabase
-              .from('series')
-              .select('id, name, max_size')
-              .in('id', seriesIds);
-            const seriesMap: Record<string, { name: string; max_size: number }> = {};
-            for (const s of seriesRows ?? []) seriesMap[s.id] = { name: s.name, max_size: s.max_size };
-            items.forEach((i) => {
-              if (i.seriesId && seriesMap[i.seriesId]) {
-                i.seriesName = seriesMap[i.seriesId].name;
-                i.seriesMaxSize = seriesMap[i.seriesId].max_size;
-              }
-            });
-          }
-
-          setData(items);
+          setData(enrichedItems);
           setIncomingOffers(offers);
-          setAcceptedOffers(acceptedOfferMap);
-
         });
       })();
     }, [user])
@@ -786,8 +877,36 @@ export default function AutographsScreen() {
     [data]
   );
 
-  return (
-    <View style={styles.container}>
+  const offersByAutograph = useMemo(() => {
+    const grouped = new Map<string, IncomingOfferItem[]>();
+
+    for (const offer of incomingOffers) {
+      const existing = grouped.get(offer.autographId) ?? [];
+      existing.push(offer);
+      grouped.set(offer.autographId, existing);
+    }
+
+    return Array.from(grouped.entries()).map(([autographId, offers]) => {
+      const accepted = offers.find((offer) => offer.status === 'accepted') ?? null;
+      const onHold = offers
+        .filter((offer) => offer.status === 'on_hold')
+        .sort((a, b) => b.amountCents - a.amountCents || new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+      const pending = offers
+        .filter((offer) => offer.status === 'pending')
+        .sort((a, b) => b.amountCents - a.amountCents || new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
+      return {
+        autographId,
+        autograph: autographMap[autographId] ?? null,
+        accepted,
+        onHold,
+        pending,
+      };
+    });
+  }, [incomingOffers, autographMap]);
+
+  const listHeader = (
+    <>
       <View style={styles.filterHeaderRow}>
         {seriesSelectionMode ? (
           <>
@@ -830,70 +949,119 @@ export default function AutographsScreen() {
           </>
         )}
       </View>
-      {incomingOffers.length > 0 && !seriesSelectionMode && (
+      {offersByAutograph.length > 0 && !seriesSelectionMode && (
         <View style={styles.offerSection}>
-          <Text style={styles.offerSectionTitle}>Offers Requiring Action</Text>
-          {incomingOffers.map((offer) => {
-            const autograph = autographMap[offer.autographId];
+          <Text style={styles.offerSectionTitle}>Offer Queue</Text>
+          {offersByAutograph.map((group) => {
+            const autograph = group.autograph;
+            const headlineOffer = group.accepted ?? group.pending[0] ?? group.onHold[0] ?? null;
+            if (!headlineOffer) return null;
+
             return (
-            <Pressable
-              key={offer.id}
-              style={styles.offerCard}
-              onPress={() => {
-                if (autograph) openVideo(autograph);
-              }}
-            >
-              <View style={styles.offerCardTop}>
-                {autograph ? (
-                  <PublicVideoThumbnail
-                    videoUrl={autograph.videoUri}
-                    strokes={autograph.strokes ?? []}
-                    captureWidth={autograph.captureWidth || 1}
-                    captureHeight={autograph.captureHeight || 1}
-                    strokeColor={autograph.strokeColor}
-                    shellStyle={styles.offerThumbnail}
-                  />
-                ) : (
-                  <View style={styles.offerThumbnail}>
-                    <Text style={styles.thumbnailText}>Video</Text>
+              <Pressable
+                key={group.autographId}
+                style={styles.offerCard}
+                onPress={() => {
+                  if (autograph) openVideo(autograph);
+                }}
+              >
+                <View style={styles.offerCardTop}>
+                  {autograph ? (
+                    <PublicVideoThumbnail
+                      videoUrl={autograph.videoUri}
+                      thumbnailUrl={autograph.thumbnailUrl}
+                      previewFrameUrls={autograph.previewFrameUrls}
+                      previewFrameTimesMs={autograph.previewFrameTimesMs}
+                      strokes={autograph.strokes ?? []}
+                      captureWidth={autograph.captureWidth || 1}
+                      captureHeight={autograph.captureHeight || 1}
+                      strokeColor={autograph.strokeColor}
+                      shellStyle={styles.offerThumbnail}
+                    />
+                  ) : (
+                    <View style={styles.offerThumbnail}>
+                      <Text style={styles.thumbnailText}>Video</Text>
+                    </View>
+                  )}
+                  <View style={{ flex: 1 }}>
+                    <NameWithSequence name={headlineOffer.creatorName ?? ''} sequenceNumber={headlineOffer.creatorSequenceNumber} style={styles.offerCardTitle} />
+                    {autograph ? (
+                      <CardMetadataBlock
+                        compact
+                        sequenceNumber={autograph.creatorSequenceNumber}
+                        capturedAt={autograph.createdAt}
+                        printCount={autograph.printCount}
+                        seriesName={autograph.seriesName}
+                        seriesEdition={formatSeriesEdition(autograph)}
+                      />
+                    ) : null}
+                    {group.accepted ? (
+                      <Text style={styles.offerCardMeta}>
+                        1 awaiting payment · due {formatDateTimeWithClock(group.accepted.paymentDueAt ?? '')}
+                      </Text>
+                    ) : null}
+                    {group.pending.length > 0 ? (
+                      <Text style={styles.offerCardMeta}>
+                        {group.pending.length} active offer{group.pending.length !== 1 ? 's' : ''} · highest ${(group.pending[0].amountCents / 100).toFixed(2)}
+                      </Text>
+                    ) : null}
+                    {!group.accepted && group.pending[0]?.expiresAt ? (
+                      <Text style={styles.offerCardMeta}>
+                        Offer expires {formatDateTimeWithClock(group.pending[0].expiresAt)}
+                      </Text>
+                    ) : null}
+                    {group.onHold.length > 0 ? (
+                      <Text style={styles.offerCardMeta}>
+                        {group.onHold.length} backup offer{group.onHold.length !== 1 ? 's' : ''} on hold
+                      </Text>
+                    ) : null}
+                    <Text style={styles.offerCardHint}>Tap card to preview video</Text>
                   </View>
-                )}
-                <View style={{ flex: 1 }}>
-                  <NameWithSequence name={offer.creatorName ?? ''} sequenceNumber={offer.creatorSequenceNumber} style={styles.offerCardTitle} />
-                  <Text style={styles.offerCardMeta}>
-                    Expires {formatDateTime(offer.expiresAt ?? '')}
-                  </Text>
-                  <Text style={styles.offerCardHint}>Tap card to preview video</Text>
+                  <Text style={styles.offerCardAmount}>${(headlineOffer.amountCents / 100).toFixed(2)}</Text>
                 </View>
-                <Text style={styles.offerCardAmount}>${(offer.amountCents / 100).toFixed(2)}</Text>
-              </View>
-              <View style={styles.offerCardActions}>
-                <Pressable
-                  style={[styles.offerPrimaryButton, offerActioningId === offer.id && styles.offerButtonDisabled]}
-                  onPress={() => handleIncomingOffer(offer.id, 'accept')}
-                  disabled={offerActioningId === offer.id}
-                >
-                  <Text style={styles.offerPrimaryButtonText}>{offerActioningId === offer.id ? '...' : 'Accept'}</Text>
-                </Pressable>
-                <Pressable
-                  style={[styles.offerSecondaryButton, offerActioningId === offer.id && styles.offerButtonDisabled]}
-                  onPress={() => handleIncomingOffer(offer.id, 'decline')}
-                  disabled={offerActioningId === offer.id}
-                >
-                  <Text style={styles.offerSecondaryButtonText}>Decline</Text>
-                </Pressable>
-              </View>
-            </Pressable>
-          )})}
+                {group.accepted ? (
+                  <View style={styles.offerStatusPanel}>
+                    <Text style={styles.offerStatusLabel}>Awaiting Buyer Payment</Text>
+                    <Text style={styles.offerStatusDetail}>
+                      Backup offers are preserved and will reactivate if payment is not completed.
+                    </Text>
+                  </View>
+                ) : group.pending[0] ? (
+                  <View style={styles.offerCardActions}>
+                    <Pressable
+                      style={[styles.offerPrimaryButton, offerActioningId === group.pending[0].id && styles.offerButtonDisabled]}
+                      onPress={() => handleIncomingOffer(group.pending[0].id, 'accept')}
+                      disabled={offerActioningId === group.pending[0].id}
+                    >
+                      <Text style={styles.offerPrimaryButtonText}>{offerActioningId === group.pending[0].id ? '...' : 'Accept'}</Text>
+                    </Pressable>
+                    <Pressable
+                      style={[styles.offerSecondaryButton, offerActioningId === group.pending[0].id && styles.offerButtonDisabled]}
+                      onPress={() => handleIncomingOffer(group.pending[0].id, 'decline')}
+                      disabled={offerActioningId === group.pending[0].id}
+                    >
+                      <Text style={styles.offerSecondaryButtonText}>Decline</Text>
+                    </Pressable>
+                  </View>
+                ) : null}
+              </Pressable>
+            );
+          })}
         </View>
       )}
+    </>
+  );
+
+  return (
+    <View style={styles.container}>
       <FlatList
         data={filteredData}
         keyExtractor={(item) => item.id}
         numColumns={2}
         columnWrapperStyle={styles.gridRow}
+        ListHeaderComponent={listHeader}
         ListEmptyComponent={emptyComponent}
-        contentContainerStyle={{ paddingBottom: 24 }}
+        contentContainerStyle={styles.listContent}
         renderItem={({ item }) => {
           const isSelectable = seriesSelectionMode && canCreateSeriesWithItem(item);
           const isSelected = selectedIds.has(item.id);
@@ -924,12 +1092,26 @@ export default function AutographsScreen() {
               <View style={styles.thumbnailWrap}>
                 <PublicVideoThumbnail
                   videoUrl={item.videoUri}
+                  thumbnailUrl={item.thumbnailUrl}
+                  previewFrameUrls={item.previewFrameUrls}
+                  previewFrameTimesMs={item.previewFrameTimesMs}
                   strokes={item.strokes ?? []}
                   captureWidth={item.captureWidth || 1}
                   captureHeight={item.captureHeight || 1}
                   strokeColor={item.strokeColor}
                   shellStyle={styles.thumbnail}
                 />
+                {item.isForSale && (
+                  <Pressable
+                    style={styles.listedBadge}
+                    onPress={(event) => {
+                      event.stopPropagation();
+                      openSellSheet([item]);
+                    }}
+                  >
+                    <Text style={styles.listedBadgeText}>Listed</Text>
+                  </Pressable>
+                )}
                 {seriesSelectionMode && (
                   <View style={[styles.selectionCheckCircle, isSelected && styles.selectionCheckCircleSelected, !isSelectable && styles.selectionCheckCircleDisabled]}>
                     {isSelected && <Text style={styles.selectionCheckTick}>✓</Text>}
@@ -938,11 +1120,14 @@ export default function AutographsScreen() {
               </View>
               <View style={styles.gridCardInfo}>
                 <NameWithSequence name={item.creatorName ?? ''} sequenceNumber={item.creatorSequenceNumber} style={styles.gridCardName} />
-                {item.seriesName ? (
-                  <Text style={styles.gridCardSeries} numberOfLines={1}>
-                    {item.seriesName}{formatSeriesEdition(item) ? ` · ${formatSeriesEdition(item)}` : ''}
-                  </Text>
-                ) : null}
+                <CardMetadataBlock
+                  compact
+                  sequenceNumber={item.creatorSequenceNumber}
+                  capturedAt={item.createdAt}
+                  printCount={item.printCount}
+                  seriesName={item.seriesName}
+                  seriesEdition={formatSeriesEdition(item)}
+                />
               </View>
             </Pressable>
           );
@@ -967,18 +1152,44 @@ export default function AutographsScreen() {
 
           {selectedItem && (
             <>
-              <AutographPlayer
-                videoUrl={selectedItem.videoUri}
-                strokes={selectedItem.strokes ?? []}
-                strokeColor={selectedItem.strokeColor}
-                captureWidth={selectedItem.captureWidth || 1}
-                captureHeight={selectedItem.captureHeight || 1}
-                onCertificate={() => setCertItem(selectedItem)}
-                onLongPress={() => setContextMenuVisible(true)}
-              />
-              <View style={[styles.modalDateText, { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: 'center' }]}>
-                <NameWithSequence name={selectedItem.creatorName ?? ''} sequenceNumber={selectedItem.creatorSequenceNumber} style={styles.modalDateTextInner} />
-                <Text style={styles.modalDateTextInner}>{selectedItem.seriesName ? ` · ${selectedItem.seriesName}${formatSeriesEdition(selectedItem) ? ` · ${formatSeriesEdition(selectedItem)}` : ''}` : ''} · {formatDateTime(selectedItem.createdAt)}</Text>
+              <View style={{ flex: 1 }}>
+                <AutographPlayer
+                  videoUrl={selectedItem.videoUri}
+                  thumbnailUrl={selectedItem.thumbnailUrl}
+                  previewFrameUrls={selectedItem.previewFrameUrls}
+                  previewFrameTimesMs={selectedItem.previewFrameTimesMs}
+                  creatorName={selectedItem.creatorName}
+                  templateId={selectedItem.templateId}
+                  strokes={selectedItem.strokes ?? []}
+                  strokeColor={selectedItem.strokeColor}
+                  captureWidth={selectedItem.captureWidth || 1}
+                  captureHeight={selectedItem.captureHeight || 1}
+                  onLongPress={() => setContextMenuVisible(true)}
+                />
+              </View>
+              <View style={styles.modalMetadataBlock}>
+                <View style={styles.modalNameRow}>
+                  <NameWithSequence name={selectedItem.creatorName ?? ''} sequenceNumber={selectedItem.creatorSequenceNumber} style={styles.modalNameText} />
+                  {selectedItem.creatorNameVerified && (
+                    <Image source={require('../assets/images/Ophinia_badge_navy background.png')} style={styles.nameBadge} resizeMode="contain" />
+                  )}
+                </View>
+                <Text style={styles.modalMetaLine}>
+                  {[
+                    formatCardDate(selectedItem.createdAt),
+                    selectedItem.printCount != null ? `Print #${selectedItem.printCount + 1}` : null,
+                  ].filter(Boolean).join(' · ')}
+                </Text>
+                {selectedItem.seriesName || formatSeriesEdition(selectedItem) ? (
+                  <Text style={styles.modalMetaLine} numberOfLines={1}>
+                    {[selectedItem.seriesName, formatSeriesEdition(selectedItem)].filter(Boolean).join(' · ')}
+                  </Text>
+                ) : null}
+                <View style={styles.modalUtilityRow}>
+                  <Pressable style={styles.modalUtilityButton} onPress={() => { void shareAutograph(selectedItem); }}>
+                    <Text style={styles.modalUtilityButtonText}>Share</Text>
+                  </Pressable>
+                </View>
               </View>
             </>
           )}
@@ -989,31 +1200,37 @@ export default function AutographsScreen() {
               <View style={styles.contextMenu} onStartShouldSetResponder={() => true}>
                 <Text style={styles.contextMenuTitle}>{selectedItem.creatorName ?? 'Autograph'}</Text>
 
-                <Pressable style={styles.contextMenuItem} onPress={() => { setContextMenuVisible(false); setShareItem(selectedItem); }}>
+                <Pressable style={styles.contextMenuItem} onPress={() => { setContextMenuVisible(false); void shareAutograph(selectedItem); }}>
                   <Text style={styles.contextMenuItemText}>Share</Text>
                 </Pressable>
 
-                {selectedItem.saleState === 'not_for_sale' && (
+                {selectedItem.isForSale || selectedItem.openToTrade ? (
+                  <>
+                    <Pressable
+                      style={styles.contextMenuItem}
+                      onPress={() => {
+                        const item = selectedItem;
+                        setContextMenuVisible(false);
+                        closeModal();
+                        openSellSheet([item]);
+                      }}
+                    >
+                      <Text style={styles.contextMenuItemText}>Edit Listing</Text>
+                    </Pressable>
+                    <Pressable style={styles.contextMenuItem} onPress={() => { setContextMenuVisible(false); handleRemoveFromSale(selectedItem); }}>
+                      <Text style={styles.contextMenuItemText}>Remove Listing</Text>
+                    </Pressable>
+                  </>
+                ) : (
                   <Pressable
                     style={styles.contextMenuItem}
                     onPress={() => {
                       const item = selectedItem;
                       setContextMenuVisible(false);
-                      handleSetVisibility(item, item.visibility === 'public' ? 'private' : 'public');
+                      closeModal();
+                      openSellSheet([item]);
                     }}
                   >
-                    <Text style={styles.contextMenuItemText}>
-                      {selectedItem.visibility === 'public' ? 'Make Private' : 'Make Public'}
-                    </Text>
-                  </Pressable>
-                )}
-
-                {selectedItem.isForSale || selectedItem.openToTrade ? (
-                  <Pressable style={styles.contextMenuItem} onPress={() => { setContextMenuVisible(false); handleRemoveFromSale(selectedItem); }}>
-                    <Text style={styles.contextMenuItemText}>Make Not for Sale</Text>
-                  </Pressable>
-                ) : (
-                  <Pressable style={styles.contextMenuItem} onPress={() => { const item = selectedItem; setContextMenuVisible(false); closeModal(); setSellItems([item]); setPriceInput(''); }}>
                     <Text style={styles.contextMenuItemText}>Sell</Text>
                   </Pressable>
                 )}
@@ -1076,48 +1293,6 @@ export default function AutographsScreen() {
               }}
               onClose={() => setCertItem(null)}
             />
-          )}
-
-          {/* Share overlay — shown when listing is for sale */}
-          {shareItem && (
-            <Pressable style={styles.certOverlay} onPress={() => setShareItem(null)}>
-              <ScrollView style={{ width: '100%' }} contentContainerStyle={styles.certSheet} onStartShouldSetResponder={() => true}>
-                <Text style={styles.certTitle}>Share Autograph</Text>
-                <Text style={styles.certDate}>{shareItem.creatorName ?? 'Autograph'}</Text>
-
-                <View style={styles.qrContainer}>
-                  <QRCode
-                    value={`${appUrl}/verify/${shareItem.certificateId}`}
-                    size={180}
-                    color={BrandColors.primary}
-                    backgroundColor="#fff"
-                  />
-                </View>
-
-                <Text style={styles.certHint}>
-                  Scan or share this code to view the listing
-                </Text>
-
-                <Pressable
-                  style={styles.certCloseButton}
-                  onPress={() => {
-                    const verifyUrl = `${appUrl}/verify/${shareItem.certificateId}`;
-                    const text = `I got a verified autograph from ${shareItem.creatorName ?? 'a celebrity'}! ✍️ #TapnSign`;
-                    Share.share(
-                      Platform.OS === 'ios'
-                        ? { message: text, url: verifyUrl }
-                        : { message: `${text}\n${verifyUrl}` }
-                    );
-                  }}
-                >
-                  <Text style={styles.closeButtonText}>Share Link</Text>
-                </Pressable>
-
-                <Pressable onPress={() => setShareItem(null)} style={{ marginTop: 12 }}>
-                  <Text style={styles.certDate}>Done</Text>
-                </Pressable>
-              </ScrollView>
-            </Pressable>
           )}
         </View>
       </Modal>
@@ -1198,92 +1373,105 @@ export default function AutographsScreen() {
                 {printStep === 'preview' && (
                   <>
                     <Text style={styles.certTitle}>Print Autograph</Text>
-                    <Text style={styles.certDate}>Official TapnSign print — 8×12 · $16.99 shipping included</Text>
+                    <Text style={styles.certDate}>
+                      {printPreview.item_cents != null && printPreview.shipping_cents != null
+                        ? `Official Ophinia print — 8×12 · $${(printPreview.item_cents / 100).toFixed(2)} + $${(printPreview.shipping_cents / 100).toFixed(2)} shipping`
+                        : 'Official Ophinia print — 8×12'}
+                    </Text>
 
                     <View style={styles.printCard}>
-                      <View style={styles.printThumbnailFrame}>
-                        <PublicVideoThumbnail
-                          videoUrl={printItem.videoUri}
-                          strokes={printItem.strokes ?? []}
-                          captureWidth={printItem.captureWidth || 1}
-                          captureHeight={printItem.captureHeight || 1}
-                          strokeColor={printItem.strokeColor}
-                          shellStyle={styles.printThumbnail}
-                        />
-                      </View>
-                      <View style={styles.printMetaSection}>
-                        <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'center', flexWrap: 'wrap' }}>
-                          <Text style={styles.printCreatorText}>{printItem.creatorName ?? 'TapnSign Creator'}</Text>
-                          {printItem.creatorSequenceNumber != null ? (
-                            <>
-                              <Text style={styles.printCreatorText}> · </Text>
-                              <Text style={{ fontSize: 10, fontFamily: BrandFonts.primary, fontWeight: '800', color: '#111', marginTop: 2 }}>#</Text>
-                              <Text style={styles.printCreatorText}>{printItem.creatorSequenceNumber}</Text>
-                            </>
-                          ) : null}
+                      <View style={styles.printArtifact}>
+                        <View style={styles.printArtifactTop}>
+                          <PublicVideoThumbnail
+                            videoUrl={printItem.videoUri}
+                            thumbnailUrl={printItem.thumbnailUrl}
+                            previewFrameUrls={printItem.previewFrameUrls}
+                            previewFrameTimesMs={printItem.previewFrameTimesMs}
+                            strokes={printItem.strokes ?? []}
+                            captureWidth={printItem.captureWidth || 1}
+                            captureHeight={printItem.captureHeight || 1}
+                            strokeColor={printItem.strokeColor}
+                            shellStyle={styles.printThumbnail}
+                            mediaBackgroundColor="#fff"
+                          />
                         </View>
-                        {printItem.seriesName ? (
-                          <Text style={styles.printMetaText}>
-                            {printItem.seriesName}
-                            {formatSeriesEdition(printItem) ? ` · ${formatSeriesEdition(printItem)}` : ''}
-                          </Text>
-                        ) : null}
-                      </View>
-                      <View style={styles.printFooterGrid}>
-                        <View style={styles.printFooterCell}>
-                          <Text style={[styles.printFooterValue, { marginTop: 17 }]}>
-                            {printPreview.owner_has_printed
-                              ? printPreview.owner_print?.print_label ?? 'Issued'
-                              : printPreview.next_print_label}
-                          </Text>
+                        <View style={styles.printSlip}>
+                          <View style={styles.printFooterStats}>
+                            <View style={[styles.printFooterRow, styles.printFooterRowTop]}>
+                              <Text style={styles.printFooterText}>
+                                {printItem.creatorSequenceNumber != null ? `#${printItem.creatorSequenceNumber}` : ' '}
+                              </Text>
+                              <Text style={styles.printFooterText}>{formatCardDate(printItem.createdAt)}</Text>
+                            </View>
+                            <View style={styles.printFooterDivider} />
+                            <View style={styles.printFooterRow}>
+                              <Text style={styles.printFooterText}>
+                                Print #{printPreview.next_print_sequence_number}
+                              </Text>
+                            </View>
+                            <View style={styles.printFooterDivider} />
+                            <View style={styles.printFooterRow}>
+                              <Text style={styles.printFooterText}>
+                                {printItem.seriesName ? `SERIES ${printItem.seriesName}` : ' '}
+                              </Text>
+                            </View>
+                            <View style={styles.printFooterDivider} />
+                            <View style={styles.printFooterRow}>
+                              <Text style={styles.printFooterText}>
+                                {formatSeriesEdition(printItem) ?? ' '}
+                              </Text>
+                            </View>
+                          </View>
+                          <View style={styles.printFooterQr}>
+                            <QRCode
+                              value={buildVerifyUrl(printItem.certificateId)}
+                              size={58}
+                              color="#111"
+                              backgroundColor="#fff"
+                            />
+                          </View>
                         </View>
-                        <View style={[styles.printFooterCell, { alignItems: 'flex-end' }]}>
-                          <Text style={{ fontFamily: BrandFonts.script, color: BrandColors.primary, fontSize: 28, lineHeight: 34, marginTop: 6 }}>TapnSign</Text>
+                        <View pointerEvents="none" style={styles.printGuideOverlay}>
+                          <View style={styles.printGuideBorder} />
                         </View>
                       </View>
-                      <View style={styles.printQrRow}>
-                        <QRCode
-                          value={`${appUrl}/verify/${printItem.certificateId}`}
-                          size={128}
-                          color="#E53935"
-                          backgroundColor="#f5ede0"
-                        />
-                      </View>
-                      <View style={styles.printDivider} />
-                      <Text style={styles.printMetaText}>Captured · {formatDateTime(printItem.createdAt)}</Text>
-                      <Text style={styles.printMetaText}>Certificate ID · {printItem.certificateId}</Text>
                     </View>
 
-                    {printPreview.owner_has_printed ? (
-                      <>
+                    <>
+                      {printPreview.owner_print_count > 0 && printPreview.latest_owner_print ? (
                         <Text style={styles.printInfoText}>
-                          You have already ordered an official print for this autograph.
+                          {`You have ordered ${printPreview.owner_print_count} official print${printPreview.owner_print_count > 1 ? 's' : ''} of this autograph. Your most recent was ${printPreview.latest_owner_print.print_label}.`}
                         </Text>
+                      ) : null}
+                      <Text style={styles.printInfoText}>
+                        {printPreview.item_cents != null && printPreview.shipping_cents != null
+                          ? `Official 8×12 numbered print — $${(printPreview.item_cents / 100).toFixed(2)} print + $${(printPreview.shipping_cents / 100).toFixed(2)} shipping.`
+                          : 'Official 8×12 numbered print shipped directly to you.'}
+                      </Text>
+                      <Pressable
+                        style={styles.certCloseButton}
+                        onPress={handleProceedToShipping}
+                      >
+                        <Text style={styles.closeButtonText}>
+                          {printPreview.item_cents != null && printPreview.shipping_cents != null
+                            ? `Order Print #${printPreview.next_print_sequence_number} — $${((printPreview.item_cents + printPreview.shipping_cents) / 100).toFixed(2)}`
+                            : `Order Print #${printPreview.next_print_sequence_number}`}
+                        </Text>
+                      </Pressable>
+                      {printPreview.latest_owner_print ? (
                         <Pressable
-                          style={[styles.certCloseButton, { marginTop: 16, backgroundColor: '#c62828' }]}
+                          style={{ marginTop: 12 }}
                           onPress={() => {
-                            if (printPreview.owner_print?.id) {
+                            if (printPreview.latest_owner_print?.id) {
                               closePrintPreview();
-                              openDamageClaim(printPreview.owner_print.id, printItem.id);
+                              openDamageClaim(printPreview.latest_owner_print.id, printItem.id);
                             }
                           }}
                         >
-                          <Text style={styles.closeButtonText}>Report Print Damage</Text>
+                          <Text style={styles.certDate}>Report Print Damage</Text>
                         </Pressable>
-                      </>
-                    ) : (
-                      <>
-                        <Text style={styles.printInfoText}>
-                          An official 8×12 print shipped directly to you — $16.99, shipping included. One official print per autograph.
-                        </Text>
-                        <Pressable
-                          style={styles.certCloseButton}
-                          onPress={handleProceedToShipping}
-                        >
-                          <Text style={styles.closeButtonText}>Continue to Shipping — $16.99</Text>
-                        </Pressable>
-                      </>
-                    )}
+                      ) : null}
+                    </>
 
                     <Pressable onPress={closePrintPreview} style={{ marginTop: 12 }}>
                       <Text style={styles.certDate}>Close</Text>
@@ -1396,7 +1584,7 @@ export default function AutographsScreen() {
               <>
                 <Text style={styles.certTitle}>Report Print Damage</Text>
                 <Text style={styles.printInfoText}>
-                  If your print arrived damaged, you can submit a damage claim. TapnSign will review your evidence and, if approved, authorize a reprint.
+                  If your print arrived damaged, you can submit a damage claim. Ophinia will review your evidence and, if approved, authorize a reprint.
                 </Text>
                 <Text style={[styles.printInfoText, { marginTop: 12 }]}>
                   You will need to provide:
@@ -1470,7 +1658,7 @@ export default function AutographsScreen() {
               <>
                 <Text style={styles.certTitle}>Claim Submitted</Text>
                 <Text style={styles.printInfoText}>
-                  Your damage claim has been received. TapnSign will review your photos and contact you through the app within a few business days.
+                  Your damage claim has been received. Ophinia will review your photos and contact you through the app within a few business days.
                 </Text>
                 <Text style={[styles.printInfoText, { marginTop: 12 }]}>
                   If your claim is approved, you will be asked to cut the damaged print in half and submit a photo to confirm destruction before a reprint is authorized.
@@ -1519,7 +1707,7 @@ export default function AutographsScreen() {
               <>
                 <Text style={styles.certTitle}>Reprint Authorized</Text>
                 <Text style={styles.printInfoText}>
-                  Your destruction photo has been received. TapnSign will confirm and authorize your reprint shortly. You'll receive a notification when it's ready to order.
+                  Your destruction photo has been received. Ophinia will confirm and authorize your reprint shortly. You&apos;ll receive a notification when it&apos;s ready to order.
                 </Text>
                 <Pressable
                   style={[styles.certCloseButton, { marginTop: 20 }]}
@@ -1630,14 +1818,37 @@ export default function AutographsScreen() {
             keyboardShouldPersistTaps="handled"
             onStartShouldSetResponder={() => true}
           >
-            <Text style={styles.certTitle}>List for Sale</Text>
+            <Text style={styles.certTitle}>
+              {sellItems.length === 1 && sellItems[0].isForSale ? 'Edit Listing' : 'List for Sale'}
+            </Text>
             <Text style={styles.certDate}>
               {sellItems.length === 1
                 ? (sellItems[0].creatorName ?? formatDateTime(sellItems[0].createdAt))
                 : `${sellItems.length} autographs`}
             </Text>
 
-            <Text style={[styles.certDate, { marginTop: 16, marginBottom: 4, fontWeight: '600', color: '#444' }]}>Estimated Value (min $10.00)</Text>
+            <View style={styles.listingModeRow}>
+              <Pressable
+                style={[styles.listingModeOption, listingMode === 'buy_now' && styles.listingModeOptionActive]}
+                onPress={() => setListingMode('buy_now')}
+              >
+                <Text style={[styles.listingModeOptionText, listingMode === 'buy_now' && styles.listingModeOptionTextActive]}>
+                  Fixed Price
+                </Text>
+              </Pressable>
+              <Pressable
+                style={[styles.listingModeOption, listingMode === 'make_offer' && styles.listingModeOptionActive]}
+                onPress={() => setListingMode('make_offer')}
+              >
+                <Text style={[styles.listingModeOptionText, listingMode === 'make_offer' && styles.listingModeOptionTextActive]}>
+                  Estimated Value
+                </Text>
+              </Pressable>
+            </View>
+
+            <Text style={[styles.certDate, { marginTop: 16, marginBottom: 4, fontWeight: '600', color: '#444' }]}>
+              {listingMode === 'buy_now' ? 'Fixed Price (min $5.00)' : 'Estimated Value (min $5.00)'}
+            </Text>
             <TextInput
               style={styles.priceInput}
               placeholder="e.g. 25.00"
@@ -1648,25 +1859,29 @@ export default function AutographsScreen() {
               onChangeText={handlePriceChange}
             />
 
-            <Pressable
-              style={styles.checkboxRow}
-              onPress={() => setAutoDeclineBelow((v) => !v)}
-            >
-              <View style={[styles.checkbox, autoDeclineBelow && styles.checkboxChecked]}>
-                {autoDeclineBelow && <Text style={styles.checkboxTick}>✓</Text>}
-              </View>
-              <Text style={styles.checkboxLabel}>Auto-decline offers below estimated value</Text>
-            </Pressable>
+            {listingMode === 'make_offer' && (
+              <>
+                <Pressable
+                  style={styles.checkboxRow}
+                  onPress={() => setAutoDeclineBelow((v) => !v)}
+                >
+                  <View style={[styles.checkbox, autoDeclineBelow && styles.checkboxChecked]}>
+                    {autoDeclineBelow && <Text style={styles.checkboxTick}>✓</Text>}
+                  </View>
+                  <Text style={styles.checkboxLabel}>Auto-decline offers below estimated value</Text>
+                </Pressable>
 
-            <Pressable
-              style={styles.checkboxRow}
-              onPress={() => setAutoAcceptAbove((v) => !v)}
-            >
-              <View style={[styles.checkbox, autoAcceptAbove && styles.checkboxChecked]}>
-                {autoAcceptAbove && <Text style={styles.checkboxTick}>✓</Text>}
-              </View>
-              <Text style={styles.checkboxLabel}>Auto-accept first offer at or above estimated value</Text>
-            </Pressable>
+                <Pressable
+                  style={styles.checkboxRow}
+                  onPress={() => setAutoAcceptAbove((v) => !v)}
+                >
+                  <View style={[styles.checkbox, autoAcceptAbove && styles.checkboxChecked]}>
+                    {autoAcceptAbove && <Text style={styles.checkboxTick}>✓</Text>}
+                  </View>
+                  <Text style={styles.checkboxLabel}>Auto-accept first offer at or above estimated value</Text>
+                </Pressable>
+              </>
+            )}
 
             <Pressable
               style={[styles.certCloseButton, saving && { opacity: 0.6 }]}
@@ -1674,7 +1889,11 @@ export default function AutographsScreen() {
               disabled={saving}
             >
               <Text style={styles.closeButtonText}>
-                {saving ? 'Saving…' : `List ${sellItems.length > 1 ? `${sellItems.length} autographs` : '1 autograph'}`}
+                {saving
+                  ? 'Saving…'
+                  : sellItems.length === 1 && sellItems[0].isForSale
+                    ? 'Update Listing'
+                    : `List ${sellItems.length > 1 ? `${sellItems.length} autographs` : '1 autograph'}`}
               </Text>
             </Pressable>
 
@@ -1694,6 +1913,10 @@ const styles = StyleSheet.create({
     padding: 16,
     backgroundColor: BrandColors.background,
   },
+  listContent: {
+    paddingBottom: 24,
+    flexGrow: 1,
+  },
   gridRow: {
     paddingHorizontal: 12,
     gap: 12,
@@ -1708,9 +1931,24 @@ const styles = StyleSheet.create({
   thumbnailWrap: {
     position: 'relative',
   },
+  listedBadge: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    backgroundColor: '#1D6EF2',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  listedBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '700',
+    fontFamily: BrandFonts.primary,
+  },
   gridCardInfo: {
     paddingHorizontal: 8,
-    paddingVertical: 7,
+    paddingVertical: 8,
   },
   gridCardName: {
     fontSize: 13,
@@ -1731,7 +1969,7 @@ const styles = StyleSheet.create({
   },
   thumbnail: {
     width: '100%',
-    aspectRatio: 3 / 4,
+    aspectRatio: 60 / 85,
     borderRadius: 0,
     backgroundColor: '#d9d9d9',
     justifyContent: 'center',
@@ -1772,18 +2010,6 @@ const styles = StyleSheet.create({
   },
   seriesEditionText: {
     color: '#888',
-    fontFamily: BrandFonts.primary,
-  },
-  listedBadge: {
-    fontSize: 12,
-    color: '#fff',
-    backgroundColor: '#111',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    alignSelf: 'flex-start',
-    marginTop: 4,
-    overflow: 'hidden',
     fontFamily: BrandFonts.primary,
   },
   publicBadge: {
@@ -1887,6 +2113,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 10,
     marginTop: 12,
+  },
+  offerStatusPanel: {
+    marginTop: 12,
+    borderRadius: 12,
+    backgroundColor: '#F4F7FB',
+    borderWidth: 1,
+    borderColor: '#D8E2F0',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  offerStatusLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#1B3558',
+    fontFamily: BrandFonts.primary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  offerStatusDetail: {
+    fontSize: 12,
+    color: '#55657C',
+    marginTop: 4,
+    lineHeight: 17,
+    fontFamily: BrandFonts.primary,
   },
   offerPrimaryButton: {
     flex: 1,
@@ -2024,10 +2274,55 @@ const styles = StyleSheet.create({
     backgroundColor: 'black',
     textAlign: 'center',
   },
-  modalDateTextInner: {
-    fontSize: 14,
+  modalMetadataBlock: {
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 12,
+    backgroundColor: 'black',
+    alignItems: 'center',
+  },
+  modalNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 3,
+  },
+  nameBadge: {
+    width: 20,
+    height: 20,
+  },
+  modalNameText: {
+    fontSize: 16,
     color: '#fff',
     fontFamily: BrandFonts.primary,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  modalMetaLine: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: '#aaa',
+    fontFamily: BrandFonts.primary,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  modalUtilityRow: {
+    width: '100%',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  modalUtilityButton: {
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.28)',
+    borderRadius: 999,
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+  },
+  modalUtilityButtonText: {
+    color: '#fff',
+    fontSize: 13,
+    fontFamily: BrandFonts.primary,
+    fontWeight: '700',
   },
   certOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -2107,31 +2402,82 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 10 },
     elevation: 4,
   },
-  printThumbnailFrame: {
+  printArtifact: {
+    width: '100%',
+    aspectRatio: 3 / 5,
     borderRadius: 18,
     overflow: 'hidden',
-    backgroundColor: '#efe7da',
-    marginBottom: 14,
-    alignItems: 'center',
+    backgroundColor: '#fff',
+  },
+  printGuideOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 30,
+    elevation: 30,
+  },
+  printGuideBorder: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    right: 8,
+    bottom: 8,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: 'rgba(17,17,17,0.22)',
+  },
+  printArtifactTop: {
+    flex: 85,
+    paddingTop: 10,
+  },
+  printSlip: {
+    flex: 15,
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 12,
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderTopColor: '#111',
   },
   printThumbnail: {
     width: '100%',
-    height: undefined,
-    aspectRatio: 1.25,
-    borderRadius: 18,
+    height: '100%',
     backgroundColor: '#efe7da',
-    alignSelf: 'center',
   },
-  printMetaSection: {
-    gap: 4,
+  printFooterStats: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#222',
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: '#fff',
+  },
+  printFooterRow: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  printFooterRowTop: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  printCreatorText: {
-    fontSize: 18,
+  printFooterDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: 'rgba(0,0,0,0.22)',
+  },
+  printFooterText: {
+    fontSize: 10,
+    lineHeight: 11,
     color: '#111',
     fontFamily: BrandFonts.primary,
-    fontWeight: '800',
-    textAlign: 'center',
+    fontWeight: '700',
+  },
+  printFooterQr: {
+    width: 64,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   printMetaText: {
     fontSize: 13,
@@ -2139,38 +2485,6 @@ const styles = StyleSheet.create({
     color: '#444',
     fontFamily: BrandFonts.primary,
     textAlign: 'center',
-  },
-  printQrRow: {
-    alignItems: 'center',
-    marginTop: 14,
-  },
-  printDivider: {
-    height: 1,
-    backgroundColor: '#e9deca',
-    marginVertical: 14,
-  },
-  printFooterGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    rowGap: 12,
-  },
-  printFooterCell: {
-    width: '50%',
-    paddingRight: 8,
-  },
-  printFooterLabel: {
-    fontSize: 11,
-    letterSpacing: 0.4,
-    color: '#7b6b56',
-    fontFamily: BrandFonts.primary,
-    textTransform: 'uppercase',
-    marginBottom: 3,
-  },
-  printFooterValue: {
-    fontSize: 15,
-    color: '#111',
-    fontFamily: BrandFonts.primary,
-    fontWeight: '700',
   },
   printInfoText: {
     maxWidth: 380,
@@ -2274,6 +2588,33 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#111',
     fontFamily: BrandFonts.primary,
+  },
+  listingModeRow: {
+    width: '100%',
+    flexDirection: 'row',
+    gap: 10,
+  },
+  listingModeOption: {
+    flex: 1,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: '#d7d1c7',
+    backgroundColor: '#fff',
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  listingModeOptionActive: {
+    backgroundColor: '#111',
+    borderColor: '#111',
+  },
+  listingModeOptionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#444',
+    fontFamily: BrandFonts.primary,
+  },
+  listingModeOptionTextActive: {
+    color: '#fff',
   },
   priceInput: {
     width: '100%',

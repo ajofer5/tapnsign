@@ -1,6 +1,6 @@
 import { AutographCardCanvas } from '@/components/autograph-card-canvas';
 import { BrandFonts } from '@/constants/theme';
-import { getPreviewFramePlaybackDelayMs, getPreviewFrameTimeSeconds, PREVIEW_PLAYBACK_END_HOLD_MS } from '@/lib/capture-timing';
+import { BAKED_PREVIEW_FRAME_COUNT, getPreviewFramePlaybackDelayMs, getPreviewFrameTimeSeconds, PREVIEW_PLAYBACK_END_HOLD_MS } from '@/lib/capture-timing';
 import { getCardTemplate } from '@/lib/card-templates';
 import { AVPlaybackStatus, ResizeMode, Video } from 'expo-av';
 import { ReactNode, useEffect, useRef, useState } from 'react';
@@ -11,7 +11,6 @@ type Point = { x: number; y: number; t: number };
 type Stroke = { id: string; points: Point[] };
 
 const DEFAULT_INK = '#001B5C';
-const BAKED_PREVIEW_FRAME_COUNT = 5;
 
 function buildSmoothPath(points: Point[]) {
   if (!points.length) return '';
@@ -93,6 +92,7 @@ type AutographPlayerProps = {
   videoUrl?: string | null;
   thumbnailUrl?: string | null;
   previewFrameUrls?: string[] | null;
+  previewFrameTimesMs?: number[] | null;
   creatorName?: string | null;
   templateId?: string | null;
   strokes: Stroke[];
@@ -108,6 +108,7 @@ export function AutographPlayer({
   videoUrl,
   thumbnailUrl,
   previewFrameUrls,
+  previewFrameTimesMs,
   creatorName,
   templateId,
   strokes,
@@ -145,7 +146,7 @@ export function AutographPlayer({
   const mediaLeft = (box.width - mediaWidth) / 2;
   const mediaTop = (box.height - mediaHeight) / 2;
   const currentTimeSeconds = hasFlipbook && previewFrameUrls?.length && frameIndex != null && previewFrameUrls.length > 1
-    ? getPreviewFrameTimeSeconds(frameIndex, previewFrameUrls.length)
+    ? getPreviewFrameTimeSeconds(frameIndex, previewFrameUrls.length, previewFrameTimesMs)
     : Infinity;
 
   const handleStatus = (status: AVPlaybackStatus) => {
@@ -214,7 +215,7 @@ export function AutographPlayer({
           return;
         }
 
-        const delayMs = getPreviewFramePlaybackDelayMs(idx, previewFrameUrls.length);
+        const delayMs = getPreviewFramePlaybackDelayMs(idx, previewFrameUrls.length, previewFrameTimesMs);
         flipbookRef.current = setTimeout(() => runFrame(idx + 1), delayMs);
       };
 

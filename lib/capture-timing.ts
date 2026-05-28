@@ -2,10 +2,14 @@ export const CAPTURE_DURATION_MS = 7100;
 export const CAPTURE_COUNTDOWN_START = 7;
 // Four progression frames plus one final hero frame.
 export const PREVIEW_FRAME_TIMES_MS = [1000, 2550, 4100, 5650, 7050] as const;
+export const BAKED_PREVIEW_FRAME_COUNT = PREVIEW_FRAME_TIMES_MS.length;
 export const PREVIEW_PLAYBACK_DURATION_MS = 1600;
 export const PREVIEW_PLAYBACK_END_HOLD_MS = 120;
 
-export function getPreviewFrameTimelineMs(frameCount: number): number[] {
+export function getPreviewFrameTimelineMs(frameCount: number, explicitTimelineMs?: number[] | null): number[] {
+  if (explicitTimelineMs?.length === frameCount) {
+    return [...explicitTimelineMs];
+  }
   if (frameCount <= 0) return [];
   if (frameCount === PREVIEW_FRAME_TIMES_MS.length) {
     return [...PREVIEW_FRAME_TIMES_MS];
@@ -21,15 +25,15 @@ export function getPreviewFrameTimelineMs(frameCount: number): number[] {
   return Array.from({ length: frameCount }, (_, index) => Math.round(first + step * index));
 }
 
-export function getPreviewFrameTimeSeconds(frameIndex: number, frameCount: number): number {
-  const timeline = getPreviewFrameTimelineMs(frameCount);
+export function getPreviewFrameTimeSeconds(frameIndex: number, frameCount: number, explicitTimelineMs?: number[] | null): number {
+  const timeline = getPreviewFrameTimelineMs(frameCount, explicitTimelineMs);
   if (!timeline.length) return 0;
   const safeIndex = Math.max(0, Math.min(frameIndex, timeline.length - 1));
   return timeline[safeIndex] / 1000;
 }
 
-export function getPreviewFramePlaybackDelayMs(frameIndex: number, frameCount: number): number {
-  const timeline = getPreviewFrameTimelineMs(frameCount);
+export function getPreviewFramePlaybackDelayMs(frameIndex: number, frameCount: number, explicitTimelineMs?: number[] | null): number {
+  const timeline = getPreviewFrameTimelineMs(frameCount, explicitTimelineMs);
   if (timeline.length <= 1) return PREVIEW_PLAYBACK_END_HOLD_MS;
   if (frameIndex >= timeline.length - 1) return PREVIEW_PLAYBACK_END_HOLD_MS;
 

@@ -47,6 +47,7 @@ type Listing = {
   thumbnail_url: string | null;
   video_url?: string | null;
   preview_frame_urls?: string[] | null;
+  preview_frame_times_ms?: number[] | null;
   strokes_json?: Stroke[];
   capture_width?: number;
   capture_height?: number;
@@ -632,6 +633,7 @@ export default function ProfileScreen() {
                         thumbnailUrl={listing.thumbnail_url}
                         videoUrl={listing.video_url}
                         previewFrameUrls={listing.preview_frame_urls ?? []}
+                        previewFrameTimesMs={listing.preview_frame_times_ms ?? []}
                         strokes={listing.strokes_json ?? []}
                         captureWidth={listing.capture_width ?? 1}
                         captureHeight={listing.capture_height ?? 1}
@@ -797,6 +799,7 @@ export default function ProfileScreen() {
                 videoUrl={previewItem.video_url}
                 thumbnailUrl={previewItem.thumbnail_url}
                 previewFrameUrls={previewItem.preview_frame_urls ?? []}
+                previewFrameTimesMs={previewItem.preview_frame_times_ms ?? []}
                 templateId={previewItem.template_id}
                 strokes={previewItem.strokes_json ?? []}
                 strokeColor={previewItem.stroke_color}

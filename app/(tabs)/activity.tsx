@@ -91,6 +91,7 @@ type PreviewAutograph = {
   videoUrl: string | null;
   thumbnailUrl: string | null;
   previewFrameUrls: string[];
+  previewFrameTimesMs: number[];
   strokes: Stroke[];
   strokeColor: string;
   templateId?: string | null;
@@ -298,7 +299,7 @@ export default function ActivityScreen() {
     try {
       const { data, error } = await supabase
         .from('autographs')
-        .select('id, certificate_id, created_at, video_url, thumbnail_url, preview_frame_urls, strokes_json, stroke_color, template_id, capture_width, capture_height')
+        .select('id, certificate_id, created_at, video_url, thumbnail_url, preview_frame_urls, preview_frame_times_ms, strokes_json, stroke_color, template_id, capture_width, capture_height')
         .eq('id', entry.autographId)
         .single();
 
@@ -315,6 +316,7 @@ export default function ActivityScreen() {
         videoUrl: data.video_url ?? null,
         thumbnailUrl: data.thumbnail_url ?? null,
         previewFrameUrls: data.preview_frame_urls ?? [],
+        previewFrameTimesMs: data.preview_frame_times_ms ?? [],
         strokes: data.strokes_json ?? [],
         strokeColor: data.stroke_color ?? '#001B5C',
         templateId: data.template_id ?? 'classic',
@@ -560,6 +562,7 @@ export default function ActivityScreen() {
                 videoUrl={previewItem.videoUrl}
                 thumbnailUrl={previewItem.thumbnailUrl}
                 previewFrameUrls={previewItem.previewFrameUrls}
+                previewFrameTimesMs={previewItem.previewFrameTimesMs}
                 templateId={previewItem.templateId}
                 strokes={previewItem.strokes}
                 strokeColor={previewItem.strokeColor}

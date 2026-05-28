@@ -68,6 +68,15 @@ function requireStrokeArray(value: unknown): Stroke[] {
   });
 }
 
+function requireIntegerArray(value: unknown, field: string): number[] {
+  assert(Array.isArray(value), 400, `${field} must be an array.`);
+  return value.map((entry, index) => {
+    const parsed = Number(entry);
+    assert(Number.isInteger(parsed) && parsed >= 0, 400, `${field}[${index}] must be a non-negative integer.`);
+    return parsed;
+  });
+}
+
 function getStoragePublicUrl(path: string) {
   return supabaseAdmin.storage.from(STORAGE_BUCKET).getPublicUrl(path).data.publicUrl;
 }
@@ -136,6 +145,14 @@ Deno.serve((req) =>
     const previewFramePaths = Array.isArray(body.preview_frame_paths)
       ? body.preview_frame_paths.map((value, index) => normalizeStoragePath(requireString(value, `preview_frame_paths[${index}]`), user.id, `preview_frame_paths[${index}]`))
       : [];
+    const previewFrameTimesMs = body.preview_frame_times_ms == null
+      ? []
+      : requireIntegerArray(body.preview_frame_times_ms, 'preview_frame_times_ms');
+    assert(
+      previewFrameTimesMs.length === 0 || previewFrameTimesMs.length === previewFramePaths.length,
+      400,
+      'preview_frame_times_ms must match preview_frame_paths length.'
+    );
     const captureWidth = requirePositiveInteger(body.capture_width, 'capture_width');
     const captureHeight = requirePositiveInteger(body.capture_height, 'capture_height');
     const strokeColor = requireString(body.stroke_color, 'stroke_color');
@@ -226,6 +243,7 @@ Deno.serve((req) =>
       video_sha256: videoAsset?.sha256 ?? null,
       thumbnail_sha256: thumbnailAsset?.sha256 ?? null,
       preview_frame_sha256s: previewFrameAssets.map((asset) => asset.sha256),
+      preview_frame_times_ms: previewFrameTimesMs,
       strokes_sha256: strokesHash,
       capture_width: captureWidth,
       capture_height: captureHeight,
@@ -244,6 +262,7 @@ Deno.serve((req) =>
         video_url: bunnyVideoUrl ?? null,
         thumbnail_url: bunnyThumbnailUrl ?? fallbackThumbnailUrl,
         preview_frame_urls: previewFramePublicUrls,
+        preview_frame_times_ms: previewFrameTimesMs,
         strokes_json: strokes,
         capture_width: captureWidth,
         capture_height: captureHeight,

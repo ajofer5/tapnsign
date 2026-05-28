@@ -54,7 +54,8 @@ type PersonalizedRequestContext = {
 type Stroke = CardStroke;
 type CapturedFrame = { uri: string; t: number };
 
-const FLATTENED_FRAME_EXPORT_WIDTH = 1200;
+const FLATTENED_PREVIEW_FRAME_EXPORT_WIDTH = 1200;
+const FLATTENED_HERO_FRAME_EXPORT_WIDTH = 3600;
 
 function normalizeCapturedFrames(rawFrames: CapturedFrame[]): CapturedFrame[] {
   if (!rawFrames.length) return [];
@@ -383,16 +384,20 @@ export default function CaptureScreen() {
             throw new Error('Could not prepare the autograph card preview frames.');
           }
 
+          const exportWidth = index === capturedFrames.length - 1
+            ? FLATTENED_HERO_FRAME_EXPORT_WIDTH
+            : FLATTENED_PREVIEW_FRAME_EXPORT_WIDTH;
           const exportHeight = Math.round(
-            FLATTENED_FRAME_EXPORT_WIDTH * (captureTemplate.aspectRatio.height / captureTemplate.aspectRatio.width)
+            exportWidth * (captureTemplate.aspectRatio.height / captureTemplate.aspectRatio.width)
           );
 
           return captureRef(ref, {
             format: 'jpg',
             quality: 0.98,
             result: 'tmpfile',
-            width: FLATTENED_FRAME_EXPORT_WIDTH,
+            width: exportWidth,
             height: exportHeight,
+            pixelRatio: index === capturedFrames.length - 1 ? 3 : 1,
           });
         })
       );
@@ -438,6 +443,7 @@ export default function CaptureScreen() {
         video_path: null,
         thumbnail_path: null,
         preview_frame_paths: (uploadTargets.preview_frames ?? []).map((frame: { path: string }) => frame.path),
+        preview_frame_times_ms: PREVIEW_FRAME_TIMES_MS,
         strokes_json: finalizedStrokes,
         capture_width: Math.max(1, Math.round(captureSize.width)),
         capture_height: Math.max(1, Math.round(captureSize.height)),
@@ -927,7 +933,7 @@ function ReviewScreen({
             style={[
               styles.hiddenFlattenedFrame,
               {
-                width: FLATTENED_FRAME_EXPORT_WIDTH,
+                width: FLATTENED_PREVIEW_FRAME_EXPORT_WIDTH,
                 aspectRatio: template.aspectRatio.width / template.aspectRatio.height,
               },
             ]}

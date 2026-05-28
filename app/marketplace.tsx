@@ -42,8 +42,9 @@ type ListingItem = {
   saleState: 'not_for_sale' | 'fixed';
   listingMode: 'buy_now' | 'make_offer';
   priceCents: number | null;
-  videoUri: string;
+  videoUri: string | null;
   previewFrameUrls: string[];
+  previewFrameTimesMs: number[];
   strokes: Stroke[];
   captureWidth: number;
   captureHeight: number;
@@ -160,8 +161,9 @@ export default function MarketplaceScreen() {
     priceCents: row.price_cents ?? null,
     isForSale: true,
     openToTrade: row.open_to_trade ?? false,
-    videoUri: row.video_url,
+    videoUri: row.video_url ?? null,
     previewFrameUrls: row.preview_frame_urls ?? [],
+    previewFrameTimesMs: row.preview_frame_times_ms ?? [],
     thumbnailUrl: row.thumbnail_url ?? null,
     strokes: row.strokes_json ?? [],
     captureWidth: row.capture_width ?? 1,
@@ -521,11 +523,12 @@ useFocusEffect(
   const renderMarketplaceCard = (item: ListingItem) => (
     <Pressable style={styles.marketplaceCard} onPress={() => openPreview(item)}>
       <View style={styles.marketplaceThumbnailWrap}>
-        <PublicVideoThumbnail
-          videoUrl={item.videoUri}
-          thumbnailUrl={item.thumbnailUrl}
-          previewFrameUrls={item.previewFrameUrls}
-          strokes={item.strokes}
+          <PublicVideoThumbnail
+            videoUrl={item.videoUri}
+            thumbnailUrl={item.thumbnailUrl}
+            previewFrameUrls={item.previewFrameUrls}
+            previewFrameTimesMs={item.previewFrameTimesMs}
+            strokes={item.strokes}
           captureWidth={item.captureWidth}
           captureHeight={item.captureHeight}
           strokeColor={item.strokeColor}
@@ -689,6 +692,7 @@ useFocusEffect(
               videoUrl={previewItem.videoUri}
               thumbnailUrl={previewItem.thumbnailUrl}
               previewFrameUrls={previewItem.previewFrameUrls}
+              previewFrameTimesMs={previewItem.previewFrameTimesMs}
               templateId={previewItem.templateId}
               strokes={previewItem.strokes}
               strokeColor={previewItem.strokeColor}

@@ -1,5 +1,5 @@
 import { publicVideoCardStyles } from '@/components/public-video-card';
-import { getPreviewFramePlaybackDelayMs, getPreviewFrameTimeSeconds, PREVIEW_PLAYBACK_END_HOLD_MS } from '@/lib/capture-timing';
+import { BAKED_PREVIEW_FRAME_COUNT, getPreviewFramePlaybackDelayMs, getPreviewFrameTimeSeconds, PREVIEW_PLAYBACK_END_HOLD_MS } from '@/lib/capture-timing';
 import { ResizeMode, Video } from 'expo-av';
 import { ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { Image, StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
@@ -9,7 +9,6 @@ type Point = { x: number; y: number; t: number };
 type Stroke = { id: string; points: Point[] };
 
 const DEFAULT_INK = '#001B5C';
-const BAKED_PREVIEW_FRAME_COUNT = 5;
 
 function buildSmoothPath(points: Point[]) {
   if (!points.length) return '';
@@ -91,6 +90,7 @@ type PublicVideoThumbnailProps = {
   videoUrl?: string | null;
   thumbnailUrl?: string | null;
   previewFrameUrls?: string[] | null;
+  previewFrameTimesMs?: number[] | null;
   strokes: Stroke[];
   captureWidth: number;
   captureHeight: number;
@@ -110,6 +110,7 @@ export function PublicVideoThumbnail({
   videoUrl,
   thumbnailUrl,
   previewFrameUrls,
+  previewFrameTimesMs,
   strokes,
   captureWidth,
   captureHeight,
@@ -182,7 +183,7 @@ export function PublicVideoThumbnail({
         return;
       }
 
-      const delayMs = getPreviewFramePlaybackDelayMs(index, frames.length);
+      const delayMs = getPreviewFramePlaybackDelayMs(index, frames.length, previewFrameTimesMs);
       timeoutRef.current = setTimeout(() => runFrame(next), delayMs);
     };
 
@@ -196,7 +197,7 @@ export function PublicVideoThumbnail({
       alive = false;
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
-  }, [mode, hasPreviewFrames, previewFrameUrls, ensurePreviewFramesReady]);
+  }, [mode, hasPreviewFrames, previewFrameUrls, previewFrameTimesMs, ensurePreviewFramesReady]);
 
   // Which image to display
   const activeFrame = (() => {
@@ -206,7 +207,7 @@ export function PublicVideoThumbnail({
 
   // Stroke time: used for legacy autographs with strokes overlay
   const currentTimeSeconds = (mode !== 'static' && hasPreviewFrames && previewFrameUrls && previewFrameUrls.length > 1 && !flipbookDone && framesReady)
-    ? getPreviewFrameTimeSeconds(frameIndex, previewFrameUrls.length)
+    ? getPreviewFrameTimeSeconds(frameIndex, previewFrameUrls.length, previewFrameTimesMs)
     : Infinity;
 
   return (
