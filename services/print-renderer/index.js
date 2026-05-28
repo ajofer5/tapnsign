@@ -283,18 +283,9 @@ async function renderPrintLayout({ autograph, printRecord }) {
     console.error('[render] QR generation error:', e.message);
   }
 
-  // --- Ophinia logo ---
-  if (LOGO_BUF) {
-    try {
-      const resizedLogo = await sharp(LOGO_BUF)
-        .resize(LOGO_AREA.w, LOGO_AREA.h, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
-        .png()
-        .toBuffer();
-      composites.push({ input: resizedLogo, left: LOGO_AREA.x, top: LOGO_AREA.y });
-    } catch (e) {
-      console.error('[render] logo composite error:', e.message);
-    }
-  }
+  // Logo is embedded as base64 inside the overlay SVG so transparency is preserved
+  // on the 3-channel canvas (sharp can't composite transparent PNGs onto RGB).
+  const logoB64 = LOGO_BUF ? LOGO_BUF.toString('base64') : null;
 
   // --- Metadata + borders full-canvas SVG ---
   // Font embedded as base64 so Optima renders correctly on the Railway container.
@@ -332,14 +323,23 @@ async function renderPrintLayout({ autograph, printRecord }) {
       letter-spacing="${line.letterSpacing}"
     >${escapeXml(line.text)}</text>`).join('\n');
 
+  // Logo embedded as base64 <image> — preserves transparency on 3-channel canvas
+  const logoSvgEl = logoB64
+    ? `<image href="data:image/png;base64,${logoB64}" x="${LOGO_AREA.x}" y="${LOGO_AREA.y}" width="${LOGO_AREA.w}" height="${LOGO_AREA.h}" preserveAspectRatio="xMidYMid meet"/>`
+    : '';
+
   // Outer + inner borders drawn programmatically — no dependency on template PNG
-  const overlaySvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${CANVAS_W}" height="${CANVAS_H}">
+  const overlaySvg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${CANVAS_W}" height="${CANVAS_H}">
     ${fontFaceDecl}
     <rect x="10" y="10" width="${CANVAS_W - 20}" height="${CANVAS_H - 20}"
       fill="none" stroke="white" stroke-width="3" opacity="0.5"/>
     <rect x="38" y="38" width="${CANVAS_W - 76}" height="${CANVAS_H - 76}"
       fill="none" stroke="white" stroke-width="1.5" opacity="0.3"/>
+    ${frameBorder(FRAME12)}
+    ${frameBorder(SIG_SQ, 6, '#F1C168', 0.55)}
+    ${SMALL_FRAMES.map((sf) => frameBorder(sf, 4)).join('\n')}
     ${metaTextEls}
+    ${logoSvgEl}
   </svg>`;
   composites.push({ input: Buffer.from(overlaySvg), left: 0, top: 0 });
 
