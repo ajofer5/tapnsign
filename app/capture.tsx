@@ -55,7 +55,7 @@ type Stroke = CardStroke;
 type CapturedFrame = { uri: string; t: number };
 
 const FLATTENED_PREVIEW_FRAME_EXPORT_WIDTH = 1200;
-const FLATTENED_HERO_FRAME_EXPORT_WIDTH = 3600;
+const FLATTENED_HERO_FRAME_EXPORT_WIDTH = 1200;
 
 function normalizeCapturedFrames(rawFrames: CapturedFrame[]): CapturedFrame[] {
   if (!rawFrames.length) return [];
@@ -398,6 +398,7 @@ export default function CaptureScreen() {
             width: exportWidth,
             height: exportHeight,
             pixelRatio: index === capturedFrames.length - 1 ? 3 : 1,
+            useRenderInContext: true,
           });
         })
       );
@@ -1100,8 +1101,11 @@ const styles = StyleSheet.create({
   },
   hiddenFlattenedFramesStage: {
     position: 'absolute',
-    left: -10000,
-    top: -10000,
+    left: 0,
+    top: 0,
+    opacity: 0.01,
+    zIndex: -1,
+    elevation: 0,
   },
   hiddenFlattenedFrame: {
     backgroundColor: '#fff',

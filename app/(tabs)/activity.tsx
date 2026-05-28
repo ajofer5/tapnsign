@@ -156,6 +156,7 @@ export default function ActivityScreen() {
   const [hasMore, setHasMore] = useState(true);
   const [cursor, setCursor] = useState<ActivityCursor | null>(null);
   const [loadError, setLoadError] = useState(false);
+  const [loadErrorMessage, setLoadErrorMessage] = useState<string | null>(null);
   const [actioningId, setActioningId] = useState<string | null>(null);
   const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null);
   const [previewItem, setPreviewItem] = useState<PreviewAutograph | null>(null);
@@ -223,6 +224,7 @@ export default function ActivityScreen() {
 
     setLoading(true);
     setLoadError(false);
+    setLoadErrorMessage(null);
 
     try {
       const { items, nextCursor } = await fetchActivityPage(null);
@@ -233,10 +235,16 @@ export default function ActivityScreen() {
       AsyncStorage.setItem(activityViewedKey(user.id), new Date().toISOString()).catch(() => {});
     } catch (error) {
       console.log('Load activity error:', error);
+      const message = error instanceof Error
+        ? error.message
+        : typeof error === 'string'
+          ? error
+          : 'Check your connection and try again.';
       setEntries([]);
       setCursor(null);
       setHasMore(false);
       setLoadError(true);
+      setLoadErrorMessage(message);
     } finally {
       setLoading(false);
     }
@@ -376,7 +384,7 @@ export default function ActivityScreen() {
     return (
       <View style={styles.center}>
         <Text style={styles.errorTitle}>Could not load your activity.</Text>
-        <Text style={styles.errorSubtitle}>Check your connection and try again.</Text>
+        <Text style={styles.errorSubtitle}>{loadErrorMessage ?? 'Check your connection and try again.'}</Text>
       </View>
     );
   }
