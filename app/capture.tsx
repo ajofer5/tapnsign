@@ -942,6 +942,7 @@ function ReviewScreen({
             <AutographCardCanvas
               template={template}
               creatorName={creatorName}
+              nameScale={FLATTENED_PREVIEW_FRAME_EXPORT_WIDTH / template.baseWidth}
               photoSource={{ uri: frame.uri }}
               captureWidth={captureSize.width}
               captureHeight={captureSize.height}
