@@ -225,7 +225,9 @@ async function renderPrintLayout({ autograph, printRecord }) {
 
   const frameBuffers = await Promise.all(
     framesNeeded.map(async ({ idx, w, h }) => {
-      const rawUrl = frameUrls[idx];
+      // Clamp to last available frame so we always show something if the array is shorter than expected
+      const clampedIdx = Math.min(idx, Math.max(0, frameUrls.length - 1));
+      const rawUrl = frameUrls[clampedIdx];
       if (!rawUrl) return null;
       try {
         const buf = await fetchBuffer(toTransformUrl(rawUrl, w, h));
@@ -298,11 +300,16 @@ async function renderPrintLayout({ autograph, printRecord }) {
   // --- Ophinia logo ---
   if (LOGO_BUF) {
     try {
+      // fit: 'inside' shrinks to fit without adding any padding/letterbox fill,
+      // so there is no background rectangle to bleed through.
       const resizedLogo = await sharp(LOGO_BUF)
-        .resize(LOGO_AREA.w, LOGO_AREA.h, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+        .resize(LOGO_AREA.w, LOGO_AREA.h, { fit: 'inside' })
         .png()
         .toBuffer();
-      composites.push({ input: resizedLogo, left: LOGO_AREA.x, top: LOGO_AREA.y });
+      const logoMeta = await sharp(resizedLogo).metadata();
+      const lx = LOGO_AREA.x + Math.round((LOGO_AREA.w - (logoMeta.width ?? LOGO_AREA.w)) / 2);
+      const ly = LOGO_AREA.y + Math.round((LOGO_AREA.h - (logoMeta.height ?? LOGO_AREA.h)) / 2);
+      composites.push({ input: resizedLogo, left: lx, top: ly });
     } catch (e) {
       console.error('[render] logo composite error:', e.message);
     }
@@ -344,6 +351,13 @@ async function renderPrintLayout({ autograph, printRecord }) {
       letter-spacing="${line.letterSpacing}"
     >${escapeXml(line.text)}</text>`).join('\n');
 
+  // Helper: draw a double-border around a frame area (outer accent + inner thin)
+  const frameBorder = ({ x, y, w, h }, outerPad = 6, color = 'white', opacity = 0.45) => `
+    <rect x="${x - outerPad}" y="${y - outerPad}" width="${w + outerPad * 2}" height="${h + outerPad * 2}"
+      fill="none" stroke="${color}" stroke-width="2" opacity="${opacity}"/>
+    <rect x="${x - outerPad * 2.5}" y="${y - outerPad * 2.5}" width="${w + outerPad * 5}" height="${h + outerPad * 5}"
+      fill="none" stroke="${color}" stroke-width="1" opacity="${opacity * 0.5}"/>`;
+
   // Outer + inner borders drawn programmatically — no dependency on template PNG
   const overlaySvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${CANVAS_W}" height="${CANVAS_H}">
     ${fontFaceDecl}
@@ -351,6 +365,9 @@ async function renderPrintLayout({ autograph, printRecord }) {
       fill="none" stroke="white" stroke-width="3" opacity="0.5"/>
     <rect x="38" y="38" width="${CANVAS_W - 76}" height="${CANVAS_H - 76}"
       fill="none" stroke="white" stroke-width="1.5" opacity="0.3"/>
+    ${frameBorder(FRAME12)}
+    ${frameBorder(SIG_SQ, 6, '#F1C168', 0.55)}
+    ${SMALL_FRAMES.map((sf) => frameBorder(sf, 4)).join('\n')}
     ${metaTextEls}
   </svg>`;
   composites.push({ input: Buffer.from(overlaySvg), left: 0, top: 0 });
