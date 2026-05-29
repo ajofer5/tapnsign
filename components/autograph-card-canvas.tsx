@@ -221,7 +221,7 @@ export const AutographCardCanvas = forwardRef<View, Props>(function AutographCar
       {template.frameId === 'ophinia_o' && frameVariant !== 'print' ? (
         <View style={[StyleSheet.absoluteFill, { zIndex: 25 }]} pointerEvents="none">
           <Image
-            source={require('../assets/images/ophinia-o-frame@3x.png')}
+            source={require('../assets/images/ophinia-o-frame.png')}
             style={{ width: '100%', height: '100%', tintColor: '#000000' }}
             resizeMode="stretch"
           />
