@@ -216,10 +216,13 @@ async function renderPrintLayout({ autograph, printRecord }) {
   const seriesName = autograph._seriesName ?? null;
   const printSeq = printRecord.print_sequence_number;
 
-  // Fetch frame 12 + small frames in parallel
+  // 5-frame model: indices 0-3 = progression frames, index 4 = hero card
   const framesNeeded = [
-    { idx: 11, w: FRAME12.w, h: FRAME12.h },
-    ...SMALL_FRAMES.map((sf) => ({ idx: sf.frameIdx, w: sf.w, h: sf.h })),
+    { idx: 4, w: FRAME12.w, h: FRAME12.h },   // hero card → large left column
+    { idx: 0, w: SMALL_FRAMES[0].w, h: SMALL_FRAMES[0].h },
+    { idx: 1, w: SMALL_FRAMES[1].w, h: SMALL_FRAMES[1].h },
+    { idx: 2, w: SMALL_FRAMES[2].w, h: SMALL_FRAMES[2].h },
+    { idx: 3, w: SMALL_FRAMES[3].w, h: SMALL_FRAMES[3].h },
   ];
   console.log('[render] fetching frames:', framesNeeded.map((f) => f.idx));
 
