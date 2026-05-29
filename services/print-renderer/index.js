@@ -70,11 +70,10 @@ const LOGO_PATH = path.join(__dirname, 'assets', 'ophinia-logo-white.png');
 const LOGO_BUF = fs.existsSync(LOGO_PATH) ? fs.readFileSync(LOGO_PATH) : null;
 if (!LOGO_BUF) console.warn('[init] ophinia-logo-white.png not found in assets/');
 
+// Optima is registered as a system font via Dockerfile (fc-cache).
+// librsvg resolves it by name — base64 embedding is not supported by librsvg.
 const FONT_PATH = path.join(__dirname, 'assets', 'Optima.ttc');
-const FONT_B64 = fs.existsSync(FONT_PATH)
-  ? fs.readFileSync(FONT_PATH).toString('base64')
-  : null;
-if (!FONT_B64) console.warn('[init] Optima.ttc not found in assets/ — falling back to DejaVu Serif');
+if (!fs.existsSync(FONT_PATH)) console.warn('[init] Optima.ttc not found in assets/');
 
 // Logo area (below QR)
 const LOGO_AREA = { x: tx(791), y: ty(492), w: tx(80), h: ty(26) };
@@ -292,10 +291,9 @@ async function renderPrintLayout({ autograph, printRecord }) {
 
   // --- Metadata + borders full-canvas SVG ---
   // Font embedded as base64 so Optima renders correctly on the Railway container.
-  const fontFaceDecl = FONT_B64
-    ? `<defs><style>@font-face { font-family: 'Optima'; src: url('data:font/truetype;base64,${FONT_B64}'); }</style></defs>`
-    : '';
-  const fontFamily = FONT_B64 ? 'Optima, DejaVu Serif, serif' : 'DejaVu Serif, Georgia, serif';
+  // Optima installed as system font via Dockerfile — referenced by name, no @font-face needed
+  const fontFaceDecl = '';
+  const fontFamily = 'Optima, DejaVu Serif, serif';
 
   const frameBorder = ({ x, y, w, h }, outerPad = 6, color = 'white', opacity = 0.45) => `
     <rect x="${x - outerPad}" y="${y - outerPad}" width="${w + outerPad * 2}" height="${h + outerPad * 2}"
