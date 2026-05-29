@@ -333,8 +333,9 @@ async function renderPrintLayout({ autograph, printRecord }) {
     >${escapeXml(line.text)}</text>`).join('\n');
 
   // Logo embedded as base64 <image> — preserves transparency on 3-channel canvas
+  // Use both href and xlink:href — librsvg on Linux requires xlink:href
   const logoSvgEl = logoB64
-    ? `<image href="data:image/png;base64,${logoB64}" x="${LOGO_AREA.x}" y="${LOGO_AREA.y}" width="${LOGO_AREA.w}" height="${LOGO_AREA.h}" preserveAspectRatio="xMidYMid meet"/>`
+    ? `<image xlink:href="data:image/png;base64,${logoB64}" href="data:image/png;base64,${logoB64}" x="${LOGO_AREA.x}" y="${LOGO_AREA.y}" width="${LOGO_AREA.w}" height="${LOGO_AREA.h}" preserveAspectRatio="xMidYMid meet"/>`
     : '';
 
   // Outer + inner borders drawn programmatically — no dependency on template PNG
