@@ -22,6 +22,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { captureRef } from 'react-native-view-shot';
@@ -90,6 +91,10 @@ function getFlattenedNameScale(template: CardTemplate, creatorName: string) {
 export default function CaptureScreen() {
   const { personalized_request_id } = useLocalSearchParams<{ personalized_request_id?: string }>();
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+  const { width: screenW, height: screenH } = useWindowDimensions();
+  // Largest 3:5 card that fits within both screen dimensions, with padding
+  const cardW = Math.min(screenW, (screenH * 0.92) * (3 / 5));
+  const cardH = cardW * (5 / 3);
 
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>(OPHINIA_O_CARD_TEMPLATE.id);
   const captureTemplate = getCardTemplate(selectedTemplateId);
@@ -587,10 +592,7 @@ export default function CaptureScreen() {
         </View>
       )}
       <View
-        style={[
-          styles.captureShell,
-          { aspectRatio: captureTemplate.aspectRatio.width / captureTemplate.aspectRatio.height },
-        ]}
+        style={[styles.captureShell, { width: cardW, height: cardH }]}
         onLayout={handleCaptureShellLayout}
       >
         <AutographCardCanvas
@@ -1014,8 +1016,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
   captureShell: {
-    width: '100%',
-    aspectRatio: 60 / 100,
     backgroundColor: 'white',
   },
   captureGestureLayer: {
