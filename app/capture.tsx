@@ -879,6 +879,10 @@ function ReviewScreen({
   submitting: boolean;
 }) {
   // replayFrameIndex: index into capturedFrames during replay, null = not replaying
+  const { width: screenW, height: screenH } = useWindowDimensions();
+  const reviewCardW = Math.min(screenW, (screenH * 0.72) * (3 / 5));
+  const reviewCardH = reviewCardW * (5 / 3);
+
   const [replayFrameIndex, setReplayFrameIndex] = useState<number | null>(null);
   const replayIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -920,7 +924,7 @@ function ReviewScreen({
 
   return (
     <View style={styles.reviewContainer}>
-      <Pressable style={styles.reviewCardWrapper} onPress={startReplay}>
+      <Pressable style={[styles.reviewCardWrapper, { width: reviewCardW, height: reviewCardH }]} onPress={startReplay}>
         <AutographCardCanvas
           template={template}
           creatorName={creatorName}
@@ -1127,8 +1131,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   reviewCardWrapper: {
-    width: '100%',
-    aspectRatio: 60 / 100,
+    overflow: 'hidden',
   },
   reviewCardCanvas: {
     flex: 1,
