@@ -294,6 +294,12 @@ async function renderPrintLayout({ autograph, printRecord }) {
     : '';
   const fontFamily = FONT_B64 ? 'Optima, DejaVu Serif, serif' : 'DejaVu Serif, Georgia, serif';
 
+  const frameBorder = ({ x, y, w, h }, outerPad = 6, color = 'white', opacity = 0.45) => `
+    <rect x="${x - outerPad}" y="${y - outerPad}" width="${w + outerPad * 2}" height="${h + outerPad * 2}"
+      fill="none" stroke="${color}" stroke-width="2" opacity="${opacity}"/>
+    <rect x="${x - outerPad * 2.5}" y="${y - outerPad * 2.5}" width="${w + outerPad * 5}" height="${h + outerPad * 5}"
+      fill="none" stroke="${color}" stroke-width="1" opacity="${opacity * 0.5}"/>`;
+
   const date = new Date(autograph.created_at).toLocaleDateString('en-US', {
     month: 'long', day: 'numeric', year: 'numeric',
   });
