@@ -4,7 +4,7 @@
     "slug": "autograph-app-v2",
     "version": "1.0.0",
     "orientation": "default",
-    "icon": "./assets/images/Ophinia_O.png",
+    "icon": "./assets/images/icon.png",
     "scheme": "tapnsign",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -35,8 +35,8 @@
       ],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/Ophinia_O.png",
-        "monochromeImage": "./assets/images/Ophinia_O.png"
+        "foregroundImage": "./assets/images/icon.png",
+        "monochromeImage": "./assets/images/icon.png"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
@@ -44,7 +44,7 @@
     },
     "web": {
       "output": "single-page",
-      "favicon": "./assets/images/Ophinia_O.png"
+      "favicon": "./assets/images/icon.png"
     },
     "plugins": [
       "expo-router",
