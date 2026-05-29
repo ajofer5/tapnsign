@@ -285,9 +285,24 @@ async function renderPrintLayout({ autograph, printRecord }) {
     console.error('[render] QR generation error:', e.message);
   }
 
-  // Logo is embedded as base64 inside the overlay SVG so transparency is preserved
-  // on the 3-channel canvas (sharp can't composite transparent PNGs onto RGB).
-  const logoB64 = LOGO_BUF ? LOGO_BUF.toString('base64') : null;
+  // Logo: flatten onto black background before compositing.
+  // This bypasses both the librsvg base64-image limitation and the
+  // alpha-on-3-channel-canvas problem. Black bg is invisible on the black canvas.
+  if (LOGO_BUF) {
+    try {
+      const flatLogo = await sharp(LOGO_BUF)
+        .resize(LOGO_AREA.w, LOGO_AREA.h, { fit: 'inside' })
+        .flatten({ background: { r: 0, g: 0, b: 0 } })
+        .png()
+        .toBuffer();
+      const logoMeta = await sharp(flatLogo).metadata();
+      const lx = LOGO_AREA.x + Math.round((LOGO_AREA.w - (logoMeta.width ?? LOGO_AREA.w)) / 2);
+      const ly = LOGO_AREA.y + Math.round((LOGO_AREA.h - (logoMeta.height ?? LOGO_AREA.h)) / 2);
+      composites.push({ input: flatLogo, left: lx, top: ly });
+    } catch (e) {
+      console.error('[render] logo composite error:', e.message);
+    }
+  }
 
   // --- Metadata + borders full-canvas SVG ---
   // Font embedded as base64 so Optima renders correctly on the Railway container.
@@ -330,14 +345,8 @@ async function renderPrintLayout({ autograph, printRecord }) {
       letter-spacing="${line.letterSpacing}"
     >${escapeXml(line.text)}</text>`).join('\n');
 
-  // Logo embedded as base64 <image> — preserves transparency on 3-channel canvas
-  // Use both href and xlink:href — librsvg on Linux requires xlink:href
-  const logoSvgEl = logoB64
-    ? `<image xlink:href="data:image/png;base64,${logoB64}" href="data:image/png;base64,${logoB64}" x="${LOGO_AREA.x}" y="${LOGO_AREA.y}" width="${LOGO_AREA.w}" height="${LOGO_AREA.h}" preserveAspectRatio="xMidYMid meet"/>`
-    : '';
-
   // Outer + inner borders drawn programmatically — no dependency on template PNG
-  const overlaySvg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${CANVAS_W}" height="${CANVAS_H}">
+  const overlaySvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${CANVAS_W}" height="${CANVAS_H}">
     ${fontFaceDecl}
     <rect x="10" y="10" width="${CANVAS_W - 20}" height="${CANVAS_H - 20}"
       fill="none" stroke="white" stroke-width="3" opacity="0.5"/>
@@ -347,7 +356,6 @@ async function renderPrintLayout({ autograph, printRecord }) {
     ${frameBorder(SIG_SQ, 6, '#F1C168', 0.55)}
     ${SMALL_FRAMES.map((sf) => frameBorder(sf, 4)).join('\n')}
     ${metaTextEls}
-    ${logoSvgEl}
   </svg>`;
   composites.push({ input: Buffer.from(overlaySvg), left: 0, top: 0 });
 
