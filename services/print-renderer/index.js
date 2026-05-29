@@ -75,8 +75,8 @@ if (!LOGO_BUF) console.warn('[init] ophinia-logo-white.png not found in assets/'
 const FONT_PATH = path.join(__dirname, 'assets', 'Optima.ttc');
 if (!fs.existsSync(FONT_PATH)) console.warn('[init] Optima.ttc not found in assets/');
 
-// Logo area (below QR)
-const LOGO_AREA = { x: tx(791), y: ty(492), w: tx(80), h: ty(26) };
+// Logo area (below QR) — x centered under QR_AREA
+const LOGO_AREA = { x: QR_AREA.x + Math.round((QR_AREA.w - tx(80)) / 2), y: ty(492), w: tx(80), h: ty(26) };
 
 // ---------------------------------------------------------------------------
 // Helpers
