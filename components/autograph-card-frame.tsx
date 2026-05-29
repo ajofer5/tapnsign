@@ -27,14 +27,26 @@ function octPath(x: number, y: number, w: number, h: number, c: number): string 
   ].join(' ');
 }
 
-export function DisplayCardFrame({ frameId = 'classic' }: { frameId?: 'classic' | 'ophina' | 'ophinia_o' }) {
+export function DisplayCardFrame({ frameId = 'classic' }: { frameId?: 'blur' | 'classic' | 'ophina' | 'ophinia_o' }) {
+  if (frameId === 'blur') {
+    return (
+      <View style={[StyleSheet.absoluteFill, { zIndex: 15, elevation: 15 }]} pointerEvents="none">
+        <Image
+          source={require('../assets/images/blur-card-frame.@3xpng.png')}
+          style={{ width: '100%', height: '100%' }}
+          resizeMode="contain"
+        />
+      </View>
+    );
+  }
+
   if (frameId === 'ophinia_o') {
     // Asset was designed for 60:85; new canonical ratio is 60:100 (3:5).
     // Use "contain" to avoid distortion — a new 3:5 asset should replace this.
     return (
       <View style={[StyleSheet.absoluteFill, { zIndex: 15, elevation: 15 }]} pointerEvents="none">
         <Image
-          source={require('../assets/images/ophinia-o-frame.png')}
+          source={require('../assets/images/ophinia-o-frame@3x.png')}
           style={{ width: '100%', height: '100%' }}
           resizeMode="contain"
         />

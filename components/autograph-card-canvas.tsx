@@ -1,6 +1,7 @@
 import { DisplayCardFrame, PrintCardFrame } from '@/components/autograph-card-frame';
 import { BrandFonts } from '@/constants/theme';
 import { CardTemplate, CLASSIC_CARD_TEMPLATE } from '@/lib/card-templates';
+import { getDisplayNameFontScale } from '@/lib/display-name';
 import { forwardRef, ReactNode } from 'react';
 import { Image, ImageSourcePropType, StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
 import Svg, { ClipPath, Defs, G, Path, Rect } from 'react-native-svg';
@@ -97,6 +98,7 @@ export const AutographCardCanvas = forwardRef<View, Props>(function AutographCar
   },
   ref,
 ) {
+  const effectiveNameScale = nameScale * getDisplayNameFontScale(creatorName);
   const visibleStrokes = currentTimeSeconds == null || !Number.isFinite(currentTimeSeconds)
     ? strokes
     : strokes
@@ -116,21 +118,21 @@ export const AutographCardCanvas = forwardRef<View, Props>(function AutographCar
             height: `${template.zones.header.height * 100}%`,
           },
           {
-            paddingHorizontal: 12 * nameScale,
-            gap: 6 * nameScale,
+            paddingHorizontal: 12 * effectiveNameScale,
+            gap: 6 * effectiveNameScale,
           },
           template.frameId === 'ophinia_o' && { zIndex: 35, elevation: 35, marginTop: -14 },
         ]}
         pointerEvents="none"
       >
-        {template.showNameLines !== false ? <View style={[styles.nameLine, { width: 42 * nameScale }]} /> : <View style={[styles.nameLineSpacer, { width: 42 * nameScale }]} />}
+        {template.showNameLines !== false ? <View style={[styles.nameLine, { width: 42 * effectiveNameScale }]} /> : <View style={[styles.nameLineSpacer, { width: 42 * effectiveNameScale }]} />}
         <View style={styles.nameTextGroup}>
           <Text
             style={[
               styles.creatorName,
               {
-                fontSize: 28 * nameScale,
-                letterSpacing: 1.2 * nameScale,
+                fontSize: 28 * effectiveNameScale,
+                letterSpacing: 1.2 * effectiveNameScale,
               },
               template.nameColor ? { color: template.nameColor } : null,
             ]}
@@ -142,7 +144,7 @@ export const AutographCardCanvas = forwardRef<View, Props>(function AutographCar
             <Text
               style={[
                 styles.sequenceNumber,
-                { fontSize: 13 * nameScale },
+                { fontSize: 13 * effectiveNameScale },
                 template.nameColor ? { color: template.nameColor } : null,
               ]}
             >
@@ -150,7 +152,7 @@ export const AutographCardCanvas = forwardRef<View, Props>(function AutographCar
             </Text>
           ) : null}
         </View>
-        {template.showNameLines !== false ? <View style={[styles.nameLine, { width: 42 * nameScale }]} /> : <View style={[styles.nameLineSpacer, { width: 42 * nameScale }]} />}
+        {template.showNameLines !== false ? <View style={[styles.nameLine, { width: 42 * effectiveNameScale }]} /> : <View style={[styles.nameLineSpacer, { width: 42 * effectiveNameScale }]} />}
       </View>
 
       <View
@@ -219,7 +221,7 @@ export const AutographCardCanvas = forwardRef<View, Props>(function AutographCar
       {template.frameId === 'ophinia_o' && frameVariant !== 'print' ? (
         <View style={[StyleSheet.absoluteFill, { zIndex: 25 }]} pointerEvents="none">
           <Image
-            source={require('../assets/images/ophinia-o-frame.png')}
+            source={require('../assets/images/ophinia-o-frame@3x.png')}
             style={{ width: '100%', height: '100%', tintColor: '#000000' }}
             resizeMode="stretch"
           />
