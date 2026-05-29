@@ -53,8 +53,8 @@ const META_AREA = { x: tx(499), y: ty(388), w: tx(284), h: ty(142) };
 
 // Small frames row — frames 4, 6, 8, 10 (0-indexed: 3, 5, 7, 9)
 const SF_Y = ty(573);
-const SF_H = ty(142);
 const SF_W = tx(88);
+const SF_H = Math.round(SF_W * 5 / 3); // match 3:5 card aspect ratio — no top/bottom cropping
 const SF_TOTAL = tx(930) - tx(533);
 const SF_GAP = Math.round((SF_TOTAL - 4 * SF_W) / 3);
 
@@ -285,20 +285,18 @@ async function renderPrintLayout({ autograph, printRecord }) {
     console.error('[render] QR generation error:', e.message);
   }
 
-  // Logo: flatten onto black background before compositing.
-  // This bypasses both the librsvg base64-image limitation and the
-  // alpha-on-3-channel-canvas problem. Black bg is invisible on the black canvas.
+  // Logo: resize and composite with alpha intact.
+  // Canvas is channels:4 (RGBA) so alpha blending works correctly — no flatten needed.
   if (LOGO_BUF) {
     try {
-      const flatLogo = await sharp(LOGO_BUF)
+      const resizedLogo = await sharp(LOGO_BUF)
         .resize(LOGO_AREA.w, LOGO_AREA.h, { fit: 'inside' })
-        .flatten({ background: { r: 0, g: 0, b: 0 } })
         .png()
         .toBuffer();
-      const logoMeta = await sharp(flatLogo).metadata();
+      const logoMeta = await sharp(resizedLogo).metadata();
       const lx = LOGO_AREA.x + Math.round((LOGO_AREA.w - (logoMeta.width ?? LOGO_AREA.w)) / 2);
       const ly = LOGO_AREA.y + Math.round((LOGO_AREA.h - (logoMeta.height ?? LOGO_AREA.h)) / 2);
-      composites.push({ input: flatLogo, left: lx, top: ly });
+      composites.push({ input: resizedLogo, left: lx, top: ly });
     } catch (e) {
       console.error('[render] logo composite error:', e.message);
     }
@@ -362,10 +360,13 @@ async function renderPrintLayout({ autograph, printRecord }) {
   // --- Composite onto black canvas ---
   console.log('[render] compositing landscape PNG');
 
+  // Use channels:4 (RGBA) so all PNG composites use proper alpha blending.
+  // Flatten to black at the end to produce an opaque RGB output.
   const landscape = await sharp({
-    create: { width: CANVAS_W, height: CANVAS_H, channels: 3, background: { r: 0, g: 0, b: 0 } },
+    create: { width: CANVAS_W, height: CANVAS_H, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 1 } },
   })
     .composite(composites)
+    .flatten({ background: { r: 0, g: 0, b: 0 } })
     .png({ compressionLevel: 6 })
     .toBuffer();
 
