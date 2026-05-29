@@ -1,21 +1,22 @@
 {
   "expo": {
-    "name": "autograph-app-v2",
+    "name": "Ophinia",
     "slug": "autograph-app-v2",
     "version": "1.0.0",
     "orientation": "default",
-    "icon": "./assets/images/icon.png",
-    "scheme": "autographappv2",
+    "icon": "./assets/images/Ophinia_O.png",
+    "scheme": "tapnsign",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
+      "usesAppleSignIn": true,
       "infoPlist": {
         "NSCameraUsageDescription": "Allow this app to use your camera to capture autograph videos.",
         "NSMicrophoneUsageDescription": "Allow this app to record audio with autograph videos.",
         "NSPhotoLibraryAddUsageDescription": "Allow this app to save autograph videos to your library."
       },
-      "bundleIdentifier": "com.anonymous.autographappv2"
+      "bundleIdentifier": "com.tapnsign.app"
     },
     "android": {
       "permissions": [
@@ -34,17 +35,16 @@
       ],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "foregroundImage": "./assets/images/Ophinia_O.png",
+        "monochromeImage": "./assets/images/Ophinia_O.png"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.autographappv2"
+      "package": "com.tapnsign.app"
     },
     "web": {
       "output": "single-page",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/Ophinia_O.png"
     },
     "plugins": [
       "expo-router",
@@ -79,6 +79,14 @@
         {
           "merchantIdentifier": "merchant.com.tapnsign",
           "enableGooglePay": false
+        }
+      ],
+      "expo-apple-authentication",
+      "@react-native-community/datetimepicker",
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.529537228510-o2v5msi2p0khqbvb2qo7u4j5sg95ui7g"
         }
       ]
     ],

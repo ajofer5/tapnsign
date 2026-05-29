@@ -1,9 +1,11 @@
 import { BrandColors, BrandFonts } from '@/constants/theme';
+import { signInWithApple, signInWithGoogle } from '@/lib/social-auth';
 import { supabase } from '@/lib/supabase';
 import { Link, useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Alert,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -11,12 +13,31 @@ import {
   Text,
   TextInput,
 } from 'react-native';
+import * as AppleAuthentication from 'expo-apple-authentication';
 
 export default function LoginScreen() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [appleLoading, setAppleLoading] = useState(false);
+  const [appleAvailable, setAppleAvailable] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    AppleAuthentication.isAvailableAsync()
+      .then((available) => {
+        if (active) setAppleAvailable(available);
+      })
+      .catch(() => {
+        if (active) setAppleAvailable(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -29,9 +50,42 @@ export default function LoginScreen() {
     setLoading(false);
 
     if (error) {
-      Alert.alert('Login Failed', error.message);
+      const message = error.message?.toLowerCase().includes('invalid login credentials')
+        ? 'Incorrect email or password. Please try again.'
+        : error.message?.toLowerCase().includes('email not confirmed')
+        ? 'Please check your email and confirm your account before signing in.'
+        : 'Sign in failed. Please try again.';
+      Alert.alert('Login Failed', message);
     } else {
       router.replace('/');
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    setGoogleLoading(true);
+    try {
+      const result = await signInWithGoogle();
+      if (!result.canceled) {
+        router.replace('/');
+      }
+    } catch (error) {
+      Alert.alert('Google Sign-In Failed', error instanceof Error ? error.message : 'Google sign-in failed. Please try again.');
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
+
+  const handleAppleLogin = async () => {
+    setAppleLoading(true);
+    try {
+      const result = await signInWithApple();
+      if (!result.canceled) {
+        router.replace('/');
+      }
+    } catch (error) {
+      Alert.alert('Apple Sign-In Failed', error instanceof Error ? error.message : 'Apple sign-in failed. Please try again.');
+    } finally {
+      setAppleLoading(false);
     }
   };
 
@@ -40,7 +94,7 @@ export default function LoginScreen() {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <Text style={styles.title}>TapnSign</Text>
+      <Image source={require('../assets/images/Ophinia_name.png')} style={styles.logo} resizeMode="contain" />
 
       <TextInput
         style={styles.input}
@@ -65,8 +119,32 @@ export default function LoginScreen() {
         <Text style={styles.buttonText}>{loading ? 'Signing in…' : 'Sign In'}</Text>
       </Pressable>
 
+      <Text style={styles.socialDivider}>or continue with</Text>
+
+      <Pressable
+        style={[styles.socialButton, (googleLoading || loading || appleLoading) && styles.socialButtonDisabled]}
+        onPress={handleGoogleLogin}
+        disabled={googleLoading || loading || appleLoading}
+      >
+        <Text style={styles.socialButtonText}>{googleLoading ? 'Connecting Google…' : 'Continue with Google'}</Text>
+      </Pressable>
+
+      {Platform.OS === 'ios' && appleAvailable ? (
+        <Pressable
+          style={[styles.socialButton, styles.appleButton, (appleLoading || loading || googleLoading) && styles.socialButtonDisabled]}
+          onPress={handleAppleLogin}
+          disabled={appleLoading || loading || googleLoading}
+        >
+          <Text style={styles.appleButtonText}>{appleLoading ? 'Connecting Apple…' : 'Continue with Apple'}</Text>
+        </Pressable>
+      ) : null}
+
+      <Text style={styles.socialHint}>
+        If you already have an Ophinia account, use your current sign-in method first, then connect Google or Apple from Account.
+      </Text>
+
       <Link href="/signup" style={styles.linkText}>
-        Don't have an account? Sign up
+        Don&apos;t have an account? Sign up
       </Link>
     </KeyboardAvoidingView>
   );
@@ -80,13 +158,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 32,
   },
-  title: {
-    fontSize: 100,
-    lineHeight: 140,
-    fontFamily: BrandFonts.script,
-    color: BrandColors.primary,
+  logo: {
+    width: 260,
+    height: 110,
     marginBottom: 40,
-    paddingHorizontal: 12,
   },
   input: {
     width: '100%',
@@ -105,13 +180,56 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     alignItems: 'center',
     marginTop: 6,
-    marginBottom: 20,
+    marginBottom: 16,
   },
   buttonText: {
     color: '#fff',
     fontSize: 18,
     fontWeight: '600',
     fontFamily: BrandFonts.primary,
+  },
+  socialDivider: {
+    marginBottom: 12,
+    color: '#666',
+    fontFamily: BrandFonts.primary,
+    fontSize: 14,
+  },
+  socialButton: {
+    width: '100%',
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    paddingVertical: 15,
+    alignItems: 'center',
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  socialButtonDisabled: {
+    opacity: 0.6,
+  },
+  socialButtonText: {
+    color: '#111',
+    fontSize: 16,
+    fontWeight: '600',
+    fontFamily: BrandFonts.primary,
+  },
+  appleButton: {
+    backgroundColor: '#111',
+    borderColor: '#111',
+  },
+  appleButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    fontFamily: BrandFonts.primary,
+  },
+  socialHint: {
+    color: '#666',
+    fontFamily: BrandFonts.primary,
+    fontSize: 13,
+    textAlign: 'center',
+    marginBottom: 18,
+    lineHeight: 18,
   },
   linkText: {
     color: '#111',
