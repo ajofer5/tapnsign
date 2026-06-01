@@ -14,7 +14,7 @@ export function WebListingCard({
   const creatorName = listing.creator?.display_name ?? 'Creator';
 
   return (
-    <article className="overflow-hidden rounded-[6px] bg-white shadow-sm">
+    <article className="overflow-hidden rounded-none bg-white shadow-sm">
       <Link href={`/autograph/${listing.id}`} className="block">
         {listing.thumbnail_url ? (
           <img

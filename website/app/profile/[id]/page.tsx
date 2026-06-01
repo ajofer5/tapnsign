@@ -78,10 +78,10 @@ export default async function ProfilePage({
                 <img
                   src={profile.avatar_url}
                   alt={profile.display_name}
-                  className="h-40 w-24 rounded-[6px] object-cover"
+                  className="h-40 w-24 rounded-none object-cover"
                 />
               ) : (
-                <div className="flex h-40 w-24 items-center justify-center rounded-[6px] bg-[#001B5C] text-3xl font-black text-white">
+                <div className="flex h-40 w-24 items-center justify-center rounded-none bg-[#001B5C] text-3xl font-black text-white">
                   {profile.display_name.slice(0, 1).toUpperCase()}
                 </div>
               )}

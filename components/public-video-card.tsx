@@ -44,6 +44,7 @@ type PublicVideoCardProps = {
   secondaryText?: string | null;
   onPress?: () => void;
   renderThumbnail: () => ReactNode;
+  trailingTop?: ReactNode;
   trailing?: ReactNode;
 };
 
@@ -60,6 +61,7 @@ export function PublicVideoCard({
   secondaryText,
   onPress,
   renderThumbnail,
+  trailingTop,
   trailing,
 }: PublicVideoCardProps) {
   const content = (
@@ -81,6 +83,7 @@ export function PublicVideoCard({
           </View>
         </View>
         <View style={styles.details}>
+          {trailingTop}
           {priceLabel ? <Text style={styles.priceLabel}>{priceLabel}</Text> : null}
           <Text style={styles.price}>{priceText}</Text>
           {secondaryText ? <Text style={styles.secondary}>{secondaryText}</Text> : null}
@@ -98,7 +101,7 @@ export const publicVideoCardStyles = StyleSheet.create({
   thumbnailShell: {
     width: 176,
     height: 208,
-    borderRadius: 18,
+    borderRadius: 0,
     overflow: 'hidden',
     backgroundColor: '#050505',
   },
@@ -195,8 +198,9 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   price: {
-    fontSize: 28,
-    lineHeight: 32,
+    marginTop: 6,
+    fontSize: 22,
+    lineHeight: 25,
     fontWeight: '800',
     color: '#111',
     fontFamily: BrandFonts.primary,

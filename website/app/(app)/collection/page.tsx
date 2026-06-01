@@ -64,7 +64,7 @@ export default async function CollectionPage({ searchParams }: CollectionPagePro
       {autographs.length > 0 ? (
         <section className="mt-8 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
           {autographs.map((item) => (
-            <article key={item.id} className="overflow-hidden rounded-[6px] bg-white shadow-sm">
+            <article key={item.id} className="overflow-hidden rounded-none bg-white shadow-sm">
               <Link href={`/autograph/${item.id}`} className="block">
                 {item.thumbnail_url ? (
                   <img
