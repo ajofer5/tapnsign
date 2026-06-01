@@ -671,7 +671,8 @@ function StylePickScreen({
                   captureHeight={template.baseHeight}
                   strokes={[]}
                   strokeColor={NAVY_COLOR}
-                  style={[stylePickStyles.cardPreview, template.id === 'ophinia_o' && { backgroundColor: '#B0B0B8' }]}
+                  style={stylePickStyles.cardPreview}
+                  cameraContent={template.id === 'ophinia_o' ? <View style={[StyleSheet.absoluteFill, { backgroundColor: '#B0B0B8' }]} /> : undefined}
                 />
               </View>
             </Pressable>
