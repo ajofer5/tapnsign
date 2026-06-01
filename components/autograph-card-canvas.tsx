@@ -158,8 +158,7 @@ export const AutographCardCanvas = forwardRef<View, Props>(function AutographCar
       <View
         style={[
           styles.cameraWindow,
-          template.frameId === 'ophina' ? styles.ophinaCameraWindow : null,
-          template.frameId === 'ophinia_o' ? styles.ophiniaOCameraWindow : null,
+template.frameId === 'ophinia_o' ? styles.ophiniaOCameraWindow : null,
           template.frameId === 'classic' ? styles.classicCameraWindow : null,
           {
             left: `${template.zones.cameraWindow.x * 100}%`,
@@ -296,10 +295,7 @@ const styles = StyleSheet.create({
   classicCameraWindow: {
     borderRadius: 16,
   },
-  ophinaCameraWindow: {
-    borderRadius: 88,
-  },
-  ophiniaOCameraWindow: {
+ophiniaOCameraWindow: {
     borderRadius: 28,
   },
   signatureZone: {

@@ -27,7 +27,7 @@ function octPath(x: number, y: number, w: number, h: number, c: number): string 
   ].join(' ');
 }
 
-export function DisplayCardFrame({ frameId = 'classic' }: { frameId?: 'blur' | 'classic' | 'ophina' | 'ophinia_o' }) {
+export function DisplayCardFrame({ frameId = 'classic' }: { frameId?: 'blur' | 'classic' | 'ophinia_o' }) {
   if (frameId === 'blur') {
     return (
       <View style={[StyleSheet.absoluteFill, { zIndex: 15, elevation: 15 }]} pointerEvents="none">
@@ -54,28 +54,7 @@ export function DisplayCardFrame({ frameId = 'classic' }: { frameId?: 'blur' | '
     );
   }
 
-  if (frameId === 'ophina') {
-    // viewBox updated from 300×425 → 300×500. All Y coords scaled by 500/425.
-    return (
-      <Svg
-        width="100%"
-        height="100%"
-        viewBox="0 0 300 500"
-        preserveAspectRatio="none"
-        style={[StyleSheet.absoluteFill, { zIndex: 15, elevation: 15 }]}
-        pointerEvents="none"
-      >
-        <Path
-          d="M 24,7 H 276 A 22,22 0 0 1 298,33 V 344 A 22,22 0 0 1 276,370 H 24 A 22,22 0 0 1 2,344 V 33 A 22,22 0 0 1 24,7 Z M 60,47 H 240 A 16,16 0 0 1 256,66 V 287 A 16,16 0 0 1 240,306 H 60 A 16,16 0 0 1 44,287 V 66 A 16,16 0 0 1 60,47 Z"
-          fill={N}
-          fillRule="evenodd"
-        />
-        <Line x1="26" y1="488" x2="274" y2="488" stroke={N} strokeWidth="0.9" opacity="0.18" />
-      </Svg>
-    );
-  }
-
-  // Classic — viewBox updated from 300×425 → 300×500. All Y coords scaled by 500/425.
+// Classic — viewBox updated from 300×425 → 300×500. All Y coords scaled by 500/425.
   return (
     <Svg
       width="100%"
