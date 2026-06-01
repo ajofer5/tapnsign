@@ -125,7 +125,7 @@ export const AutographCardCanvas = forwardRef<View, Props>(function AutographCar
         ]}
         pointerEvents="none"
       >
-        {template.showNameLines !== false ? <View style={[styles.nameLine, { width: 42 * effectiveNameScale }]} /> : <View style={[styles.nameLineSpacer, { width: 42 * effectiveNameScale }]} />}
+        {template.showNameLines !== false ? <View style={[styles.nameLine, { width: 42 * effectiveNameScale }, template.nameColor ? { backgroundColor: template.nameColor } : null]} /> : <View style={[styles.nameLineSpacer, { width: 42 * effectiveNameScale }]} />}
         <View style={styles.nameTextGroup}>
           <Text
             style={[
@@ -152,7 +152,7 @@ export const AutographCardCanvas = forwardRef<View, Props>(function AutographCar
             </Text>
           ) : null}
         </View>
-        {template.showNameLines !== false ? <View style={[styles.nameLine, { width: 42 * effectiveNameScale }]} /> : <View style={[styles.nameLineSpacer, { width: 42 * effectiveNameScale }]} />}
+        {template.showNameLines !== false ? <View style={[styles.nameLine, { width: 42 * effectiveNameScale }, template.nameColor ? { backgroundColor: template.nameColor } : null]} /> : <View style={[styles.nameLineSpacer, { width: 42 * effectiveNameScale }]} />}
       </View>
 
       <View
