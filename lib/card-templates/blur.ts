@@ -22,10 +22,10 @@ export const BLUR_CARD_TEMPLATE: CardTemplate = {
       height: 28 / 500,
     },
     cameraWindow: {
-      x: 0.0750,
-      y: 0.0565,
-      width: 0.8650,
-      height: 0.9100,
+      x: 0,
+      y: 0,
+      width: 1,
+      height: 1,
     },
     signatureZone: {
       x: 18 / 300,
