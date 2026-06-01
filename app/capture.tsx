@@ -671,7 +671,7 @@ function StylePickScreen({
                   captureHeight={template.baseHeight}
                   strokes={[]}
                   strokeColor={NAVY_COLOR}
-                  style={[stylePickStyles.cardPreview, { backgroundColor: '#B0B0B8' }]}
+                  style={[stylePickStyles.cardPreview, template.id === 'ophinia_o' && { backgroundColor: '#B0B0B8' }]}
                 />
               </View>
             </Pressable>
