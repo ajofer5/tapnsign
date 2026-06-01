@@ -760,6 +760,7 @@ const stylePickStyles = StyleSheet.create({
     aspectRatio: 60 / 100,
     borderRadius: 12,
     overflow: 'hidden',
+    backgroundColor: '#B0B0B8',
   },
   cardPreview: {
     flex: 1,
