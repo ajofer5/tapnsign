@@ -664,23 +664,15 @@ function StylePickScreen({
               onPress={() => onSelectTemplate(template.id)}
             >
               <View style={stylePickStyles.cardPreviewWrapper}>
-                {template.id === 'ophinia_o' ? (
-                  <Image
-                    source={require('../assets/images/Ophinia_O template.png')}
-                    style={stylePickStyles.logoPreviewImage}
-                    resizeMode="contain"
-                  />
-                ) : (
-                  <AutographCardCanvas
-                    template={template}
-                    creatorName=""
-                    captureWidth={template.baseWidth}
-                    captureHeight={template.baseHeight}
-                    strokes={[]}
-                    strokeColor={NAVY_COLOR}
-                    style={stylePickStyles.cardPreview}
-                  />
-                )}
+                <AutographCardCanvas
+                  template={template}
+                  creatorName=""
+                  captureWidth={template.baseWidth}
+                  captureHeight={template.baseHeight}
+                  strokes={[]}
+                  strokeColor={NAVY_COLOR}
+                  style={stylePickStyles.cardPreview}
+                />
               </View>
             </Pressable>
           );
