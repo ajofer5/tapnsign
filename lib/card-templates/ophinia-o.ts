@@ -13,7 +13,7 @@ export const OPHINIA_O_CARD_TEMPLATE: CardTemplate = {
   strokeColor: BrandColors.violet,
   frameId: 'ophinia_o',
   nameColor: BrandColors.gold,
-  showNameLines: false,
+  showNameLines: true,
   zones: {
     header: {
       top: 12 / 500,
