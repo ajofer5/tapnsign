@@ -672,7 +672,7 @@ function StylePickScreen({
                   strokes={[]}
                   strokeColor={NAVY_COLOR}
                   style={stylePickStyles.cardPreview}
-                  cameraContent={template.id === 'ophinia_o' ? <View style={[StyleSheet.absoluteFill, { backgroundColor: '#B0B0B8' }]} /> : undefined}
+                  cameraContent={template.id === 'ophinia_o' ? <View style={[StyleSheet.absoluteFill, { backgroundColor: '#FFFFFF' }]} /> : undefined}
                 />
               </View>
             </Pressable>
@@ -761,7 +761,7 @@ const stylePickStyles = StyleSheet.create({
     aspectRatio: 60 / 100,
     borderRadius: 12,
     overflow: 'hidden',
-    backgroundColor: '#B0B0B8',
+    backgroundColor: '#FFFFFF',
   },
   cardPreview: {
     flex: 1,
