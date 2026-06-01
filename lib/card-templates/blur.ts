@@ -13,7 +13,7 @@ export const BLUR_CARD_TEMPLATE: CardTemplate = {
   strokeColor: BrandColors.violet,
   frameId: 'blur',
   nameColor: BrandColors.gold,
-  showNameLines: false,
+  showNameLines: true,
   // Starting from the same 3:5 geometry as Ophinia O until the Blur frame
   // gets its own tuned window/signature layout.
   zones: {
