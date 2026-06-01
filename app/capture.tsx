@@ -747,7 +747,6 @@ const stylePickStyles = StyleSheet.create({
     justifyContent: 'center',
     width: 224,
     padding: 14,
-    borderRadius: 18,
     borderWidth: 2,
     borderColor: 'transparent',
     backgroundColor: 'rgba(255,255,255,0.02)',
@@ -759,9 +758,7 @@ const stylePickStyles = StyleSheet.create({
   cardPreviewWrapper: {
     width: 180,
     aspectRatio: 60 / 100,
-    borderRadius: 12,
     overflow: 'hidden',
-    backgroundColor: '#FFFFFF',
   },
   cardPreview: {
     flex: 1,
