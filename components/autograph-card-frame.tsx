@@ -32,7 +32,7 @@ export function DisplayCardFrame({ frameId = 'classic' }: { frameId?: 'blur' | '
     return (
       <View style={[StyleSheet.absoluteFill, { zIndex: 15, elevation: 15 }]} pointerEvents="none">
         <Image
-          source={require('../assets/images/blur-card-frame@3x.png')}
+          source={require('../assets/images/blur-card-frame.png')}
           style={{ width: '100%', height: '100%' }}
           resizeMode="stretch"
         />
