@@ -78,7 +78,7 @@ export default async function VerifyPage({ params }: { params: Promise<{ id: str
 
             {/* Certificate card */}
             <div className="bg-white rounded-2xl overflow-hidden shadow-sm">
-              <div className="flex items-center justify-between bg-[#001B5C] px-6 py-4">
+              <div className="flex items-center justify-between bg-black px-6 py-4">
                 <span className="text-white font-bold text-sm tracking-wide uppercase">
                   Certificate of Authenticity
                 </span>
