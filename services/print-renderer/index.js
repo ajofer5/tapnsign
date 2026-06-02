@@ -13,6 +13,8 @@
  */
 
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
 const sharp = require('sharp');
 const { createClient } = require('@supabase/supabase-js');
 
@@ -35,6 +37,12 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
 }
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+// Load logo once at startup
+const _logoPath = path.join(__dirname, 'assets', 'ophinia-logo-white.png');
+const _logoDataUri = fs.existsSync(_logoPath)
+  ? `data:image/png;base64,${fs.readFileSync(_logoPath).toString('base64')}`
+  : null;
 
 // ---------------------------------------------------------------------------
 // Layout constants — landscape 3000×2400 (10"×8" @ 300 DPI)
@@ -232,12 +240,25 @@ function buildLayoutSvg({
     }
   }
 
-  // Verify badge
+  // Verify badge (QR code)
   elements.push(`
     <image href="${badgeDataUri}"
       x="${BADGE_AREA.x}" y="${BADGE_AREA.y}" width="${BADGE_AREA.w}" height="${BADGE_AREA.h}"
       preserveAspectRatio="xMidYMid meet"/>
   `);
+
+  // Ophinia logo — positioned in the logo area below the QR badge
+  if (_logoDataUri) {
+    const LOGO_X = _QR_AREA.x;
+    const LOGO_Y = _LOGO_AREA.y;
+    const LOGO_W = _QR_AREA.w;
+    const LOGO_H = _LOGO_AREA.h;
+    elements.push(`
+      <image href="${_logoDataUri}"
+        x="${LOGO_X}" y="${LOGO_Y}" width="${LOGO_W}" height="${LOGO_H}"
+        preserveAspectRatio="xMidYMid meet"/>
+    `);
+  }
 
   // Metadata text — Optima installed as system font via Dockerfile
   const metaLines = [
