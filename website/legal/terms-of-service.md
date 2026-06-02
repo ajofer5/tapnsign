@@ -30,18 +30,18 @@ Certain features are restricted to adults age 18 or older, including creator ver
 
 ## 3. The Ophinia Platform
 
-Ophinia is a platform that allows verified creators to capture and digitally sign autographs, and allows collectors to discover, purchase, own, offer on, and share those autographs. Autographs may include captured media, signature strokes, template styling, thumbnail imagery, and related metadata. Each autograph is associated with a Certificate of Authenticity ("CoA") and ownership history maintained on the platform.
+Ophinia is a platform that allows eligible adult users to capture and digitally sign autographs, and allows collectors to discover, purchase, own, offer on, and share those autographs. Some creators may also complete an optional identity-verification process offered by Ophinia. Autographs may include captured media, signature strokes, template styling, thumbnail imagery, and related metadata. Each autograph is associated with a Certificate of Authenticity ("CoA") and ownership history maintained on the platform.
 
 ---
 
 ## 4. Creator Verification
 
-To capture and sell autographs, you must complete our creator verification process, which currently requires:
+Creator verification is an optional identity-verification process that eligible adult users may complete to receive verified status on the platform. Creator verification currently requires:
 
 - A one-time identity verification fee of **$4.99**, charged via our Website. Promotional codes may be available at checkout
 - Identity verification through Stripe Identity, which requires a government-issued ID
 
-The verification fee is non-refundable except in cases of verified technical error. By submitting to verification, you consent to Stripe's collection and processing of your identity information under Stripe's terms and privacy policy.
+Creator verification is not required to create an account. However, only users who meet Ophinia's age and eligibility requirements may access creator and paid features. The verification fee is non-refundable except in cases of verified technical error. By submitting to verification, you consent to Stripe's collection and processing of your identity information under Stripe's terms and privacy policy.
 
 We may approve, deny, suspend, or revoke creator verification at our discretion, including for policy violations, fraud concerns, inaccurate information, or trust and safety reasons.
 

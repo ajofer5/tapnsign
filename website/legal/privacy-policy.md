@@ -12,7 +12,7 @@ Please read this policy carefully. By using the App or Website, you agree to the
 ## 1. Information We Collect
 
 ### Information You Provide
-- **Account information:** Display name, email address, password, and sign-in credentials when you register or connect a login method
+- **Account information:** Display name, email address, password, sign-in credentials, date of birth information, and age-confirmation information when you register or connect a login method
 - **Profile information:** Profile photo, biography, Instagram handle, personalized-request settings, and other optional profile fields
 - **Payment information:** Billing details processed through Stripe on our Website. We do not store your full card number
 - **Identity verification information:** If you apply for creator verification, identity information and government ID data are processed through Stripe Identity
@@ -43,6 +43,7 @@ Please read this policy carefully. By using the App or Website, you agree to the
 We use the information we collect to:
 
 - Create and manage your account
+- Enforce age-based access restrictions and eligibility for creator, purchase, print, and other paid features
 - Authenticate you and support account recovery, login linking, and security
 - Process purchases, offers, creator verification fees, personalized requests, and official print orders
 - Capture, display, deliver, and transfer autograph ownership records
@@ -93,7 +94,7 @@ We use reasonable administrative, technical, and physical safeguards to protect 
 
 The App and Website are not directed to children under the age of 13, and we do not knowingly collect personal information from children under 13. If we learn that we have collected such information, we will delete it promptly. If you believe a child under 13 has provided us information, please contact us at hello@tapnsign.com.
 
-Users who are at least 13 but under 18 may use collector-facing portions of Ophinia, such as browsing, saving, viewing, and sharing content, but certain features are restricted to adults. Creator verification, selling, buying, making offers, ordering prints, and other paid or payout-related activities are intended only for users age 18 or older.
+Users who are at least 13 but under 18 may use collector-facing portions of Ophinia, such as browsing, saving, viewing, and sharing content, but certain features are restricted to adults. Minting autographs, creator verification, selling, buying, making offers, ordering prints, and other paid or payout-related activities are intended only for users age 18 or older.
 
 ---
 
