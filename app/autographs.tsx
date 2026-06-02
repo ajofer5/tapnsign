@@ -7,7 +7,7 @@ import { BrandColors, BrandFonts } from '@/constants/theme';
 import { fetchAutographTemplateIds } from '@/lib/autograph-template';
 import { callEdgeFunction } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
-import { buildAutographUrl, buildVerifyUrl } from '@/lib/public-links';
+import { buildAutographUrl } from '@/lib/public-links';
 import { supabase } from '@/lib/supabase';
 import { useStripe } from '@stripe/stripe-react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -27,7 +27,6 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import QRCode from 'react-native-qrcode-svg';
 type Point = {
   x: number;
   y: number;
@@ -1375,64 +1374,52 @@ export default function AutographsScreen() {
                     <Text style={styles.certTitle}>Print Autograph</Text>
                     <Text style={styles.certDate}>
                       {printPreview.item_cents != null && printPreview.shipping_cents != null
-                        ? `Official Ophinia print — 8×12 · $${(printPreview.item_cents / 100).toFixed(2)} + $${(printPreview.shipping_cents / 100).toFixed(2)} shipping`
-                        : 'Official Ophinia print — 8×12'}
+                        ? `Official Ophinia print — 8×10 · $${(printPreview.item_cents / 100).toFixed(2)} + $${(printPreview.shipping_cents / 100).toFixed(2)} shipping`
+                        : 'Official Ophinia print — 8×10'}
                     </Text>
 
                     <View style={styles.printCard}>
-                      <View style={styles.printArtifact}>
-                        <View style={styles.printArtifactTop}>
-                          <PublicVideoThumbnail
-                            videoUrl={printItem.videoUri}
-                            thumbnailUrl={printItem.thumbnailUrl}
-                            previewFrameUrls={printItem.previewFrameUrls}
-                            previewFrameTimesMs={printItem.previewFrameTimesMs}
-                            strokes={printItem.strokes ?? []}
-                            captureWidth={printItem.captureWidth || 1}
-                            captureHeight={printItem.captureHeight || 1}
-                            strokeColor={printItem.strokeColor}
-                            shellStyle={styles.printThumbnail}
-                            mediaBackgroundColor="#fff"
-                          />
-                        </View>
-                        <View style={styles.printSlip}>
-                          <View style={styles.printFooterStats}>
-                            <View style={[styles.printFooterRow, styles.printFooterRowTop]}>
-                              <Text style={styles.printFooterText}>
-                                {printItem.creatorSequenceNumber != null ? `#${printItem.creatorSequenceNumber}` : ' '}
-                              </Text>
-                              <Text style={styles.printFooterText}>{formatCardDate(printItem.createdAt)}</Text>
-                            </View>
-                            <View style={styles.printFooterDivider} />
-                            <View style={styles.printFooterRow}>
-                              <Text style={styles.printFooterText}>
-                                Print #{printPreview.next_print_sequence_number}
-                              </Text>
-                            </View>
-                            <View style={styles.printFooterDivider} />
-                            <View style={styles.printFooterRow}>
-                              <Text style={styles.printFooterText}>
-                                {printItem.seriesName ? `SERIES ${printItem.seriesName}` : ' '}
-                              </Text>
-                            </View>
-                            <View style={styles.printFooterDivider} />
-                            <View style={styles.printFooterRow}>
-                              <Text style={styles.printFooterText}>
-                                {formatSeriesEdition(printItem) ?? ' '}
-                              </Text>
-                            </View>
+                      <View style={styles.printArtifact8x10}>
+                        <View style={styles.printLandscape}>
+                          <View style={styles.printOuterBorder} />
+                          <View style={styles.printInnerBorder} />
+
+                          <View style={styles.printHeroPlaceholder} />
+
+                          <View style={styles.printSignaturePlaceholder}>
+                            <View style={styles.printSignatureStrokeOne} />
+                            <View style={styles.printSignatureStrokeTwo} />
+                            <View style={styles.printSignatureStrokeThree} />
                           </View>
-                          <View style={styles.printFooterQr}>
-                            <QRCode
-                              value={buildVerifyUrl(printItem.certificateId)}
-                              size={58}
-                              color="#111"
-                              backgroundColor="#fff"
-                            />
+
+                          <View style={styles.printBadgePlaceholder}>
+                            <View style={styles.printBadgeQrPlaceholder}>
+                              <View style={styles.printBadgeQrGrid} />
+                            </View>
+                            <View style={styles.printBadgeLogoPlaceholder} />
                           </View>
-                        </View>
-                        <View pointerEvents="none" style={styles.printGuideOverlay}>
-                          <View style={styles.printGuideBorder} />
+
+                          <View style={styles.printMetaPlaceholder}>
+                            <Text style={styles.printMetaLinePrimary}>
+                              {printItem.creatorName?.toUpperCase() ?? 'CREATOR NAME'}
+                              {printItem.creatorSequenceNumber != null ? ` #${printItem.creatorSequenceNumber}` : ''}
+                            </Text>
+                            <Text style={styles.printMetaLineSecondary}>
+                              {`Captured on ${formatCardDate(printItem.createdAt)}`}
+                            </Text>
+                            <Text style={styles.printMetaLineSecondary}>
+                              {`Print #${printPreview.next_print_sequence_number}`}
+                            </Text>
+                            {printItem.seriesName ? (
+                              <Text style={styles.printMetaLineTertiary}>{printItem.seriesName}</Text>
+                            ) : null}
+                          </View>
+
+                          <View style={styles.printFrameRow}>
+                            {[0, 1, 2, 3].map((frameIndex) => (
+                              <View key={frameIndex} style={styles.printSmallFramePlaceholder} />
+                            ))}
+                          </View>
                         </View>
                       </View>
                     </View>
@@ -1445,8 +1432,8 @@ export default function AutographsScreen() {
                       ) : null}
                       <Text style={styles.printInfoText}>
                         {printPreview.item_cents != null && printPreview.shipping_cents != null
-                          ? `Official 8×12 numbered print — $${(printPreview.item_cents / 100).toFixed(2)} print + $${(printPreview.shipping_cents / 100).toFixed(2)} shipping.`
-                          : 'Official 8×12 numbered print shipped directly to you.'}
+                          ? `Official 8×10 numbered print — $${(printPreview.item_cents / 100).toFixed(2)} print + $${(printPreview.shipping_cents / 100).toFixed(2)} shipping.`
+                          : 'Official 8×10 numbered print shipped directly to you.'}
                       </Text>
                       <Pressable
                         style={styles.certCloseButton}
@@ -2402,89 +2389,154 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 10 },
     elevation: 4,
   },
-  printArtifact: {
+  printArtifact8x10: {
     width: '100%',
-    aspectRatio: 3 / 5,
+    aspectRatio: 4 / 5,
     borderRadius: 18,
     overflow: 'hidden',
-    backgroundColor: '#fff',
+    backgroundColor: '#050505',
+    padding: 14,
   },
-  printGuideOverlay: {
+  printLandscape: {
+    flex: 1,
+    backgroundColor: '#050505',
+  },
+  printOuterBorder: {
     ...StyleSheet.absoluteFillObject,
-    zIndex: 30,
-    elevation: 30,
-  },
-  printGuideBorder: {
-    position: 'absolute',
-    top: 8,
-    left: 8,
-    right: 8,
-    bottom: 8,
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: 'rgba(17,17,17,0.22)',
-  },
-  printArtifactTop: {
-    flex: 85,
-    paddingTop: 10,
-  },
-  printSlip: {
-    flex: 15,
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    gap: 10,
-    paddingHorizontal: 12,
-    paddingTop: 8,
-    paddingBottom: 12,
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#111',
-  },
-  printThumbnail: {
-    width: '100%',
-    height: '100%',
-    backgroundColor: '#efe7da',
-  },
-  printFooterStats: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: '#222',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.42)',
     borderRadius: 8,
-    overflow: 'hidden',
-    backgroundColor: '#fff',
   },
-  printFooterRow: {
-    flex: 1,
+  printInnerBorder: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    right: 12,
+    bottom: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.22)',
+    borderRadius: 4,
+  },
+  printHeroPlaceholder: {
+    position: 'absolute',
+    left: '8.8%',
+    top: '8.8%',
+    width: '37%',
+    height: '65.5%',
+    backgroundColor: '#f2ede3',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.5)',
+  },
+  printSignaturePlaceholder: {
+    position: 'absolute',
+    left: '59.5%',
+    top: '8.9%',
+    width: '27.1%',
+    height: '26.8%',
+    backgroundColor: '#000',
+    borderWidth: 2,
+    borderColor: 'rgba(241,193,104,0.6)',
+    alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 8,
+    overflow: 'hidden',
   },
-  printFooterRowTop: {
-    flexDirection: 'row',
+  printSignatureStrokeOne: {
+    position: 'absolute',
+    width: '72%',
+    height: 3,
+    backgroundColor: '#F1C168',
+    borderRadius: 999,
+    transform: [{ rotate: '-18deg' }, { translateY: -16 }],
+  },
+  printSignatureStrokeTwo: {
+    position: 'absolute',
+    width: '58%',
+    height: 3,
+    backgroundColor: '#F1C168',
+    borderRadius: 999,
+    transform: [{ rotate: '14deg' }],
+  },
+  printSignatureStrokeThree: {
+    position: 'absolute',
+    width: '66%',
+    height: 3,
+    backgroundColor: '#F1C168',
+    borderRadius: 999,
+    transform: [{ rotate: '-8deg' }, { translateY: 18 }],
+  },
+  printBadgePlaceholder: {
+    position: 'absolute',
+    right: '12.2%',
+    top: '39.2%',
+    width: '8.9%',
+    height: '13.1%',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  printFooterDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: 'rgba(0,0,0,0.22)',
+  printBadgeQrPlaceholder: {
+    width: '100%',
+    aspectRatio: 1,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  printFooterText: {
-    fontSize: 10,
-    lineHeight: 11,
-    color: '#111',
+  printBadgeQrGrid: {
+    width: '70%',
+    height: '70%',
+    borderWidth: 2,
+    borderColor: '#111',
+    borderStyle: 'dashed',
+  },
+  printBadgeLogoPlaceholder: {
+    width: '100%',
+    height: '18%',
+    backgroundColor: 'rgba(255,255,255,0.72)',
+    borderRadius: 999,
+  },
+  printMetaPlaceholder: {
+    position: 'absolute',
+    left: '49.5%',
+    top: '38.8%',
+    width: '28.1%',
+    minHeight: '16%',
+    justifyContent: 'flex-start',
+  },
+  printMetaLinePrimary: {
+    fontSize: 11,
+    lineHeight: 14,
+    color: '#fff',
     fontFamily: BrandFonts.primary,
     fontWeight: '700',
+    letterSpacing: 0.8,
   },
-  printFooterQr: {
-    width: 64,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  printMetaText: {
-    fontSize: 13,
-    lineHeight: 18,
-    color: '#444',
+  printMetaLineSecondary: {
+    marginTop: 4,
+    fontSize: 9,
+    lineHeight: 12,
+    color: 'rgba(255,255,255,0.72)',
     fontFamily: BrandFonts.primary,
-    textAlign: 'center',
+  },
+  printMetaLineTertiary: {
+    marginTop: 4,
+    fontSize: 8,
+    lineHeight: 11,
+    color: 'rgba(255,255,255,0.56)',
+    fontFamily: BrandFonts.primary,
+  },
+  printFrameRow: {
+    position: 'absolute',
+    left: '52.9%',
+    right: '7.7%',
+    bottom: '9.4%',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  printSmallFramePlaceholder: {
+    width: '21%',
+    aspectRatio: 3 / 5,
+    backgroundColor: '#f2ede3',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.5)',
   },
   printInfoText: {
     maxWidth: 380,
