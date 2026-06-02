@@ -75,8 +75,8 @@ const TRUST_SIGNALS = [
     detail: 'Certificate IDs and authenticity records are issued by Ophinia on the server, not by the device.',
   },
   {
-    title: 'Original Creator Verified',
-    detail: 'Only verified creators can mint new Ophinia autographs.',
+    title: 'Creator Age Verified',
+    detail: 'Ophinia requires creators to be 18 or older. Identity-verified creators are confirmed via Stripe Identity.',
   },
   {
     title: 'Ownership Chain Recorded',
@@ -364,7 +364,7 @@ export default function VerifyScreen() {
 
       <View style={styles.card}>
         <Row label="Signed by" value={r.creator_name} />
-        <Row label="Verified Account" value={r.creator_verified ? 'Yes' : 'Pending'} />
+        <Row label="Creator Identity" value={r.creator_verified ? 'Identity Verified' : 'Unverified'} />
         <Row label="Current Owner" value={r.owner_name} />
         <Row label="Date Captured" value={formatDateTime(r.created_at)} />
       </View>

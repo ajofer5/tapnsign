@@ -2,6 +2,7 @@ import {
   assert,
   getAutographForUpdate,
   getIdempotencyKey,
+  getPlatformFee,
   getProfile,
   getRequestId,
   handleRequest,
@@ -14,8 +15,38 @@ import {
   supabaseAdmin,
 } from '../_shared/utils.ts';
 
-// $16.99 print — shipping included
-const PRINT_BUNDLE_CENTS = 1699;
+const PRODIGI_QUOTE_URL = Deno.env.get('PRODIGI_SANDBOX') === 'true'
+  ? 'https://api.sandbox.prodigi.com/v4.0/quotes'
+  : 'https://api.prodigi.com/v4.0/quotes';
+const PRODIGI_API_KEY = Deno.env.get('PRODIGI_API_KEY') ?? '';
+const SKU_8X10 = 'GLOBAL-PHO-8X10';
+// Fallback price if Prodigi quote fails
+const FALLBACK_PRINT_CENTS = 1699;
+
+async function getProdigiTotalCents(): Promise<number> {
+  try {
+    const response = await fetch(PRODIGI_QUOTE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': PRODIGI_API_KEY },
+      body: JSON.stringify({
+        shippingMethod: 'Standard',
+        destinationCountryCode: 'US',
+        currencyCode: 'USD',
+        items: [{ sku: SKU_8X10, copies: 1, attributes: { finish: 'lustre' }, assets: [{ printArea: 'default' }] }],
+      }),
+    });
+    if (!response.ok) return FALLBACK_PRINT_CENTS;
+    const data = await response.json();
+    const quote = data?.quotes?.[0];
+    if (!quote) return FALLBACK_PRINT_CENTS;
+    const item = parseFloat(quote.costSummary?.items?.amount ?? '0');
+    const shipping = parseFloat(quote.costSummary?.shipping?.amount ?? '0');
+    if (isNaN(item) || isNaN(shipping)) return FALLBACK_PRINT_CENTS;
+    return Math.round((item + shipping) * 100);
+  } catch {
+    return FALLBACK_PRINT_CENTS;
+  }
+}
 
 Deno.serve((req) =>
   handleRequest(async (request) => {
@@ -23,37 +54,18 @@ Deno.serve((req) =>
     const body = await parseJson(request);
 
     const autographId = requireString(body.autograph_id, 'autograph_id');
-    const idempotencyKey = getIdempotencyKey(request, body, `print:${user.id}:${autographId}`);
+    const idempotencyKey = getIdempotencyKey(request, body, crypto.randomUUID());
 
-    const [autograph, profile] = await Promise.all([
+    const [autograph, profile, printBundleCents] = await Promise.all([
       getAutographForUpdate(autographId),
       getProfile(user.id),
+      getProdigiTotalCents(),
     ]);
 
     assert(!profile.suspended_at, 403, 'Account is suspended.');
+    assert(profile.is_creator === true, 403, 'You must be 18 or older to purchase prints.');
     assert(autograph.status === 'active', 409, 'Autograph is not active.');
     assert(autograph.owner_id === user.id, 403, 'You do not own this autograph.');
-
-    // Block if this owner already has a fulfilled print (not canceled)
-    const { data: existingPrint, error: existingPrintError } = await supabaseAdmin
-      .from('autograph_prints')
-      .select('id, fulfillment_status')
-      .eq('autograph_id', autographId)
-      .eq('owner_id_at_print', user.id)
-      .eq('status', 'created')
-      .limit(1)
-      .maybeSingle();
-
-    if (existingPrintError) throw new HttpError(500, 'Could not check print history.');
-
-    if (existingPrint) {
-      // Allow re-initiating payment only if the prior attempt never confirmed payment
-      assert(
-        existingPrint.fulfillment_status === 'pending',
-        409,
-        'You have already ordered a print for this autograph.'
-      );
-    }
 
     // Reuse an existing open payment intent for idempotency
     const { data: existingEvent } = await supabaseAdmin
@@ -70,18 +82,27 @@ Deno.serve((req) =>
 
     if (existingEvent?.stripe_payment_intent_id) {
       const existingIntent = await stripe.paymentIntents.retrieve(existingEvent.stripe_payment_intent_id);
-      return json({
-        client_secret: existingIntent.client_secret,
-        payment_intent_id: existingIntent.id,
-        payment_event_id: existingEvent.id,
-        amount_cents: existingEvent.amount_cents,
-        reused: true,
-      });
+      // If already succeeded, mark captured and fall through to create a fresh intent
+      if (existingIntent.status === 'succeeded' || existingIntent.status === 'canceled') {
+        await supabaseAdmin
+          .from('payment_events')
+          .update({ status: existingIntent.status === 'succeeded' ? 'captured' : 'canceled' })
+          .eq('id', existingEvent.id);
+      } else {
+        return json({
+          client_secret: existingIntent.client_secret,
+          payment_intent_id: existingIntent.id,
+          payment_event_id: existingEvent.id,
+          amount_cents: existingEvent.amount_cents,
+          reused: true,
+        });
+      }
     }
 
     const requestId = getRequestId();
+    const { feeCents } = await getPlatformFee(printBundleCents);
     const paymentIntent = await stripe.paymentIntents.create({
-      amount: PRINT_BUNDLE_CENTS,
+      amount: printBundleCents,
       currency: 'usd',
       automatic_payment_methods: { enabled: true },
       metadata: {
@@ -100,10 +121,11 @@ Deno.serve((req) =>
         status: 'created',
         user_id: user.id,
         autograph_id: autographId,
-        amount_cents: PRINT_BUNDLE_CENTS,
+        amount_cents: printBundleCents,
         currency: 'usd',
         idempotency_key: idempotencyKey,
         stripe_payment_intent_id: paymentIntent.id,
+        platform_fee_cents: feeCents,
         provider_metadata: { request_id: requestId },
       })
       .select('id')
@@ -141,7 +163,7 @@ Deno.serve((req) =>
       client_secret: paymentIntent.client_secret,
       payment_intent_id: paymentIntent.id,
       payment_event_id: paymentEvent.id,
-      amount_cents: PRINT_BUNDLE_CENTS,
+      amount_cents: printBundleCents,
       reused: false,
     });
   }, req)

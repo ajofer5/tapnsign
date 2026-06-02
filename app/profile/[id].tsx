@@ -130,17 +130,6 @@ function formatNumericDate(value?: string | null) {
   });
 }
 
-function formatVerificationState(value?: ProfileData['verification_status']) {
-  switch (value) {
-    case 'verified': return 'Verified';
-    case 'pending': return 'Pending Review';
-    case 'failed': return 'Verification Failed';
-    case 'expired': return 'Expired';
-    case 'none':
-    default:
-      return 'Not Started';
-  }
-}
 
 function formatInstagramStatus(value?: ProfileData['instagram_status'], handle?: string | null) {
   if (value === 'connected' || value === 'verified') return 'Connected';
@@ -532,7 +521,11 @@ export default function ProfileScreen() {
   const publicVideos = profile.public_videos ?? profile.active_listings ?? [];
   const hasCreatedAutographs = s.autographs_signed > 0;
   const profileStatusLabel = hasCreatedAutographs ? 'Creator / Collector' : 'Collector';
-  const verificationLabel = profile.role === 'verified' ? 'Verified' : 'Member';
+  const verificationLabel = profile.verified
+    ? 'Identity Verified'
+    : profile.verification_status === 'pending'
+    ? 'Verification Pending'
+    : 'Unverified';
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -725,9 +718,8 @@ export default function ProfileScreen() {
             <View style={styles.verificationCard}>
               <Text style={styles.verificationCardTitle}>Verification</Text>
               {[
-                { label: 'Status', detail: verificationLabel },
-                { label: 'Verification State', detail: formatVerificationState(profile.verification_status) },
-                ...(profile.first_verified_at ? [{ label: 'First Verified On', detail: formatDetailDate(profile.first_verified_at) }] : []),
+                { label: 'Creator Identity', detail: verificationLabel },
+                ...(profile.first_verified_at ? [{ label: 'Verified On', detail: formatDetailDate(profile.first_verified_at) }] : []),
               ].map((item, index, arr) => (
                 <View key={item.label} style={[styles.verificationRow, index < arr.length - 1 && styles.verificationRowBorder]}>
                   {profile.role === 'verified' || profile.verified ? <Text style={styles.verificationCheck}>✓</Text> : null}

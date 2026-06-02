@@ -88,7 +88,10 @@ export default async function VerifyPage({ params }: { params: Promise<{ id: str
                 <CertRow
                   label="Creator"
                   value={cert.creator_name}
-                  badge={cert.creator_verified ? 'Verified' : undefined}
+                />
+                <CertRow
+                  label="Creator Identity"
+                  value={cert.creator_verified ? 'Identity Verified' : 'Unverified'}
                 />
                 <CertRow label="Owner" value={cert.owner_name} />
                 <CertRow

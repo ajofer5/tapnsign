@@ -124,6 +124,10 @@ export async function getProfile(userId: string) {
       role,
       verification_status,
       suspended_at,
+      is_creator,
+      birthday_year,
+      birthday_month,
+      birthday_day,
       instagram_handle,
       instagram_status,
       instagram_verified_at,
@@ -143,6 +147,22 @@ export async function getProfile(userId: string) {
   return data;
 }
 
+export async function usersAreBlocked(userA: string, userB: string) {
+  const { data } = await supabaseAdmin
+    .from('blocked_users')
+    .select('blocker_id, blocked_user_id')
+    .or(`and(blocker_id.eq.${userA},blocked_user_id.eq.${userB}),and(blocker_id.eq.${userB},blocked_user_id.eq.${userA})`)
+    .limit(1)
+    .maybeSingle();
+
+  return !!data;
+}
+
+export async function assertUsersNotBlocked(userA: string, userB: string, message = 'You cannot interact with this user.') {
+  const blocked = await usersAreBlocked(userA, userB);
+  assert(!blocked, 403, message);
+}
+
 export async function getAutographForUpdate(autographId: string) {
   const { data, error } = await supabaseAdmin
     .from('autographs')
@@ -155,6 +175,7 @@ export async function getAutographForUpdate(autographId: string) {
       ownership_source,
       visibility,
       sale_state,
+      listing_mode,
       is_for_sale,
       price_cents,
       open_to_trade,
@@ -279,11 +300,241 @@ export async function notifyUser(userId: string, title: string, body: string) {
   }
 }
 
+export async function createBuyerCommitment(params: {
+  buyerId: string;
+  subjectType: 'autograph_offer' | 'personalized_request';
+  subjectId: string;
+  amountCents: number;
+  expiresAt: string;
+  provider?: string | null;
+  providerReference?: string | null;
+  metadata?: Record<string, unknown>;
+}) {
+  const { data, error } = await supabaseAdmin
+    .from('buyer_commitments')
+    .insert({
+      buyer_id: params.buyerId,
+      subject_type: params.subjectType,
+      subject_id: params.subjectId,
+      amount_cents: params.amountCents,
+      status: 'committed',
+      provider: params.provider ?? null,
+      provider_reference: params.providerReference ?? null,
+      expires_at: params.expiresAt,
+      metadata: params.metadata ?? {},
+    })
+    .select('id')
+    .single();
+
+  if (error || !data) {
+    throw new HttpError(500, error?.message ?? 'Could not create buyer commitment.');
+  }
+
+  return data.id as string;
+}
+
+export async function updateBuyerCommitmentStatus(
+  commitmentId: string | null | undefined,
+  status: 'committed' | 'released' | 'charged' | 'expired' | 'canceled',
+  extra: Record<string, unknown> = {},
+) {
+  if (!commitmentId) return;
+
+  const now = new Date().toISOString();
+  const payload: Record<string, unknown> = {
+    status,
+    ...extra,
+  };
+
+  if (status === 'released') payload.released_at = now;
+  if (status === 'charged') payload.charged_at = now;
+  if (status === 'canceled') payload.canceled_at = now;
+
+  const { error } = await supabaseAdmin
+    .from('buyer_commitments')
+    .update(payload)
+    .eq('id', commitmentId);
+
+  if (error) {
+    throw new HttpError(500, error.message);
+  }
+}
+
+export async function getAuthorizedPaymentEvent(params: {
+  paymentEventId: string;
+  userId: string;
+  purpose: string;
+  amountCents: number;
+  autographId?: string | null;
+  metadata?: Record<string, string>;
+}) {
+  const { data: paymentEvent, error } = await supabaseAdmin
+    .from('payment_events')
+    .select('id, user_id, autograph_id, purpose, status, amount_cents, stripe_payment_intent_id, provider_metadata')
+    .eq('id', params.paymentEventId)
+    .single();
+
+  if (error || !paymentEvent) {
+    throw new HttpError(404, error?.message ?? 'Payment event not found.');
+  }
+
+  assert(paymentEvent.user_id === params.userId, 403, 'Payment event does not belong to this user.');
+  assert(paymentEvent.purpose === params.purpose, 409, 'Payment event purpose mismatch.');
+  assert(paymentEvent.amount_cents === params.amountCents, 409, 'Payment amount mismatch.');
+  if (params.autographId) {
+    assert(paymentEvent.autograph_id === params.autographId, 409, 'Payment event autograph mismatch.');
+  }
+
+  for (const [key, value] of Object.entries(params.metadata ?? {})) {
+    assert(paymentEvent.provider_metadata?.[key] === value, 409, `Payment event ${key} mismatch.`);
+  }
+
+  assert(typeof paymentEvent.stripe_payment_intent_id === 'string', 409, 'Payment intent reference missing.');
+  const paymentIntent = await stripe.paymentIntents.retrieve(paymentEvent.stripe_payment_intent_id);
+  assert(
+    paymentIntent.status === 'requires_capture' || paymentIntent.status === 'processing' || paymentIntent.status === 'succeeded',
+    409,
+    'Payment authorization is no longer active.'
+  );
+
+  if (paymentEvent.status !== 'authorized' && paymentIntent.status === 'requires_capture') {
+    await supabaseAdmin
+      .from('payment_events')
+      .update({
+        status: 'authorized',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', paymentEvent.id);
+  }
+
+  return { paymentEvent, paymentIntent };
+}
+
+// Maximum allowed amount for a single payment intent (~$50,000).
+// Blocks obviously bogus amounts while leaving room for high-value autographs.
+export const MAX_PAYMENT_INTENT_CENTS = 5_000_000;
+
+// Per-user limit: no more than 20 new payment intents created in any rolling 1-hour window.
+// Idempotent retries reuse existing rows and don't count against this limit.
+const PAYMENT_INTENT_RATE_LIMIT = 20;
+const PAYMENT_INTENT_RATE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+
+export async function assertPaymentIntentRateLimit(userId: string) {
+  const windowStart = new Date(Date.now() - PAYMENT_INTENT_RATE_WINDOW_MS).toISOString();
+  const { count, error } = await supabaseAdmin
+    .from('payment_events')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .gte('created_at', windowStart);
+
+  if (error) {
+    // If the count query fails, log and allow — don't block legitimate users on a DB glitch.
+    console.warn('Rate limit check failed:', error.message);
+    return;
+  }
+
+  if ((count ?? 0) >= PAYMENT_INTENT_RATE_LIMIT) {
+    throw new HttpError(429, 'Too many payment requests. Please wait before trying again.');
+  }
+}
+
+export async function cancelAuthorizedPaymentEvent(paymentEventId: string | null | undefined) {
+  if (!paymentEventId) return;
+
+  const { data: paymentEvent } = await supabaseAdmin
+    .from('payment_events')
+    .select('id, status, stripe_payment_intent_id')
+    .eq('id', paymentEventId)
+    .maybeSingle();
+
+  if (!paymentEvent) return;
+  // Already in a terminal or in-progress cancel state — nothing to do.
+  if (paymentEvent.status === 'canceled' || paymentEvent.status === 'cancel_failed') return;
+
+  let stripeCanceled = true;
+
+  if (paymentEvent.stripe_payment_intent_id) {
+    try {
+      const paymentIntent = await stripe.paymentIntents.retrieve(paymentEvent.stripe_payment_intent_id);
+      if (
+        paymentIntent.status === 'requires_capture' ||
+        paymentIntent.status === 'requires_payment_method' ||
+        paymentIntent.status === 'requires_confirmation' ||
+        paymentIntent.status === 'requires_action' ||
+        paymentIntent.status === 'processing'
+      ) {
+        await stripe.paymentIntents.cancel(paymentEvent.stripe_payment_intent_id);
+      }
+      // If Stripe status is already canceled/succeeded, treat as done.
+    } catch (error) {
+      stripeCanceled = false;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.warn('cancel payment authorization failed, queuing for retry:', errorMessage);
+
+      // Mark as cancel_pending so the reconciliation job can retry.
+      await supabaseAdmin
+        .from('payment_events')
+        .update({
+          status: 'cancel_pending',
+          cancel_last_error: errorMessage,
+          cancel_last_tried_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', paymentEventId);
+      return;
+    }
+  }
+
+  if (stripeCanceled) {
+    await supabaseAdmin
+      .from('payment_events')
+      .update({
+        status: 'canceled',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', paymentEventId);
+  }
+}
+
+export async function captureAuthorizedPaymentEvent(paymentEventId: string | null | undefined) {
+  if (!paymentEventId) {
+    throw new HttpError(409, 'Payment authorization missing.');
+  }
+
+  const { data: paymentEvent, error } = await supabaseAdmin
+    .from('payment_events')
+    .select('id, status, stripe_payment_intent_id')
+    .eq('id', paymentEventId)
+    .single();
+
+  if (error || !paymentEvent || !paymentEvent.stripe_payment_intent_id) {
+    throw new HttpError(404, error?.message ?? 'Payment authorization not found.');
+  }
+
+  const paymentIntent = await stripe.paymentIntents.capture(paymentEvent.stripe_payment_intent_id);
+  assert(
+    paymentIntent.status === 'succeeded' || paymentIntent.status === 'processing',
+    409,
+    'Could not capture the payment authorization.'
+  );
+
+  await supabaseAdmin
+    .from('payment_events')
+    .update({
+      status: 'captured',
+      captured_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', paymentEventId);
+
+  return paymentIntent;
+}
+
 export async function autoDeclinePendingOffers() {
   try {
     const { data: declineCandidates } = await supabaseAdmin
       .from('autograph_offers')
-      .select('id, autograph_id, buyer_id')
+      .select('id, autograph_id, buyer_id, buyer_commitment_id')
       .eq('status', 'pending')
       .not('decline_after', 'is', null)
       .lt('decline_after', new Date().toISOString());
@@ -291,6 +542,7 @@ export async function autoDeclinePendingOffers() {
     await supabaseAdmin.rpc('auto_decline_pending_offers');
 
     for (const offer of declineCandidates ?? []) {
+      await updateBuyerCommitmentStatus(offer.buyer_commitment_id, 'released');
       const label = await getAutographDisplayLabel(offer.autograph_id);
       await notifyUser(
         offer.buyer_id,
@@ -309,14 +561,34 @@ export async function expireOffersAndNotify() {
 
   const { data: reopenCandidates } = await supabaseAdmin
     .from('autograph_offers')
-    .select('id, autograph_id, buyer_id, owner_id')
+    .select('id, autograph_id, buyer_id, owner_id, buyer_commitment_id')
     .eq('status', 'accepted')
     .is('accepted_transfer_id', null)
     .lt('payment_due_at', nowIso);
 
+  const { data: expiredPendingCandidates } = await supabaseAdmin
+    .from('autograph_offers')
+    .select('id, buyer_commitment_id')
+    .eq('status', 'pending')
+    .lt('expires_at', nowIso);
+
+  const autographIds = [...new Set((reopenCandidates ?? []).map((offer) => offer.autograph_id))];
+  const { data: heldCandidates } = autographIds.length > 0
+    ? await supabaseAdmin
+        .from('autograph_offers')
+        .select('id, autograph_id, buyer_id')
+        .in('autograph_id', autographIds)
+        .eq('status', 'on_hold')
+    : { data: [] };
+
   await supabaseAdmin.rpc('expire_autograph_offers');
 
+  for (const offer of expiredPendingCandidates ?? []) {
+    await updateBuyerCommitmentStatus(offer.buyer_commitment_id, 'expired');
+  }
+
   for (const offer of reopenCandidates ?? []) {
+    await updateBuyerCommitmentStatus(offer.buyer_commitment_id, 'expired');
     const label = await getAutographDisplayLabel(offer.autograph_id);
     await notifyUser(
       offer.buyer_id,
@@ -329,10 +601,42 @@ export async function expireOffersAndNotify() {
       `${label} is available again after the buyer missed the payment window.`
     );
   }
+
+  for (const offer of heldCandidates ?? []) {
+    const label = await getAutographDisplayLabel(offer.autograph_id);
+    await notifyUser(
+      offer.buyer_id,
+      'Offer Active Again',
+      `Your offer on ${label} is active again after a higher offer was not completed.`
+    );
+  }
 }
 
 export function getRequestId() {
   return crypto.randomUUID();
+}
+
+/**
+ * Fetches the platform processing fee config and computes the fee for a given
+ * sale amount. Formula: ceil(amount * rate + flat_cents).
+ * Returns { feeCents, proceedsCents } — both derived from the DB singleton config.
+ */
+export async function getPlatformFee(amountCents: number): Promise<{ feeCents: number; proceedsCents: number }> {
+  const { data, error } = await supabaseAdmin
+    .from('platform_fee_config')
+    .select('processing_fee_rate, processing_fee_cents')
+    .eq('id', 1)
+    .single();
+
+  if (error || !data) {
+    // Fallback to hardcoded defaults if config row is missing — prevents blocking a sale
+    console.warn('platform_fee_config fetch failed, using defaults:', error?.message);
+    const feeCents = Math.ceil(amountCents * 0.065 + 50);
+    return { feeCents, proceedsCents: Math.max(0, amountCents - feeCents) };
+  }
+
+  const feeCents = Math.ceil(amountCents * Number(data.processing_fee_rate) + data.processing_fee_cents);
+  return { feeCents, proceedsCents: Math.max(0, amountCents - feeCents) };
 }
 
 export function requireInternalRequest(req: Request) {

@@ -24,6 +24,8 @@ type Profile = {
   verification_status: 'none' | 'pending' | 'verified' | 'failed' | 'expired';
   birthday_month: number | null;
   birthday_day: number | null;
+  birthday_year: number | null;
+  is_creator: boolean;
   bio?: string | null;
   instagram_handle?: string | null;
   instagram_status?: 'none' | 'connected' | 'verified';

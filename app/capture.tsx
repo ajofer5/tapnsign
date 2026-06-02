@@ -2,20 +2,19 @@ import {
   AutographCardCanvas,
   CardStroke,
 } from '@/components/autograph-card-canvas';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BrandColors, BrandFonts } from '@/constants/theme';
 import { callEdgeFunction } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { CAPTURE_COUNTDOWN_START, CAPTURE_DURATION_MS, PREVIEW_FRAME_TIMES_MS } from '@/lib/capture-timing';
 import { CardTemplate, DISPLAY_CARD_TEMPLATES, getCardTemplate, OPHINIA_O_CARD_TEMPLATE } from '@/lib/card-templates';
 import { supabase } from '@/lib/supabase';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Image,
   LayoutChangeEvent,
   PanResponder,
   Pressable,
@@ -23,7 +22,7 @@ import {
   StyleSheet,
   Text,
   useWindowDimensions,
-  View,
+  View
 } from 'react-native';
 import { captureRef } from 'react-native-view-shot';
 
@@ -322,8 +321,8 @@ export default function CaptureScreen() {
       return;
     }
 
-    if (profile?.role !== 'verified' || profile?.verification_status !== 'verified') {
-      Alert.alert('Verified accounts only', 'Only verified accounts can capture autographs.');
+    if (!profile?.is_creator) {
+      Alert.alert('Age Requirement', 'You must be 18 or older to create autographs.');
       return;
     }
 
@@ -642,7 +641,6 @@ function StylePickScreen({
   onSelectStrokeColor: (color: string) => void;
   onContinue: () => void;
 }) {
-  const selectedTemplate = DISPLAY_CARD_TEMPLATES.find((template) => template.id === selectedTemplateId) ?? DISPLAY_CARD_TEMPLATES[0];
 
   return (
     <View style={stylePickStyles.container}>
@@ -654,6 +652,7 @@ function StylePickScreen({
         contentContainerStyle={stylePickStyles.carouselContent}
         snapToInterval={244}
         decelerationRate="fast"
+        style={stylePickStyles.carousel}
       >
         {DISPLAY_CARD_TEMPLATES.map((template) => {
           const isSelected = selectedTemplateId === template.id;
@@ -672,18 +671,16 @@ function StylePickScreen({
                   strokes={[]}
                   strokeColor={NAVY_COLOR}
                   style={stylePickStyles.cardPreview}
-                  cameraContent={template.id === 'ophinia_o' ? <View style={[StyleSheet.absoluteFill, { backgroundColor: '#FFFFFF' }]} /> : undefined}
+                  cameraContent={template.id === 'ophinia_o' || template.id === 'blank' ? <View style={[StyleSheet.absoluteFill, { backgroundColor: '#FFFFFF' }]} /> : undefined}
                 />
               </View>
+              <Text style={[stylePickStyles.tileLabel, isSelected && stylePickStyles.tileLabelSelected]}>
+                {template.name}
+              </Text>
             </Pressable>
           );
         })}
       </ScrollView>
-
-      <View style={stylePickStyles.selectionMeta}>
-        <Text style={stylePickStyles.optionLabelSelected}>{selectedTemplate.name}</Text>
-        <View style={stylePickStyles.selectedDot} />
-      </View>
 
       <Text style={stylePickStyles.subheading}>Choose your stroke color</Text>
       <View style={stylePickStyles.swatchRow}>
@@ -714,16 +711,17 @@ const stylePickStyles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#0C132B',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     paddingHorizontal: 24,
-    paddingVertical: 40,
+    paddingTop: 140,
+    paddingBottom: 40,
   },
   heading: {
     color: '#F6F6F2',
     fontFamily: BrandFonts.primary,
     fontSize: 20,
     fontWeight: '600',
-    marginBottom: 28,
+    marginBottom: 45,
     textAlign: 'center',
     letterSpacing: 0.3,
   },
@@ -736,11 +734,15 @@ const stylePickStyles = StyleSheet.create({
     textAlign: 'center',
     letterSpacing: 0.2,
   },
+  carousel: {
+    flexGrow: 0,
+    height: 370,
+    marginBottom: 22,
+  },
   carouselContent: {
     paddingHorizontal: 28,
-    gap: 20,
+    gap: 32,
     alignItems: 'center',
-    marginBottom: 22,
   },
   optionTile: {
     alignItems: 'center',
@@ -752,8 +754,8 @@ const stylePickStyles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.02)',
   },
   optionTileSelected: {
-    borderColor: '#F1C168',
-    backgroundColor: 'rgba(241,193,104,0.06)',
+    borderColor: '#FFFFFF',
+    backgroundColor: 'rgba(255,255,255,0.06)',
   },
   cardPreviewWrapper: {
     width: 180,
@@ -762,6 +764,19 @@ const stylePickStyles = StyleSheet.create({
   },
   cardPreview: {
     flex: 1,
+  },
+  tileLabel: {
+    color: 'rgba(246,246,242,0.5)',
+    fontFamily: BrandFonts.primary,
+    fontSize: 13,
+    fontWeight: '500',
+    marginTop: 10,
+    textAlign: 'center',
+    letterSpacing: 0.2,
+  },
+  tileLabelSelected: {
+    color: '#FFFFFF',
+    fontWeight: '700',
   },
   logoPreviewImage: {
     width: '100%',
@@ -825,10 +840,12 @@ const stylePickStyles = StyleSheet.create({
     color: '#F6F6F2',
   },
   continueButton: {
-    backgroundColor: '#FA0909',
+    backgroundColor: '#001B5C',
     paddingVertical: 16,
     paddingHorizontal: 64,
     borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
   },
   continueButtonText: {
     color: '#F6F6F2',

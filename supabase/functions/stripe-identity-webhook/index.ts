@@ -34,6 +34,34 @@ async function recordVerificationEvent(params: {
   }
 }
 
+async function updateProfileVerificationState(userId: string, payload: Record<string, unknown>) {
+  const { error, data } = await supabaseAdmin
+    .from('profiles')
+    .update(payload)
+    .eq('id', userId)
+    .select('id')
+    .single();
+
+  if (error || !data) {
+    throw new Error(error?.message ?? 'Could not update verification state.');
+  }
+}
+
+async function updateVerificationAttemptResult(paymentEventId: string | undefined, result: 'verified' | 'failed' | 'expired') {
+  if (!paymentEventId) return;
+
+  const { error } = await supabaseAdmin
+    .from('payment_events')
+    .update({
+      verification_attempt_result: result,
+    })
+    .eq('id', paymentEventId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -58,6 +86,7 @@ Deno.serve(async (req) => {
   try {
     const session = event.data.object as Stripe.Identity.VerificationSession;
     const userId = session.metadata?.supabase_user_id;
+    const paymentEventId = session.metadata?.payment_event_id;
     if (!userId) {
       return json({ received: true, ignored: 'missing user metadata' });
     }
@@ -65,14 +94,39 @@ Deno.serve(async (req) => {
     const now = new Date().toISOString();
 
     if (event.type === 'identity.verification_session.verified') {
-      await supabaseAdmin
-        .from('profiles')
-        .update({
+      const dob = session.verified_outputs?.dob as { day?: number; month?: number; year?: number } | null | undefined;
+      const birthdayFields: Record<string, number> = {};
+      if (dob?.month) birthdayFields.birthday_month = dob.month;
+      if (dob?.day)   birthdayFields.birthday_day   = dob.day;
+      if (dob?.year)  birthdayFields.birthday_year  = dob.year;
+
+      // Determine real age from verified ID and set/strip is_creator accordingly
+      let isCreator: boolean | undefined;
+      if (dob?.year) {
+        const today = new Date();
+        let age = today.getFullYear() - dob.year;
+        if (dob.month && dob.day) {
+          const birthThisYear = new Date(today.getFullYear(), dob.month - 1, dob.day);
+          if (today < birthThisYear) age--;
+        }
+        isCreator = age >= 18;
+      }
+
+      const nameOutput = session.verified_outputs?.name as { first_name?: string; last_name?: string } | null | undefined;
+      const validatedName = [nameOutput?.first_name, nameOutput?.last_name]
+        .filter(Boolean)
+        .join(' ')
+        .trim() || null;
+
+      await updateProfileVerificationState(userId, {
           role: 'verified',
           verification_status: 'verified',
           verification_updated_at: now,
-        })
-        .eq('id', userId);
+          ...(validatedName ? { validated_name: validatedName } : {}),
+          ...(isCreator !== undefined ? { is_creator: isCreator } : {}),
+          ...birthdayFields,
+        });
+      await updateVerificationAttemptResult(paymentEventId, 'verified');
 
       await recordVerificationEvent({
         userId,
@@ -87,13 +141,11 @@ Deno.serve(async (req) => {
     }
 
     if (event.type === 'identity.verification_session.requires_input') {
-      await supabaseAdmin
-        .from('profiles')
-        .update({
+      await updateProfileVerificationState(userId, {
           verification_status: 'failed',
           verification_updated_at: now,
-        })
-        .eq('id', userId);
+        });
+      await updateVerificationAttemptResult(paymentEventId, 'failed');
 
       await recordVerificationEvent({
         userId,
@@ -108,13 +160,11 @@ Deno.serve(async (req) => {
     }
 
     if (event.type === 'identity.verification_session.canceled') {
-      await supabaseAdmin
-        .from('profiles')
-        .update({
+      await updateProfileVerificationState(userId, {
           verification_status: 'expired',
           verification_updated_at: now,
-        })
-        .eq('id', userId);
+        });
+      await updateVerificationAttemptResult(paymentEventId, 'expired');
 
       await recordVerificationEvent({
         userId,
