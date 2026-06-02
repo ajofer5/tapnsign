@@ -78,11 +78,10 @@ export default async function VerifyPage({ params }: { params: Promise<{ id: str
 
             {/* Certificate card */}
             <div className="bg-white rounded-2xl overflow-hidden shadow-sm">
-              <div className="flex items-center justify-between bg-black px-6 py-4">
+              <div className="bg-black px-6 py-4">
                 <span className="text-white font-bold text-sm tracking-wide uppercase">
                   Certificate of Authenticity
                 </span>
-                <img src="/ophinia-logo-white.png" alt="Ophinia" className="h-10" />
               </div>
               <div className="px-6 py-5 space-y-4">
                 <CertRow
