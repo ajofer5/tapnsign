@@ -1372,11 +1372,6 @@ export default function AutographsScreen() {
                 {printStep === 'preview' && (
                   <>
                     <Text style={styles.certTitle}>Print Autograph</Text>
-                    <Text style={styles.certDate}>
-                      {printPreview.item_cents != null && printPreview.shipping_cents != null
-                        ? `Official Ophinia print — 8×10 · $${(printPreview.item_cents / 100).toFixed(2)} + $${(printPreview.shipping_cents / 100).toFixed(2)} shipping`
-                        : 'Official Ophinia print — 8×10'}
-                    </Text>
 
                     <View style={styles.printCard}>
                       <View style={styles.printArtifact8x10}>
@@ -1425,39 +1420,17 @@ export default function AutographsScreen() {
                     </View>
 
                     <>
-                      {printPreview.owner_print_count > 0 && printPreview.latest_owner_print ? (
-                        <Text style={styles.printInfoText}>
-                          {`You have ordered ${printPreview.owner_print_count} official print${printPreview.owner_print_count > 1 ? 's' : ''} of this autograph. Your most recent was ${printPreview.latest_owner_print.print_label}.`}
-                        </Text>
-                      ) : null}
                       <Text style={styles.printInfoText}>
-                        {printPreview.item_cents != null && printPreview.shipping_cents != null
-                          ? `Official 8×10 numbered print — $${(printPreview.item_cents / 100).toFixed(2)} print + $${(printPreview.shipping_cents / 100).toFixed(2)} shipping.`
-                          : 'Official 8×10 numbered print shipped directly to you.'}
+                        Official 8×10 memorabilia print.
                       </Text>
                       <Pressable
-                        style={styles.certCloseButton}
+                        style={[styles.certCloseButton, { marginTop: 8 }]}
                         onPress={handleProceedToShipping}
                       >
                         <Text style={styles.closeButtonText}>
-                          {printPreview.item_cents != null && printPreview.shipping_cents != null
-                            ? `Order Print #${printPreview.next_print_sequence_number} — $${((printPreview.item_cents + printPreview.shipping_cents) / 100).toFixed(2)}`
-                            : `Order Print #${printPreview.next_print_sequence_number}`}
+                          Order Print - $11.95
                         </Text>
                       </Pressable>
-                      {printPreview.latest_owner_print ? (
-                        <Pressable
-                          style={{ marginTop: 12 }}
-                          onPress={() => {
-                            if (printPreview.latest_owner_print?.id) {
-                              closePrintPreview();
-                              openDamageClaim(printPreview.latest_owner_print.id, printItem.id);
-                            }
-                          }}
-                        >
-                          <Text style={styles.certDate}>Report Print Damage</Text>
-                        </Pressable>
-                      ) : null}
                     </>
 
                     <Pressable onPress={closePrintPreview} style={{ marginTop: 12 }}>
