@@ -94,7 +94,7 @@ We use reasonable administrative, technical, and physical safeguards to protect 
 
 The App and Website are not directed to children under the age of 13, and we do not knowingly collect personal information from children under 13. If we learn that we have collected such information, we will delete it promptly. If you believe a child under 13 has provided us information, please contact us at hello@tapnsign.com.
 
-Users who are at least 13 but under 18 may use collector-facing portions of Ophinia, such as browsing, saving, viewing, and sharing content, but certain features are restricted to adults. Minting autographs, creator verification, selling, buying, making offers, ordering prints, and other paid or payout-related activities are intended only for users age 18 or older.
+Users who are at least 13 but under 18 may use collector-facing portions of Ophinia, such as browsing, saving, viewing, and sharing content, but certain features are restricted to adults. Users under 18 may not mint autographs, complete creator verification, sell, buy, make offers, order prints, or access other paid or payout-related activities.
 
 ---
 

@@ -13,7 +13,7 @@ You must be at least 13 years old to create an account and use collector-facing 
 
 The App and Website are not intended for children under 13. We do not knowingly permit children under 13 to register. If we become aware that a child under 13 has created an account, we may terminate that account.
 
-Certain features are restricted to adults age 18 or older, including creator verification, minting or capturing autographs for sale, selling, buying, making offers, ordering prints, and other paid or payout-related activities.
+Certain features are restricted to adults age 18 or older. Users who are at least 13 but under 18 may browse, save, view, and share content, but may not mint or capture autographs, complete creator verification, sell, buy, make offers, order prints, or access other paid or payout-related activities.
 
 ---
 
