@@ -319,7 +319,7 @@ app.post('/render', async (req, res) => {
       .eq('id', autographId)
       .maybeSingle();
 
-    if (autographError || !autograph) return res.status(404).json({ error: 'Autograph not found' });
+    if (autographError || !autograph) return res.status(404).json({ error: 'Autograph not found', detail: autographError?.message ?? null });
     if (autograph.status !== 'active') return res.status(409).json({ error: 'Autograph is not active' });
     if (!autograph.verify_badge_url) return res.status(422).json({ error: 'Verify badge not found — re-mint this autograph' });
 
