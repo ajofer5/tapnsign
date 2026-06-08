@@ -1,7 +1,7 @@
 # Privacy Policy
 
 **Effective Date:** April 19, 2026
-**Last Updated:** May 19, 2026 (rev. 4)
+**Last Updated:** June 2, 2026 (rev. 5)
 
 TAPNSIGN LLC ("TAPNSIGN LLC," "Ophinia," "we," "us," or "our") operates the Ophinia mobile application (the "App") and related website experiences, including tapnsign.com (the "Website"). This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our App or Website.
 
@@ -12,7 +12,7 @@ Please read this policy carefully. By using the App or Website, you agree to the
 ## 1. Information We Collect
 
 ### Information You Provide
-- **Account information:** Display name, email address, password, sign-in credentials, date of birth information, and age-confirmation information when you register or connect a login method
+- **Account information:** Display name, email address, password, sign-in credentials, date of birth information, and age-confirmation information when you register or connect a login method. If you create an account using a social sign-in method (Apple or Google), we collect your date of birth and age confirmation as part of completing your account setup before you can access the platform
 - **Profile information:** Profile photo, biography, Instagram handle, personalized-request settings, and other optional profile fields
 - **Payment information:** Billing details processed through Stripe on our Website. We do not store your full card number
 - **Identity verification information:** If you apply for creator verification, identity information and government ID data are processed through Stripe Identity
@@ -78,6 +78,7 @@ We retain your account information and autograph records for as long as your acc
 
 If you delete your account, we will delete or anonymize personal information within a reasonable period, except where retention is required by law or for legitimate business purposes such as fraud prevention, transaction records, dispute resolution, chargeback defense, tax compliance, authenticity verification, or security.
 
+- **Date of birth information** is retained for the life of the account as part of your account record and for age eligibility enforcement purposes
 - **Print order records and damage claim photos** are retained for a minimum of 2 years
 - **Shipping addresses** are retained only as long as reasonably necessary to fulfill orders and resolve related disputes
 - **Interest and usage events used for recommendations** are generally retained for up to 12 months unless a longer period is reasonably required for security, fraud prevention, or service integrity
@@ -138,5 +139,5 @@ We may update this Privacy Policy from time to time. We will notify you of mater
 If you have questions or concerns about this Privacy Policy, please contact us:
 
 **TAPNSIGN LLC**
-Email: hello@tapnsign.com
-Website: https://tapnsign.com
+Email: hello@ophinia.com
+Website: Ophinia.com

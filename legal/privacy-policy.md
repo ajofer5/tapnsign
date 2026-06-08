@@ -138,5 +138,5 @@ We may update this Privacy Policy from time to time. We will notify you of mater
 If you have questions or concerns about this Privacy Policy, please contact us:
 
 **TAPNSIGN LLC**
-Email: hello@tapnsign.com
-Website: https://tapnsign.com
+Email: hello@ophinia.com
+Website: Ophinia.com

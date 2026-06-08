@@ -216,5 +216,5 @@ We may update these Terms from time to time. We will notify you of material chan
 If you have questions about these Terms, please contact us:
 
 **TAPNSIGN LLC**
-Email: hello@tapnsign.com
-Website: https://tapnsign.com
+Email: hello@ophinia.com
+Website: Ophinia.com

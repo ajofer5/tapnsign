@@ -1,7 +1,7 @@
 # Terms of Service
 
 **Effective Date:** April 19, 2026
-**Last Updated:** May 19, 2026 (rev. 9)
+**Last Updated:** June 2, 2026 (rev. 10)
 
 These Terms of Service ("Terms") govern your use of the Ophinia mobile application (the "App") and related website experiences, including tapnsign.com (the "Website"), operated by TAPNSIGN LLC ("TAPNSIGN LLC," "Ophinia," "we," "us," or "our"), an Indiana limited liability company. By creating an account or using the App or Website, you agree to these Terms.
 
@@ -14,6 +14,8 @@ You must be at least 13 years old to create an account and use collector-facing 
 The App and Website are not intended for children under 13. We do not knowingly permit children under 13 to register. If we become aware that a child under 13 has created an account, we may terminate that account.
 
 Certain features are restricted to adults age 18 or older. Users who are at least 13 but under 18 may browse, save, view, and share content, but may not mint or capture autographs, complete creator verification, sell, buy, make offers, order prints, or access other paid or payout-related activities.
+
+If we determine that a user has provided false age information, we may immediately terminate that account, reverse any transactions completed in violation of these eligibility requirements, and take any other action reasonably necessary to protect the platform and other users.
 
 ---
 
@@ -38,7 +40,7 @@ Ophinia is a platform that allows eligible adult users to capture and digitally 
 
 Creator verification is an optional identity-verification process that eligible adult users may complete to receive verified status on the platform. Creator verification currently requires:
 
-- A one-time identity verification fee of **$4.99**, charged via our Website. Promotional codes may be available at checkout
+- A one-time identity verification fee charged via our Website, as shown at checkout. Promotional codes may be available at checkout
 - Identity verification through Stripe Identity, which requires a government-issued ID
 
 Creator verification is not required to create an account. However, only users who meet Ophinia's age and eligibility requirements may access creator and paid features. The verification fee is non-refundable except in cases of verified technical error. By submitting to verification, you consent to Stripe's collection and processing of your identity information under Stripe's terms and privacy policy.
@@ -216,5 +218,5 @@ We may update these Terms from time to time. We will notify you of material chan
 If you have questions about these Terms, please contact us:
 
 **TAPNSIGN LLC**
-Email: hello@tapnsign.com
-Website: https://tapnsign.com
+Email: hello@ophinia.com
+Website: Ophinia.com
