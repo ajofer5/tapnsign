@@ -55,6 +55,18 @@ function normalizeBunnyStorageEndpoint(endpoint) {
 
 const NORMALIZED_BUNNY_STORAGE_ENDPOINT = normalizeBunnyStorageEndpoint(BUNNY_STORAGE_ENDPOINT);
 
+function normalizeHostname(hostname) {
+  const trimmed = String(hostname || '').trim();
+  if (!trimmed) return '';
+  try {
+    return new URL(trimmed.includes('://') ? trimmed : `https://${trimmed}`).hostname;
+  } catch {
+    return trimmed.replace(/^https?:\/\//, '').split('/')[0];
+  }
+}
+
+const NORMALIZED_BUNNY_CDN_HOSTNAME = normalizeHostname(BUNNY_CDN_HOSTNAME);
+
 // Load logo once at startup
 const _logoPath = path.join(__dirname, 'assets', 'ophinia-logo-white.png');
 const _logoDataUri = fs.existsSync(_logoPath)
@@ -203,7 +215,7 @@ async function waitForBunnyUrl(url) {
 }
 
 async function uploadToBunnyStorage(buffer, path, contentType = 'image/png') {
-  if (!BUNNY_STORAGE_API_KEY || !BUNNY_STORAGE_ZONE_NAME || !BUNNY_CDN_HOSTNAME) {
+  if (!BUNNY_STORAGE_API_KEY || !BUNNY_STORAGE_ZONE_NAME || !NORMALIZED_BUNNY_CDN_HOSTNAME) {
     throw new Error('Bunny Storage is not configured.');
   }
 
@@ -227,7 +239,7 @@ async function uploadToBunnyStorage(buffer, path, contentType = 'image/png') {
     throw new Error(`Bunny Storage upload failed (HTTP ${resp.status}): ${body}`);
   }
 
-  const cdnUrl = `https://${BUNNY_CDN_HOSTNAME}/${path}`;
+  const cdnUrl = `https://${NORMALIZED_BUNNY_CDN_HOSTNAME}/${path}`;
   if (!(await waitForBunnyUrl(cdnUrl))) {
     throw new Error(`Bunny CDN URL was not readable after upload: ${cdnUrl}`);
   }
