@@ -194,6 +194,14 @@ async function bunnyUrlExists(url) {
   }
 }
 
+async function waitForBunnyUrl(url) {
+  for (let attempt = 1; attempt <= 4; attempt += 1) {
+    if (await bunnyUrlExists(url)) return true;
+    await new Promise((resolve) => setTimeout(resolve, attempt * 250));
+  }
+  return false;
+}
+
 async function uploadToBunnyStorage(buffer, path, contentType = 'image/png') {
   if (!BUNNY_STORAGE_API_KEY || !BUNNY_STORAGE_ZONE_NAME || !BUNNY_CDN_HOSTNAME) {
     throw new Error('Bunny Storage is not configured.');
@@ -219,7 +227,12 @@ async function uploadToBunnyStorage(buffer, path, contentType = 'image/png') {
     throw new Error(`Bunny Storage upload failed (HTTP ${resp.status}): ${body}`);
   }
 
-  return `https://${BUNNY_CDN_HOSTNAME}/${path}`;
+  const cdnUrl = `https://${BUNNY_CDN_HOSTNAME}/${path}`;
+  if (!(await waitForBunnyUrl(cdnUrl))) {
+    throw new Error(`Bunny CDN URL was not readable after upload: ${cdnUrl}`);
+  }
+
+  return cdnUrl;
 }
 
 function sanitizeStorageUrl(originalUrl) {
