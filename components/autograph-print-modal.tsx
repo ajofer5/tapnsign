@@ -29,6 +29,18 @@ type Props = {
   formatCardDate: (value: string) => string;
 };
 
+function buildOptimizedPrintPreviewUrl(value: string | null) {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    url.searchParams.set('width', '900');
+    url.searchParams.set('quality', '75');
+    return url.toString();
+  } catch {
+    return value;
+  }
+}
+
 export function AutographPrintModal({
   visible,
   printItem,
@@ -43,17 +55,22 @@ export function AutographPrintModal({
   formatCardDate,
 }: Props) {
   const { width } = useWindowDimensions();
-  const [remotePreviewFailed, setRemotePreviewFailed] = useState(false);
+  const [previewImageMode, setPreviewImageMode] = useState<'optimized' | 'original' | 'fallback'>('optimized');
   const previewImageWidth = Math.min(width - 84, 304);
   const previewImageHeight = Math.round(previewImageWidth * 1.25);
   const previewCardWidth = previewImageWidth + 36;
   const remotePreviewUrl = printPreview?.print_layout_url ?? null;
-  const previewSource = remotePreviewUrl && !remotePreviewFailed
-    ? { uri: remotePreviewUrl }
+  const optimizedPreviewUrl = buildOptimizedPrintPreviewUrl(remotePreviewUrl);
+  const displayedPreviewUrl =
+    previewImageMode === 'optimized' ? optimizedPreviewUrl :
+    previewImageMode === 'original' ? remotePreviewUrl :
+    null;
+  const previewSource = displayedPreviewUrl
+    ? { uri: displayedPreviewUrl }
     : require('../assets/images/print_preview.png');
 
   useEffect(() => {
-    setRemotePreviewFailed(false);
+    setPreviewImageMode('optimized');
   }, [remotePreviewUrl]);
 
   return (
@@ -82,12 +99,20 @@ export function AutographPrintModal({
                       style={[styles.printPreviewImage, { width: previewImageWidth, height: previewImageHeight }]}
                       resizeMode="contain"
                       onError={(event) => {
-                        if (remotePreviewUrl && !remotePreviewFailed) {
+                        if (previewImageMode === 'optimized' && remotePreviewUrl) {
+                          console.warn('[AutographPrintModal] optimized print preview image failed to load', {
+                            url: optimizedPreviewUrl,
+                            error: event.nativeEvent.error,
+                          });
+                          setPreviewImageMode('original');
+                          return;
+                        }
+                        if (previewImageMode === 'original' && remotePreviewUrl) {
                           console.warn('[AutographPrintModal] print preview image failed to load', {
                             url: remotePreviewUrl,
                             error: event.nativeEvent.error,
                           });
-                          setRemotePreviewFailed(true);
+                          setPreviewImageMode('fallback');
                         }
                       }}
                     />
