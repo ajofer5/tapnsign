@@ -43,6 +43,18 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
+function normalizeBunnyStorageEndpoint(endpoint) {
+  const trimmed = String(endpoint || '').trim();
+  if (!trimmed) return 'storage.bunnycdn.com';
+  try {
+    return new URL(trimmed.includes('://') ? trimmed : `https://${trimmed}`).hostname;
+  } catch {
+    return trimmed.replace(/^https?:\/\//, '').split('/')[0] || 'storage.bunnycdn.com';
+  }
+}
+
+const NORMALIZED_BUNNY_STORAGE_ENDPOINT = normalizeBunnyStorageEndpoint(BUNNY_STORAGE_ENDPOINT);
+
 // Load logo once at startup
 const _logoPath = path.join(__dirname, 'assets', 'ophinia-logo-white.png');
 const _logoDataUri = fs.existsSync(_logoPath)
@@ -187,17 +199,24 @@ async function uploadToBunnyStorage(buffer, path, contentType = 'image/png') {
     throw new Error('Bunny Storage is not configured.');
   }
 
-  const resp = await fetch(`https://${BUNNY_STORAGE_ENDPOINT}/${BUNNY_STORAGE_ZONE_NAME}/${path}`, {
-    method: 'PUT',
-    headers: {
-      AccessKey: BUNNY_STORAGE_API_KEY,
-      'Content-Type': contentType,
-    },
-    body: buffer,
-  });
+  const uploadUrl = `https://${NORMALIZED_BUNNY_STORAGE_ENDPOINT}/${BUNNY_STORAGE_ZONE_NAME}/${path}`;
+  let resp;
+  try {
+    resp = await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: {
+        AccessKey: BUNNY_STORAGE_API_KEY,
+        'Content-Type': contentType,
+      },
+      body: buffer,
+    });
+  } catch (err) {
+    throw new Error(`Bunny Storage upload request failed: ${err.message}. Endpoint: ${NORMALIZED_BUNNY_STORAGE_ENDPOINT}`);
+  }
 
   if (!resp.ok) {
-    throw new Error(`Bunny Storage upload failed (HTTP ${resp.status}).`);
+    const body = await resp.text().catch(() => '');
+    throw new Error(`Bunny Storage upload failed (HTTP ${resp.status}): ${body}`);
   }
 
   return `https://${BUNNY_CDN_HOSTNAME}/${path}`;
