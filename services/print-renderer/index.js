@@ -30,7 +30,7 @@ const INTERNAL_SECRET = process.env.INTERNAL_FUNCTION_SECRET ?? '';
 const SUPABASE_URL = process.env.SUPABASE_URL ?? '';
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
 const OUTPUT_BUCKET = 'print-layouts';
-const RENDERER_VERSION = 'print-template-v2';
+const RENDERER_VERSION = 'print-template-v3';
 const BUNNY_STORAGE_API_KEY = process.env.BUNNY_STORAGE_API_KEY ?? '';
 const BUNNY_STORAGE_ZONE_NAME = process.env.BUNNY_STORAGE_ZONE_NAME ?? '';
 const BUNNY_CDN_HOSTNAME = process.env.BUNNY_CDN_HOSTNAME ?? '';
@@ -526,9 +526,9 @@ app.post('/render', async (req, res) => {
       badgeDataUri,
     });
 
-    // Render SVG → PNG at full 2400×3000 (300 DPI) via sharp / librsvg
+    // Render SVG, then rotate into the portrait orientation expected by preview/print.
     console.log('[print-renderer] rendering SVG, length:', svgContent.length);
-    const pngBuffer = await sharp(Buffer.from(svgContent)).png().toBuffer();
+    const pngBuffer = await sharp(Buffer.from(svgContent)).rotate(-90).png().toBuffer();
     console.log('[print-renderer] PNG bytes:', pngBuffer.length);
 
     // Upload one deterministic clean layout per autograph/template version.
