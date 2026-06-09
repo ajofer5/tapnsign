@@ -7,7 +7,7 @@
  * Uses sharp (librsvg) for SVG→PNG, which honours system fonts — Optima is
  * installed in the Docker image so metadata text renders correctly.
  *
- * POST /render   { autograph_id, print_id, internal_secret? }
+ * POST /render   { autograph_id, print_id?, internal_secret? }
  *                Header: x-internal-secret: <INTERNAL_FUNCTION_SECRET>
  * GET  /health
  */
@@ -30,6 +30,11 @@ const INTERNAL_SECRET = process.env.INTERNAL_FUNCTION_SECRET ?? '';
 const SUPABASE_URL = process.env.SUPABASE_URL ?? '';
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
 const OUTPUT_BUCKET = 'print-layouts';
+const RENDERER_VERSION = 'print-template-v2';
+const BUNNY_STORAGE_API_KEY = process.env.BUNNY_STORAGE_API_KEY ?? '';
+const BUNNY_STORAGE_ZONE_NAME = process.env.BUNNY_STORAGE_ZONE_NAME ?? '';
+const BUNNY_CDN_HOSTNAME = process.env.BUNNY_CDN_HOSTNAME ?? '';
+const BUNNY_STORAGE_ENDPOINT = process.env.BUNNY_STORAGE_ENDPOINT ?? 'storage.bunnycdn.com';
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   console.error('[print-renderer] FATAL: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required');
@@ -166,14 +171,49 @@ async function fetchAsBase64(url) {
   }
 }
 
-function toTransformUrl(originalUrl, width, height) {
+async function bunnyUrlExists(url) {
+  if (!url) return false;
   try {
-    const u = new URL(originalUrl);
-    u.pathname = u.pathname.replace('/storage/v1/object/public/', '/storage/v1/render/image/public/');
-    u.searchParams.set('width', String(width));
-    u.searchParams.set('height', String(height));
-    u.searchParams.set('resize', 'cover');
-    return u.toString();
+    const res = await fetch(url, { method: 'HEAD' });
+    return res.ok;
+  } catch (err) {
+    console.warn(`[print-renderer] Bunny cache HEAD failed: ${err.message}`);
+    return false;
+  }
+}
+
+async function uploadToBunnyStorage(buffer, path, contentType = 'image/png') {
+  if (!BUNNY_STORAGE_API_KEY || !BUNNY_STORAGE_ZONE_NAME || !BUNNY_CDN_HOSTNAME) {
+    throw new Error('Bunny Storage is not configured.');
+  }
+
+  const resp = await fetch(`https://${BUNNY_STORAGE_ENDPOINT}/${BUNNY_STORAGE_ZONE_NAME}/${path}`, {
+    method: 'PUT',
+    headers: {
+      AccessKey: BUNNY_STORAGE_API_KEY,
+      'Content-Type': contentType,
+    },
+    body: buffer,
+  });
+
+  if (!resp.ok) {
+    throw new Error(`Bunny Storage upload failed (HTTP ${resp.status}).`);
+  }
+
+  return `https://${BUNNY_CDN_HOSTNAME}/${path}`;
+}
+
+function sanitizeStorageUrl(originalUrl) {
+  try {
+    const url = new URL(originalUrl);
+    if (url.pathname.includes('/storage/v1/render/image/public/')) {
+      url.pathname = url.pathname.replace('/storage/v1/render/image/public/', '/storage/v1/object/public/');
+      url.searchParams.delete('width');
+      url.searchParams.delete('height');
+      url.searchParams.delete('resize');
+      url.searchParams.delete('quality');
+    }
+    return url.toString();
   } catch {
     return originalUrl;
   }
@@ -189,7 +229,7 @@ function frameBorderSvg(r, pad = 6, color = 'white', opacity = 0.45) {
 
 function buildLayoutSvg({
   frame12DataUri, smallFrameDataUris, strokes,
-  creatorName, sequenceNumber, printSequenceNumber, seriesName, capturedAt, badgeDataUri,
+  creatorName, sequenceNumber, seriesName, capturedAt, badgeDataUri,
 }) {
   const date = new Date(capturedAt).toLocaleDateString('en-US', {
     month: 'long', day: 'numeric', year: 'numeric',
@@ -264,7 +304,6 @@ function buildLayoutSvg({
   const metaLines = [
     { text: nameLabel,                         fontSize: 72, opacity: 1.00, bold: true,  letterSpacing: 3 },
     { text: `Captured on ${date}`,             fontSize: 52, opacity: 0.75, bold: false, letterSpacing: 1 },
-    { text: `Print #${printSequenceNumber}`,   fontSize: 52, opacity: 0.75, bold: false, letterSpacing: 1 },
     ...(seriesName ? [{ text: seriesName,      fontSize: 48, opacity: 0.65, bold: false, letterSpacing: 1 }] : []),
   ];
   const lineH = 100;
@@ -319,7 +358,7 @@ function isAuthorized(req) {
 // Routes
 // ---------------------------------------------------------------------------
 
-app.get('/health', (_req, res) => res.json({ ok: true }));
+app.get('/health', (_req, res) => res.json({ ok: true, version: RENDERER_VERSION }));
 
 app.post('/render', async (req, res) => {
   if (!isAuthorized(req)) {
@@ -328,8 +367,8 @@ app.post('/render', async (req, res) => {
 
   const autographId = req.body?.autograph_id;
   const printId     = req.body?.print_id;
-  if (!autographId || !printId) {
-    return res.status(400).json({ error: 'autograph_id and print_id are required' });
+  if (!autographId) {
+    return res.status(400).json({ error: 'autograph_id is required' });
   }
 
   try {
@@ -340,27 +379,53 @@ app.post('/render', async (req, res) => {
       .eq('id', autographId)
       .maybeSingle();
 
-    if (autographError || !autograph) return res.status(404).json({ error: 'Autograph not found', detail: autographError?.message ?? null });
+    if (autographError || !autograph) {
+      return res.status(404).json({
+        error: `Renderer autograph not found for id ${autographId}`,
+        detail: autographError?.message ?? null,
+      });
+    }
     if (autograph.status !== 'active') return res.status(409).json({ error: 'Autograph is not active' });
     if (!autograph.verify_badge_url) return res.status(422).json({ error: 'Verify badge not found — re-mint this autograph' });
 
-    // Fetch print record
-    const { data: printRecord, error: printError } = await supabase
-      .from('autograph_prints')
-      .select('id, autograph_id, owner_id_at_print, print_sequence_number, print_layout_url')
-      .eq('id', printId)
-      .maybeSingle();
+    let printRecord = null;
+    if (printId) {
+      const { data, error: printError } = await supabase
+        .from('autograph_prints')
+        .select('id, autograph_id, owner_id_at_print, print_sequence_number, print_layout_url')
+        .eq('id', printId)
+        .maybeSingle();
 
-    if (printError || !printRecord) return res.status(404).json({ error: 'Print record not found' });
-    if (printRecord.autograph_id !== autographId) return res.status(409).json({ error: 'Print does not match autograph' });
+      if (printError || !data) return res.status(404).json({ error: 'Print record not found' });
+      if (data.autograph_id !== autographId) return res.status(409).json({ error: 'Print does not match autograph' });
+      printRecord = data;
 
-    // Return cached layout
-    if (printRecord.print_layout_url) {
-      console.log('[print-renderer] returning cached URL');
-      return res.json({ print_layout_url: printRecord.print_layout_url });
+      if (printRecord.print_layout_url && await bunnyUrlExists(printRecord.print_layout_url)) {
+        console.log('[print-renderer] returning print-record cached URL');
+        return res.json({
+          print_layout_url: printRecord.print_layout_url,
+          cached: true,
+          version: RENDERER_VERSION,
+        });
+      }
     }
 
-    const userId = printRecord.owner_id_at_print;
+    const bunnyPath = `print_layouts/${RENDERER_VERSION}/${autographId}.png`;
+    const cachedLayoutUrl = BUNNY_CDN_HOSTNAME ? `https://${BUNNY_CDN_HOSTNAME}/${bunnyPath}` : '';
+    if (await bunnyUrlExists(cachedLayoutUrl)) {
+      console.log('[print-renderer] returning autograph cached URL');
+      if (printRecord) {
+        await supabase
+          .from('autograph_prints')
+          .update({ print_layout_url: cachedLayoutUrl })
+          .eq('id', printRecord.id);
+      }
+      return res.json({
+        print_layout_url: cachedLayoutUrl,
+        cached: true,
+        version: RENDERER_VERSION,
+      });
+    }
 
     // Creator display name
     const { data: creatorProfile } = await supabase
@@ -381,20 +446,26 @@ app.post('/render', async (req, res) => {
       seriesName = series?.name ?? null;
     }
 
-    const frameUrls = autograph.preview_frame_urls ?? [];
-    if (frameUrls.length < 5) {
-      return res.status(422).json({ error: 'At least 5 preview frames are required' });
+    const frameUrls = (autograph.preview_frame_urls ?? []).filter(Boolean);
+    if (frameUrls.length < 1) {
+      return res.status(422).json({ error: 'At least 1 preview frame is required' });
+    }
+    while (frameUrls.length < 5) {
+      frameUrls.push(frameUrls[frameUrls.length - 1]);
     }
 
-    // Fetch images at full resolution — no memory constraints on Railway
-    console.log('[print-renderer] fetching frames and badge');
+    // Fetch original object URLs and let Sharp/librsvg handle sizing locally.
+    // This avoids Supabase Storage image transformation billing.
+    const sanitizedFrameUrls = frameUrls.slice(0, 5).map(sanitizeStorageUrl);
+    console.log('[print-renderer] version:', RENDERER_VERSION);
+    console.log('[print-renderer] fetching frames and badge from:', sanitizedFrameUrls);
     const [frame12DataUri, sf0, sf1, sf2, sf3, badgeDataUri] = await Promise.all([
-      fetchAsBase64(toTransformUrl(frameUrls[4], FRAME12.w, FRAME12.h)),
-      fetchAsBase64(toTransformUrl(frameUrls[0], SMALL_FRAMES[0].w, SMALL_FRAMES[0].h)),
-      fetchAsBase64(toTransformUrl(frameUrls[1], SMALL_FRAMES[1].w, SMALL_FRAMES[1].h)),
-      fetchAsBase64(toTransformUrl(frameUrls[2], SMALL_FRAMES[2].w, SMALL_FRAMES[2].h)),
-      fetchAsBase64(toTransformUrl(frameUrls[3], SMALL_FRAMES[3].w, SMALL_FRAMES[3].h)),
-      fetchAsBase64(autograph.verify_badge_url),
+      fetchAsBase64(sanitizedFrameUrls[4]),
+      fetchAsBase64(sanitizedFrameUrls[0]),
+      fetchAsBase64(sanitizedFrameUrls[1]),
+      fetchAsBase64(sanitizedFrameUrls[2]),
+      fetchAsBase64(sanitizedFrameUrls[3]),
+      fetchAsBase64(sanitizeStorageUrl(autograph.verify_badge_url)),
     ]);
     console.log('[print-renderer] assets fetched, building SVG');
 
@@ -406,7 +477,6 @@ app.post('/render', async (req, res) => {
       strokes,
       creatorName,
       sequenceNumber: autograph.creator_sequence_number ?? null,
-      printSequenceNumber: printRecord.print_sequence_number,
       seriesName,
       capturedAt: autograph.created_at,
       badgeDataUri,
@@ -417,27 +487,22 @@ app.post('/render', async (req, res) => {
     const pngBuffer = await sharp(Buffer.from(svgContent)).png().toBuffer();
     console.log('[print-renderer] PNG bytes:', pngBuffer.length);
 
-    // Upload to Supabase storage
-    const pngPath = `${userId}/print_layouts/${autographId}_print_${printId}.png`;
-    const { error: uploadError } = await supabase.storage
-      .from(OUTPUT_BUCKET)
-      .upload(pngPath, pngBuffer, { contentType: 'image/png', upsert: true });
+    // Upload one deterministic clean layout per autograph/template version.
+    const printLayoutUrl = await uploadToBunnyStorage(pngBuffer, bunnyPath, 'image/png');
 
-    if (uploadError) {
-      console.error('[print-renderer] upload error:', uploadError.message);
-      return res.status(500).json({ error: `Upload failed: ${uploadError.message}` });
+    if (printRecord) {
+      await supabase
+        .from('autograph_prints')
+        .update({ print_layout_url: printLayoutUrl })
+        .eq('id', printRecord.id);
     }
 
-    const printLayoutUrl = supabase.storage.from(OUTPUT_BUCKET).getPublicUrl(pngPath).data.publicUrl;
-
-    // Cache on print record
-    await supabase
-      .from('autograph_prints')
-      .update({ print_layout_url: printLayoutUrl })
-      .eq('id', printId);
-
     console.log('[print-renderer] done:', printLayoutUrl);
-    return res.json({ print_layout_url: printLayoutUrl });
+    return res.json({
+      print_layout_url: printLayoutUrl,
+      cached: false,
+      version: RENDERER_VERSION,
+    });
 
   } catch (err) {
     console.error('[print-renderer] unhandled error:', err);
@@ -445,4 +510,4 @@ app.post('/render', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => console.log(`[print-renderer] listening on :${PORT}`));
+app.listen(PORT, () => console.log(`[print-renderer] listening on :${PORT} (${RENDERER_VERSION})`));
