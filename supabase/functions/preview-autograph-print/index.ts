@@ -40,6 +40,9 @@ async function getPrintLayoutUrl(autographId: string) {
 
   return {
     printLayoutUrl: layoutData.print_layout_url as string,
+    printPreviewUrl: typeof layoutData.print_preview_url === 'string' && layoutData.print_preview_url.length > 0
+      ? layoutData.print_preview_url as string
+      : null,
     printLayoutVersion: typeof layoutData.version === 'string' ? layoutData.version : null,
   };
 }
@@ -164,7 +167,7 @@ Deno.serve((req) =>
       'This autograph has reached its print limit.'
     );
 
-    const { printLayoutUrl, printLayoutVersion } = await getPrintLayoutUrl(autographId);
+    const { printLayoutUrl, printPreviewUrl, printLayoutVersion } = await getPrintLayoutUrl(autographId);
 
     return json({
       autograph_id: autographId,
@@ -172,6 +175,7 @@ Deno.serve((req) =>
       next_print_sequence_number: nextSequence,
       next_print_label: `${formatOrdinal(nextSequence)} Print`,
       print_layout_url: printLayoutUrl,
+      print_preview_url: printPreviewUrl,
       print_layout_version: printLayoutVersion,
       owner_print_count: ownerPrints?.length ?? 0,
       latest_owner_print: latestOwnerPrint

@@ -31,6 +31,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL ?? '';
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
 const OUTPUT_BUCKET = 'print-layouts';
 const RENDERER_VERSION = 'print-template-v3';
+const PREVIEW_VERSION = 'preview-v1';
 const BUNNY_STORAGE_API_KEY = process.env.BUNNY_STORAGE_API_KEY ?? '';
 const BUNNY_STORAGE_ZONE_NAME = process.env.BUNNY_STORAGE_ZONE_NAME ?? '';
 const BUNNY_CDN_HOSTNAME = process.env.BUNNY_CDN_HOSTNAME ?? '';
@@ -445,19 +446,53 @@ app.post('/render', async (req, res) => {
       printRecord = data;
 
       if (printRecord.print_layout_url && await bunnyUrlExists(printRecord.print_layout_url)) {
-        console.log('[print-renderer] returning print-record cached URL');
-        return res.json({
-          print_layout_url: printRecord.print_layout_url,
-          cached: true,
-          version: RENDERER_VERSION,
-        });
+        const prPreviewPath = `print_previews/${PREVIEW_VERSION}/${autographId}.jpg`;
+        const prPreviewUrl = NORMALIZED_BUNNY_CDN_HOSTNAME
+          ? `https://${NORMALIZED_BUNNY_CDN_HOSTNAME}/${prPreviewPath}`
+          : null;
+        const prPreviewExists = prPreviewUrl ? await bunnyUrlExists(prPreviewUrl) : false;
+
+        if (prPreviewExists) {
+          console.log('[print-renderer] returning print-record cached URL (both)');
+          return res.json({
+            print_layout_url: printRecord.print_layout_url,
+            print_preview_url: prPreviewUrl,
+            cached: true,
+            version: RENDERER_VERSION,
+          });
+        }
+
+        // Preview missing — generate from the cached layout
+        console.log('[print-renderer] print-record: layout cached; generating missing preview');
+        const prLayoutResp = await fetch(printRecord.print_layout_url);
+        if (prLayoutResp.ok) {
+          const prLayoutBuffer = Buffer.from(await prLayoutResp.arrayBuffer());
+          const prPreviewBuffer = await sharp(prLayoutBuffer).resize({ width: 800 }).jpeg({ quality: 82 }).toBuffer();
+          const generatedPreviewUrl = await uploadToBunnyStorage(prPreviewBuffer, prPreviewPath, 'image/jpeg');
+          return res.json({
+            print_layout_url: printRecord.print_layout_url,
+            print_preview_url: generatedPreviewUrl,
+            cached: false,
+            version: RENDERER_VERSION,
+          });
+        }
+        // Layout fetch failed — fall through to full render
+        console.warn('[print-renderer] print-record: failed to fetch cached layout, falling through to full render');
       }
     }
 
-    const bunnyPath = `print_layouts/${RENDERER_VERSION}/${autographId}.png`;
-    const cachedLayoutUrl = BUNNY_CDN_HOSTNAME ? `https://${BUNNY_CDN_HOSTNAME}/${bunnyPath}` : '';
-    if (await bunnyUrlExists(cachedLayoutUrl)) {
-      console.log('[print-renderer] returning autograph cached URL');
+    const layoutBunnyPath = `print_layouts/${RENDERER_VERSION}/${autographId}.png`;
+    const previewBunnyPath = `print_previews/${PREVIEW_VERSION}/${autographId}.jpg`;
+    const cachedLayoutUrl = NORMALIZED_BUNNY_CDN_HOSTNAME ? `https://${NORMALIZED_BUNNY_CDN_HOSTNAME}/${layoutBunnyPath}` : '';
+    const cachedPreviewUrl = NORMALIZED_BUNNY_CDN_HOSTNAME ? `https://${NORMALIZED_BUNNY_CDN_HOSTNAME}/${previewBunnyPath}` : '';
+
+    const [layoutCached, previewCached] = await Promise.all([
+      bunnyUrlExists(cachedLayoutUrl),
+      bunnyUrlExists(cachedPreviewUrl),
+    ]);
+
+    if (layoutCached && previewCached) {
+      console.log('[print-renderer] returning both cached URLs');
       if (printRecord) {
         await supabase
           .from('autograph_prints')
@@ -466,7 +501,30 @@ app.post('/render', async (req, res) => {
       }
       return res.json({
         print_layout_url: cachedLayoutUrl,
+        print_preview_url: cachedPreviewUrl,
         cached: true,
+        version: RENDERER_VERSION,
+      });
+    }
+
+    // Layout cached but preview missing — download layout and generate preview only
+    if (layoutCached && !previewCached) {
+      console.log('[print-renderer] layout cached; generating missing preview');
+      const layoutResp = await fetch(cachedLayoutUrl);
+      if (!layoutResp.ok) throw new Error(`Failed to fetch cached layout: ${layoutResp.status}`);
+      const layoutBuffer = Buffer.from(await layoutResp.arrayBuffer());
+      const previewBuffer = await sharp(layoutBuffer).resize({ width: 800 }).jpeg({ quality: 82 }).toBuffer();
+      const printPreviewUrl = await uploadToBunnyStorage(previewBuffer, previewBunnyPath, 'image/jpeg');
+      if (printRecord) {
+        await supabase
+          .from('autograph_prints')
+          .update({ print_layout_url: cachedLayoutUrl })
+          .eq('id', printRecord.id);
+      }
+      return res.json({
+        print_layout_url: cachedLayoutUrl,
+        print_preview_url: printPreviewUrl,
+        cached: false,
         version: RENDERER_VERSION,
       });
     }
@@ -531,8 +589,15 @@ app.post('/render', async (req, res) => {
     const pngBuffer = await sharp(Buffer.from(svgContent)).rotate(-90).png().toBuffer();
     console.log('[print-renderer] PNG bytes:', pngBuffer.length);
 
-    // Upload one deterministic clean layout per autograph/template version.
-    const printLayoutUrl = await uploadToBunnyStorage(pngBuffer, bunnyPath, 'image/png');
+    // Generate small preview JPG alongside the full layout
+    const previewBuffer = await sharp(pngBuffer).resize({ width: 800 }).jpeg({ quality: 82 }).toBuffer();
+    console.log('[print-renderer] preview JPG bytes:', previewBuffer.length);
+
+    // Upload both in parallel
+    const [printLayoutUrl, printPreviewUrl] = await Promise.all([
+      uploadToBunnyStorage(pngBuffer, layoutBunnyPath, 'image/png'),
+      uploadToBunnyStorage(previewBuffer, previewBunnyPath, 'image/jpeg'),
+    ]);
 
     if (printRecord) {
       await supabase
@@ -541,9 +606,10 @@ app.post('/render', async (req, res) => {
         .eq('id', printRecord.id);
     }
 
-    console.log('[print-renderer] done:', printLayoutUrl);
+    console.log('[print-renderer] done:', printLayoutUrl, printPreviewUrl);
     return res.json({
       print_layout_url: printLayoutUrl,
+      print_preview_url: printPreviewUrl,
       cached: false,
       version: RENDERER_VERSION,
     });

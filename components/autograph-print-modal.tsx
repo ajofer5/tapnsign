@@ -6,6 +6,7 @@ import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowD
 type PrintPreview = {
   next_print_sequence_number: number;
   print_layout_url?: string | null;
+  print_preview_url?: string | null;
 };
 
 type PrintItem = {
@@ -29,18 +30,6 @@ type Props = {
   formatCardDate: (value: string) => string;
 };
 
-function buildOptimizedPrintPreviewUrl(value: string | null) {
-  if (!value) return null;
-  try {
-    const url = new URL(value);
-    url.searchParams.set('width', '900');
-    url.searchParams.set('quality', '75');
-    return url.toString();
-  } catch {
-    return value;
-  }
-}
-
 export function AutographPrintModal({
   visible,
   printItem,
@@ -55,23 +44,21 @@ export function AutographPrintModal({
   formatCardDate,
 }: Props) {
   const { width } = useWindowDimensions();
-  const [previewImageMode, setPreviewImageMode] = useState<'optimized' | 'original' | 'fallback'>('optimized');
+  const [urlFallbackIndex, setUrlFallbackIndex] = useState(0);
   const previewImageWidth = Math.min(width - 84, 304);
   const previewImageHeight = Math.round(previewImageWidth * 1.25);
   const previewCardWidth = previewImageWidth + 36;
-  const remotePreviewUrl = printPreview?.print_layout_url ?? null;
-  const optimizedPreviewUrl = buildOptimizedPrintPreviewUrl(remotePreviewUrl);
-  const displayedPreviewUrl =
-    previewImageMode === 'optimized' ? optimizedPreviewUrl :
-    previewImageMode === 'original' ? remotePreviewUrl :
-    null;
-  const previewSource = displayedPreviewUrl
-    ? { uri: displayedPreviewUrl }
+  const printPreviewUrl = printPreview?.print_preview_url ?? null;
+  const printLayoutUrl = printPreview?.print_layout_url ?? null;
+  const orderedUrls = [printPreviewUrl, printLayoutUrl].filter((u): u is string => !!u);
+  const currentUrl = orderedUrls[urlFallbackIndex] ?? null;
+  const previewSource = currentUrl
+    ? { uri: currentUrl }
     : require('../assets/images/print_preview.png');
 
   useEffect(() => {
-    setPreviewImageMode('optimized');
-  }, [remotePreviewUrl]);
+    setUrlFallbackIndex(0);
+  }, [printPreviewUrl, printLayoutUrl]);
 
   return (
     <Modal
@@ -99,21 +86,11 @@ export function AutographPrintModal({
                       style={[styles.printPreviewImage, { width: previewImageWidth, height: previewImageHeight }]}
                       resizeMode="contain"
                       onError={(event) => {
-                        if (previewImageMode === 'optimized' && remotePreviewUrl) {
-                          console.warn('[AutographPrintModal] optimized print preview image failed to load', {
-                            url: optimizedPreviewUrl,
-                            error: event.nativeEvent.error,
-                          });
-                          setPreviewImageMode('original');
-                          return;
-                        }
-                        if (previewImageMode === 'original' && remotePreviewUrl) {
-                          console.warn('[AutographPrintModal] print preview image failed to load', {
-                            url: remotePreviewUrl,
-                            error: event.nativeEvent.error,
-                          });
-                          setPreviewImageMode('fallback');
-                        }
+                        console.warn('[AutographPrintModal] print preview image failed to load', {
+                          url: currentUrl,
+                          error: event.nativeEvent.error,
+                        });
+                        setUrlFallbackIndex(prev => prev + 1);
                       }}
                     />
                     <View pointerEvents="none" style={[styles.previewWatermark, { width: previewImageWidth, height: previewImageHeight }]}>
