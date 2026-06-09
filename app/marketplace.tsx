@@ -1,24 +1,25 @@
 import { AutographPlayer } from '@/components/autograph-player';
+import { AutographPrintModal } from '@/components/autograph-print-modal';
 import { CardMetadataBlock } from '@/components/card-metadata-block';
 import { CertificateSheet } from '@/components/certificate-sheet';
 import { NameWithSequence, formatPublicVideoDate, formatPublicVideoPrice } from '@/components/public-video-card';
 import { PublicVideoThumbnail } from '@/components/public-video-thumbnail';
 import { BrandColors, BrandFonts } from '@/constants/theme';
-import { useAuth } from '@/lib/auth-context';
 import { callEdgeFunction } from '@/lib/api';
+import { useAuth } from '@/lib/auth-context';
 import { logInterestEvent } from '@/lib/interest';
 import { buildAutographUrl } from '@/lib/public-links';
 import { supabase } from '@/lib/supabase';
-import { openAuthenticatedWebPath } from '@/lib/web-handoff';
-import { useStripe } from '@stripe/stripe-react-native';
+import { AddressDetails, useStripe } from '@stripe/stripe-react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Animated,
   ActivityIndicator,
   Alert,
+  Animated,
   FlatList,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -57,6 +58,7 @@ type ListingItem = {
     display_name: string;
     verified: boolean;
     name_verified: boolean;
+    personalized_requests_enabled: boolean;
   };
   strokeColor: string;
   templateId?: string | null;
@@ -66,7 +68,28 @@ type ListingItem = {
   seriesMaxSize: number | null;
   offerLockedUntil?: string | null;
   printCount: number;
+  printsEnabled: boolean;
+  printLimit: number | null;
   thumbnailUrl?: string | null;
+};
+
+type PrintPreview = {
+  autograph_id: string;
+  total_print_count: number;
+  next_print_sequence_number: number;
+  next_print_label: string;
+  print_layout_url?: string | null;
+  print_preview_url?: string | null;
+  print_layout_version?: string | null;
+  owner_print_count: number;
+  latest_owner_print: {
+    id: string;
+    print_sequence_number: number;
+    print_label: string;
+    created_at: string;
+  } | null;
+  item_cents: number | null;
+  shipping_cents: number | null;
 };
 
 type MarketplaceCursor = {
@@ -76,23 +99,23 @@ type MarketplaceCursor = {
 
 type MarketplaceFilters = {
   savedOnly: boolean;
-  buyNow: boolean;
   creator: string;
   series: string;
-  minPrice: string;
-  maxPrice: string;
+  acceptsPersonalizedRequests: boolean;
+  verifiedUser: boolean;
+  printsAvailable: boolean;
 };
 
 const defaultFilters: MarketplaceFilters = {
   savedOnly: false,
-  buyNow: false,
   creator: '',
   series: '',
-  minPrice: '',
-  maxPrice: '',
+  acceptsPersonalizedRequests: false,
+  verifiedUser: false,
+  printsAvailable: false,
 };
 
-type MarketplaceSort = 'newest' | 'oldest' | 'price_asc' | 'price_desc';
+type MarketplaceSort = 'newest' | 'oldest';
 
 function getListingPriceLabel(item: Pick<ListingItem, 'listingMode'>) {
   return item.listingMode === 'buy_now' ? 'Fixed Price' : 'Estimated Value';
@@ -110,6 +133,10 @@ function getPreviewPriceText(item: Pick<ListingItem, 'offerLockedUntil' | 'price
   return item.offerLockedUntil ? 'Sale Pending' : formatPublicVideoPrice(item.priceCents);
 }
 
+function canBuyPrint(item: Pick<ListingItem, 'printsEnabled' | 'printLimit' | 'printCount'>) {
+  return item.printsEnabled && (item.printLimit == null || item.printCount < item.printLimit);
+}
+
 function formatCardDate(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
@@ -117,9 +144,8 @@ function formatCardDate(value: string) {
 }
 
 export default function MarketplaceScreen() {
-  const PAGE_SIZE = 30;
+  const PAGE_SIZE = 24;
   const [listings, setListings] = useState<ListingItem[]>([]);
-  const [recommendedIds, setRecommendedIds] = useState<string[]>([]);
   const [watchedIds, setWatchedIds] = useState<Set<string>>(new Set());
   const [blockedUserIds, setBlockedUserIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
@@ -139,10 +165,18 @@ export default function MarketplaceScreen() {
   const [reportItem, setReportItem] = useState<ListingItem | null>(null);
   const [reportSubmitting, setReportSubmitting] = useState(false);
   const [purchasingId, setPurchasingId] = useState<string | null>(null);
+  const [printItem, setPrintItem] = useState<ListingItem | null>(null);
+  const [printPreview, setPrintPreview] = useState<PrintPreview | null>(null);
+  const [loadingPrintPreview, setLoadingPrintPreview] = useState(false);
+  const [creatingPrint, setCreatingPrint] = useState(false);
+  const [printStep, setPrintStep] = useState<'preview' | 'processing'>('preview');
+  const [addressSheetVisible, setAddressSheetVisible] = useState(false);
+  const [printSessionKey, setPrintSessionKey] = useState('');
   const [certItem, setCertItem] = useState<ListingItem | null>(null);
   const [offerItem, setOfferItem] = useState<ListingItem | null>(null);
   const [offerInput, setOfferInput] = useState('');
   const [offerSubmitting, setOfferSubmitting] = useState(false);
+  const [keyboardOffset, setKeyboardOffset] = useState(0);
   const offerSlideAnim = useRef(new Animated.Value(0)).current;
   const { user } = useAuth();
   const router = useRouter();
@@ -172,6 +206,7 @@ export default function MarketplaceScreen() {
       display_name: row.creator_display_name ?? 'Creator',
       verified: !!row.creator_verified,
       name_verified: !!row.creator_name_verified,
+      personalized_requests_enabled: !!row.creator_personalized_requests_enabled,
     },
     strokeColor: row.stroke_color ?? '#001B5C',
     templateId: row.template_id ?? 'classic',
@@ -181,13 +216,15 @@ export default function MarketplaceScreen() {
     seriesMaxSize: row.series_max_size ?? null,
     offerLockedUntil: row.offer_locked_until ?? null,
     printCount: row.print_count ?? 0,
+    printsEnabled: !!row.prints_enabled,
+    printLimit: row.print_limit ?? null,
   });
 
   const fetchMarketplacePage = useCallback(async (pageCursor: MarketplaceCursor | null) => {
-    if (!user) return { items: [] as ListingItem[], nextCursor: null as MarketplaceCursor | null, blockedIds: new Set<string>(), watchedFromList: [] as string[], recommendationIds: [] as string[] };
+    if (!user) return { items: [] as ListingItem[], nextCursor: null as MarketplaceCursor | null, blockedIds: new Set<string>(), watchedFromList: [] as string[] };
 
     const includeAncillary = !pageCursor;
-    const [browseRes, watchRes, recommendationsRes, blockedRes] = await Promise.all([
+    const [browseRes, watchRes, blockedRes] = await Promise.all([
       supabase.rpc('get_marketplace_feed', {
         p_limit: PAGE_SIZE,
         p_before_created_at: pageCursor?.beforeCreatedAt ?? null,
@@ -195,7 +232,6 @@ export default function MarketplaceScreen() {
         p_viewer_id: user.id,
       }),
       includeAncillary ? supabase.from('watchlist').select('autograph_id').eq('user_id', user.id) : Promise.resolve({ data: null, error: null } as any),
-      includeAncillary ? supabase.rpc('get_marketplace_recommendations', { p_limit: 6 }) : Promise.resolve({ data: null, error: null } as any),
       includeAncillary ? supabase.from('blocked_users').select('blocked_user_id').eq('blocker_id', user.id) : Promise.resolve({ data: null, error: null } as any),
     ]);
 
@@ -210,21 +246,19 @@ export default function MarketplaceScreen() {
         : null,
       blockedIds: new Set<string>((blockedRes.data ?? []).map((row: any) => row.blocked_user_id as string)),
       watchedFromList: (watchRes.data ?? []).map((w: any) => w.autograph_id as string),
-      recommendationIds: (recommendationsRes.data ?? []).map((row: any) => row.autograph_id as string),
     };
   }, [user]);
 
-useFocusEffect(
+  useFocusEffect(
     useCallback(() => {
       if (!user) return;
       if (lastFetchedAt.current && Date.now() - lastFetchedAt.current < STALE_MS) return;
       setLoading(true);
       setLoadError(false);
 
-      fetchMarketplacePage(null).then(({ items, nextCursor, blockedIds, watchedFromList, recommendationIds }) => {
+      fetchMarketplacePage(null).then(({ items, nextCursor, blockedIds, watchedFromList }) => {
         setBlockedUserIds(blockedIds);
         setWatchedIds(new Set(watchedFromList));
-        setRecommendedIds(recommendationIds);
         setListings(items);
         setCursor(nextCursor);
         setHasMore(!!nextCursor);
@@ -233,7 +267,6 @@ useFocusEffect(
       }).catch((error) => {
         console.log('Load marketplace error:', error);
         setListings([]);
-        setRecommendedIds([]);
         setCursor(null);
         setHasMore(false);
         setLoadError(true);
@@ -241,6 +274,20 @@ useFocusEffect(
       });
     }, [fetchMarketplacePage, user])
   );
+
+  useEffect(() => {
+    const showSubscription = Keyboard.addListener('keyboardDidShow', (event) => {
+      setKeyboardOffset(event.endCoordinates.height);
+    });
+    const hideSubscription = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardOffset(0);
+    });
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
 
   const handleLoadMore = useCallback(() => {
     if (!user || loading || loadingMore || !hasMore || !cursor) return;
@@ -463,27 +510,109 @@ useFocusEffect(
     }
   };
 
-  const handlePurchase = async (item: ListingItem) => {
+  const openPrintPreview = async (item: ListingItem) => {
     if (!user) {
-      Alert.alert('Sign in required', 'Please sign in to purchase autographs.');
+      Alert.alert('Sign in required', 'Please sign in to order prints.');
       return;
     }
+    setPrintItem(item);
+    setPrintPreview(null);
+    setLoadingPrintPreview(true);
     setPurchasingId(item.id);
+    setPrintSessionKey(`${Date.now()}-${Math.random().toString(36).slice(2)}`);
     try {
-      closePreview();
-      await openAuthenticatedWebPath(`/app/checkout/${item.id}`);
-      Alert.alert('Continue on Web', `Checkout for ${item.creator.display_name} has been moved to Ophinia on the web.`);
-    } catch {
-      Alert.alert('Error', 'Could not open the web checkout. Please try again.');
+      const preview = await callEdgeFunction<PrintPreview>('preview-autograph-print', {
+        autograph_id: item.id,
+      });
+      setPrintPreview(preview);
+    } catch (error) {
+      setPrintItem(null);
+      Alert.alert('Print Autograph', error instanceof Error ? error.message : 'Could not load the print preview. Please try again.');
     } finally {
+      setLoadingPrintPreview(false);
       setPurchasingId(null);
+    }
+  };
+
+  const closePrintPreview = () => {
+    if (creatingPrint) return;
+    setPrintItem(null);
+    setPrintPreview(null);
+    setPrintStep('preview');
+    setAddressSheetVisible(false);
+  };
+
+  const handleProceedToPrintPayment = () => {
+    if (!printPreview) return;
+    setAddressSheetVisible(true);
+  };
+
+  const handlePrintAddressSubmit = async (addressDetails: AddressDetails) => {
+    setAddressSheetVisible(false);
+    if (!printItem || !printPreview) return;
+
+    const a = addressDetails.address;
+    setCreatingPrint(true);
+    setPrintStep('processing');
+
+    try {
+      const paymentData = await callEdgeFunction<{
+        client_secret: string;
+        payment_intent_id: string;
+        payment_event_id: string;
+        amount_cents: number;
+      }>('create-print-payment-intent', { autograph_id: printItem.id, idempotency_key: printSessionKey });
+
+      const { error: initError } = await initPaymentSheet({
+        paymentIntentClientSecret: paymentData.client_secret,
+        merchantDisplayName: 'Ophinia',
+      });
+
+      if (initError) {
+        Alert.alert('Payment Error', 'Could not start payment. Please try again.');
+        setPrintStep('preview');
+        setCreatingPrint(false);
+        return;
+      }
+
+      const { error: paymentError } = await presentPaymentSheet();
+      if (paymentError) {
+        if (paymentError.code !== 'Canceled') {
+          Alert.alert('Payment Failed', 'Could not complete payment. Please try again.');
+        }
+        setPrintStep('preview');
+        setCreatingPrint(false);
+        return;
+      }
+
+      await callEdgeFunction('submit-print-order', {
+        autograph_id: printItem.id,
+        payment_event_id: paymentData.payment_event_id,
+        image_url: printPreview.print_layout_url ?? null,
+        shipping_name: addressDetails.name ?? '',
+        shipping_line1: a?.line1 ?? '',
+        shipping_line2: a?.line2 || null,
+        shipping_city: a?.city ?? '',
+        shipping_state: a?.state ?? '',
+        shipping_zip: a?.postalCode ?? '',
+      });
+
+      setListings((prev) => prev.map((listing) => (
+        listing.id === printItem.id ? { ...listing, printCount: listing.printCount + 1 } : listing
+      )));
+      Alert.alert('Print Order Placed!', "Your official print is on its way. You'll receive a shipping confirmation from our print partner.");
+      closePrintPreview();
+    } catch (error) {
+      Alert.alert('Print Order Failed', error instanceof Error ? error.message : 'Could not place your print order. Please try again.');
+      setPrintStep('preview');
+    } finally {
+      setCreatingPrint(false);
     }
   };
 
   const activeListings = useMemo(() => {
     let items = listings;
     if (filters.savedOnly) items = items.filter((l) => watchedIds.has(l.id));
-    if (filters.buyNow) items = items.filter((l) => canBuyNow(l));
     if (filters.creator.trim()) {
       const q = filters.creator.trim().toLowerCase();
       items = items.filter((l) => l.creator.display_name.toLowerCase().includes(q));
@@ -492,33 +621,23 @@ useFocusEffect(
       const q = filters.series.trim().toLowerCase();
       items = items.filter((l) => l.seriesName?.toLowerCase().includes(q));
     }
-    if (filters.minPrice.trim()) {
-      const min = parseFloat(filters.minPrice) * 100;
-      if (!isNaN(min)) items = items.filter((l) => (l.priceCents ?? 0) >= min);
-    }
-    if (filters.maxPrice.trim()) {
-      const max = parseFloat(filters.maxPrice) * 100;
-      if (!isNaN(max)) items = items.filter((l) => (l.priceCents ?? 0) <= max);
-    }
+    if (filters.acceptsPersonalizedRequests) items = items.filter((l) => l.creator.personalized_requests_enabled);
+    if (filters.verifiedUser) items = items.filter((l) => l.creator.verified);
+    if (filters.printsAvailable) items = items.filter((l) => canBuyPrint(l));
     if (sort === 'newest') items = [...items].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     if (sort === 'oldest') items = [...items].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-    if (sort === 'price_asc') items = [...items].sort((a, b) => (a.priceCents ?? 0) - (b.priceCents ?? 0));
-    if (sort === 'price_desc') items = [...items].sort((a, b) => (b.priceCents ?? 0) - (a.priceCents ?? 0));
     return items;
   }, [listings, watchedIds, filters, sort]);
 
-  const isFiltered = filters.savedOnly || filters.buyNow || filters.creator.trim() !== '' || filters.series.trim() !== '' || filters.minPrice !== '' || filters.maxPrice !== '' || sort !== 'newest';
+  const isFiltered =
+    filters.savedOnly ||
+    filters.creator.trim() !== '' ||
+    filters.series.trim() !== '' ||
+    filters.acceptsPersonalizedRequests ||
+    filters.verifiedUser ||
+    filters.printsAvailable;
 
-  const recommendedListings = useMemo(() => {
-    if (isFiltered) return [];
-    const listingMap = new Map(activeListings.map((item) => [item.id, item]));
-    return recommendedIds
-      .map((id) => listingMap.get(id))
-      .filter((item): item is ListingItem => !!item)
-      .slice(0, 4);
-  }, [activeListings, recommendedIds, isFiltered]);
-
-  const feedListings = useMemo(() => activeListings, [activeListings]);
+const feedListings = useMemo(() => activeListings, [activeListings]);
 
   const renderMarketplaceCard = (item: ListingItem) => (
     <Pressable style={styles.marketplaceCard} onPress={() => openPreview(item)}>
@@ -534,29 +653,20 @@ useFocusEffect(
           strokeColor={item.strokeColor}
           shellStyle={styles.marketplaceThumbnail}
         />
-        {item.saleState === 'fixed' && (
+        {canBuyPrint(item) && (
           <View style={styles.cardOverlayBar}>
             <Text style={styles.cardOverlayPrice} numberOfLines={1}>
-              {item.offerLockedUntil ? 'Sale Pending' : formatPublicVideoPrice(item.priceCents)}
+              Official Print
             </Text>
-            {!item.offerLockedUntil && canBuyNow(item) ? (
-              <Pressable
-                style={[styles.cardOverlayButton, purchasingId === item.id && { opacity: 0.6 }]}
-                onPress={(e) => { e.stopPropagation(); handlePurchase(item); }}
-                disabled={purchasingId === item.id}
-              >
-                {purchasingId === item.id
-                  ? <ActivityIndicator size="small" color="#fff" />
-                  : <Text style={styles.cardOverlayButtonText}>Buy</Text>}
-              </Pressable>
-            ) : !item.offerLockedUntil && canMakeOffer(item) ? (
-              <Pressable
-                style={styles.cardOverlayButton}
-                onPress={(e) => { e.stopPropagation(); openPreview(item); openOfferSheet(item); }}
-              >
-                <Text style={styles.cardOverlayButtonText}>Offer</Text>
-              </Pressable>
-            ) : null}
+            <Pressable
+              style={[styles.cardOverlayButton, (purchasingId === item.id || loadingPrintPreview) && { opacity: 0.6 }]}
+              onPress={(e) => { e.stopPropagation(); void openPrintPreview(item); }}
+              disabled={purchasingId === item.id || loadingPrintPreview}
+            >
+              {purchasingId === item.id
+                ? <ActivityIndicator size="small" color="#fff" />
+                : <Text style={styles.cardOverlayButtonText}>Buy Print</Text>}
+            </Pressable>
           </View>
         )}
       </View>
@@ -619,6 +729,11 @@ useFocusEffect(
         numColumns={2}
         columnWrapperStyle={styles.marketplaceGridRow}
         contentContainerStyle={styles.marketplaceGridContent}
+        initialNumToRender={8}
+        maxToRenderPerBatch={8}
+        updateCellsBatchingPeriod={50}
+        windowSize={5}
+        removeClippedSubviews={Platform.OS !== 'web'}
         onEndReachedThreshold={0.45}
         onEndReached={handleLoadMore}
         ListEmptyComponent={<Text style={styles.emptyText}>No autographs match your filters.</Text>}
@@ -630,28 +745,6 @@ useFocusEffect(
           ) : !isFiltered && hasMore ? (
             <View style={styles.loadMoreFooter}>
               <Text style={styles.loadMoreHint}>Scroll for more listings</Text>
-            </View>
-          ) : null
-        }
-        ListHeaderComponent={
-          !isFiltered && recommendedListings.length > 0 ? (
-            <View style={styles.recommendationSection}>
-              <Text style={styles.recommendationTitle}>For You</Text>
-              <Text style={styles.recommendationSubtitle}>Based on the creators and videos you have been engaging with.</Text>
-              <View style={styles.recommendationList}>
-                {Array.from({ length: Math.ceil(recommendedListings.length / 2) }, (_, i) =>
-                  recommendedListings.slice(i * 2, i * 2 + 2)
-                ).map((row, i) => (
-                  <View key={i} style={styles.marketplaceGridRow}>
-                    {row.map((item) => (
-                      <View key={item.id} style={styles.marketplaceGridItem}>
-                        {renderMarketplaceCard(item)}
-                      </View>
-                    ))}
-                    {row.length === 1 && <View style={styles.marketplaceGridItem} />}
-                  </View>
-                ))}
-              </View>
             </View>
           ) : null
         }
@@ -682,7 +775,7 @@ useFocusEffect(
                     {previewItem.seriesName ? <Text style={styles.modalCelebrity}>{` · ${previewItem.seriesName}`}</Text> : null}
                   </View>
                 </Pressable>
-                <Text style={styles.modalPrice}>{formatPublicVideoPrice(previewItem.priceCents)}</Text>
+                <Text style={styles.modalPrice}>{canBuyPrint(previewItem) ? 'Official Print Available' : 'View Only'}</Text>
               </View>
             )}
           </View>
@@ -704,42 +797,29 @@ useFocusEffect(
 
           {previewItem && (
             <View style={styles.modalMetadataBlock}>
-              <View style={styles.modalHeaderRow}>
-                <View style={styles.modalHeaderMetaLeft}>
-                  <Text style={styles.modalHeaderMetaText}>{formatCardDate(previewItem.createdAt)}</Text>
-                </View>
-                <View style={styles.modalNameRow}>
-                  <NameWithSequence name={previewItem.creator.display_name} sequenceNumber={previewItem.creatorSequenceNumber} style={styles.modalCelebrity} />
-                  {previewItem.creator.name_verified && (
-                    <Image source={require('../assets/images/Ophinia_badge_navy background.png')} style={styles.nameBadge} resizeMode="contain" />
-                  )}
-                </View>
-                <Pressable style={styles.certificateLink} onPress={() => setCertItem(previewItem)}>
-                  <Image source={require('../assets/images/Ophinia_O.png')} style={styles.certificateLogo} resizeMode="contain" />
-                </Pressable>
+              <View style={styles.modalNameRow}>
+                <NameWithSequence name={previewItem.creator.display_name} sequenceNumber={previewItem.creatorSequenceNumber} style={styles.modalNameText} />
+                {previewItem.creator.name_verified && (
+                  <Image source={require('../assets/images/Ophinia_badge_navy background.png')} style={styles.nameBadge} resizeMode="contain" />
+                )}
               </View>
-              <View style={styles.modalInfoRow}>
-                <View style={styles.modalInfoLeft}>
-                  <Text style={styles.modalInfoText}>{`Print #${previewItem.printCount + 1}`}</Text>
-                </View>
-                <View style={styles.modalInfoCenter}>
-                  {previewItem.seriesName || (previewItem.seriesSequenceNumber != null && previewItem.seriesMaxSize != null) ? (
-                    <Text style={styles.modalSeriesText} numberOfLines={1}>
-                      {previewItem.seriesName ?? ''}
-                      {previewItem.seriesName && previewItem.seriesSequenceNumber != null && previewItem.seriesMaxSize != null ? ' · ' : ''}
-                      {previewItem.seriesSequenceNumber != null && previewItem.seriesMaxSize != null
-                        ? `${previewItem.seriesSequenceNumber} of ${previewItem.seriesMaxSize}`
-                        : ''}
-                    </Text>
-                  ) : null}
-                </View>
-              </View>
-              <View style={styles.modalInfoRow}>
-                <View style={styles.modalInfoLeft}>
-                  <Text style={styles.modalInfoText}>{`Listed by ${previewItem.ownerName || previewItem.creator.display_name}`}</Text>
-                </View>
-                <View style={styles.modalInfoCenter} />
-              </View>
+              <Text style={styles.modalMetaLine}>
+                {[
+                  formatCardDate(previewItem.createdAt),
+                  previewItem.printCount != null ? `Print #${previewItem.printCount + 1}` : null,
+                ].filter(Boolean).join(' · ')}
+              </Text>
+              {previewItem.seriesName || (previewItem.seriesSequenceNumber != null && previewItem.seriesMaxSize != null) ? (
+                <Text style={styles.modalMetaLine} numberOfLines={1}>
+                  {[
+                    previewItem.seriesName,
+                    previewItem.seriesSequenceNumber != null && previewItem.seriesMaxSize != null
+                      ? `${previewItem.seriesSequenceNumber} of ${previewItem.seriesMaxSize}`
+                      : null,
+                  ].filter(Boolean).join(' · ')}
+                </Text>
+              ) : null}
+              <Text style={styles.modalMetaLine}>{`Listed by ${previewItem.ownerName || previewItem.creator.display_name}`}</Text>
               <View style={styles.modalUtilityRow}>
                 <Pressable style={styles.modalUtilityButton} onPress={() => { void shareAutograph(previewItem); }}>
                   <Text style={styles.modalUtilityButtonText}>Share</Text>
@@ -748,24 +828,18 @@ useFocusEffect(
             </View>
           )}
 
-          {previewItem && previewItem.ownerId !== user?.id && (
+          {previewItem && previewItem.ownerId !== user?.id && canBuyPrint(previewItem) && (
             <View style={styles.modalActionBar}>
-              <Text style={styles.modalActionPrice}>{getPreviewPriceText(previewItem)}</Text>
-              {!previewItem.offerLockedUntil && canBuyNow(previewItem) ? (
-                <Pressable
-                  style={[styles.modalActionButton, purchasingId === previewItem.id && { opacity: 0.6 }]}
-                  onPress={() => handlePurchase(previewItem)}
-                  disabled={purchasingId === previewItem.id}
-                >
-                  {purchasingId === previewItem.id
-                    ? <ActivityIndicator size="small" color="#fff" />
-                    : <Text style={styles.modalActionButtonText}>Buy Now</Text>}
-                </Pressable>
-              ) : !previewItem.offerLockedUntil && canMakeOffer(previewItem) ? (
-                <Pressable style={styles.modalActionButton} onPress={() => openOfferSheet(previewItem)}>
-                  <Text style={styles.modalActionButtonText}>Make Offer</Text>
-                </Pressable>
-              ) : null}
+              <Text style={styles.modalActionPrice}>Official 8x10 Print</Text>
+              <Pressable
+                style={[styles.modalActionButton, purchasingId === previewItem.id && { opacity: 0.6 }]}
+                onPress={() => void openPrintPreview(previewItem)}
+                disabled={purchasingId === previewItem.id || loadingPrintPreview}
+              >
+                {purchasingId === previewItem.id
+                  ? <ActivityIndicator size="small" color="#fff" />
+                  : <Text style={styles.modalActionButtonText}>Buy Print</Text>}
+              </Pressable>
             </View>
           )}
 
@@ -793,33 +867,14 @@ useFocusEffect(
                   </Pressable>
                 )}
 
-                {previewItem.ownerId !== user?.id && !previewItem.offerLockedUntil && canMakeOffer(previewItem) && (
+                {previewItem.ownerId !== user?.id && canBuyPrint(previewItem) && (
                   <Pressable
                     style={styles.contextMenuItem}
-                    onPress={() => {
-                      const item = previewItem;
-                      setContextMenuVisible(false);
-                      openOfferSheet(item);
-                    }}
+                    onPress={() => { setContextMenuVisible(false); void openPrintPreview(previewItem); }}
                   >
-                    <Text style={styles.contextMenuItemText}>Make Offer</Text>
+                    <Text style={styles.contextMenuItemText}>Buy Print</Text>
                   </Pressable>
                 )}
-
-                {previewItem.ownerId !== user?.id && !previewItem.offerLockedUntil && canBuyNow(previewItem) && (
-                  <Pressable
-                    style={styles.contextMenuItem}
-                    onPress={() => { setContextMenuVisible(false); handlePurchase(previewItem); }}
-                  >
-                    <Text style={styles.contextMenuItemText}>Buy · {formatPublicVideoPrice(previewItem.priceCents)}</Text>
-                  </Pressable>
-                )}
-
-                {previewItem.ownerId !== user?.id && previewItem.offerLockedUntil ? (
-                  <View style={styles.contextMenuItem}>
-                    <Text style={styles.contextMenuItemText}>Sale Pending</Text>
-                  </View>
-                ) : null}
 
                 <Pressable
                   style={styles.contextMenuItem}
@@ -927,6 +982,7 @@ useFocusEffect(
             <Animated.View
               style={[
                 styles.offerKeyboardView,
+                { bottom: keyboardOffset },
                 { transform: [{ translateY: offerSlideAnim.interpolate({ inputRange: [0, 1], outputRange: [600, 0] }) }] },
               ]}
             >
@@ -970,6 +1026,26 @@ useFocusEffect(
         </View>
       </Modal>
 
+      <AutographPrintModal
+        visible={!!printItem}
+        printItem={printItem ? {
+          creatorName: printItem.creator.display_name,
+          creatorSequenceNumber: printItem.creatorSequenceNumber,
+          createdAt: printItem.createdAt,
+          seriesName: printItem.seriesName,
+        } : null}
+        printPreview={printPreview}
+        printStep={printStep}
+        addressSheetVisible={addressSheetVisible}
+        creatingPrint={creatingPrint}
+        loadingPrintPreview={loadingPrintPreview}
+        onClose={closePrintPreview}
+        onProceedToPayment={handleProceedToPrintPayment}
+        onAddressSubmit={handlePrintAddressSubmit}
+        onAddressError={() => setAddressSheetVisible(false)}
+        formatCardDate={formatCardDate}
+      />
+
       {/* Filter sheet */}
       <Modal
         visible={filterVisible}
@@ -977,33 +1053,45 @@ useFocusEffect(
         transparent={true}
         onRequestClose={() => setFilterVisible(false)}
       >
-        <View style={styles.filterOverlay}>
-          <ScrollView style={{ width: '100%' }} contentContainerStyle={styles.filterSheet} keyboardShouldPersistTaps="handled">
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <Pressable style={styles.filterOverlay} onPress={() => setFilterVisible(false)}>
+          <ScrollView
+            style={styles.filterSheetScroll}
+            contentContainerStyle={styles.filterSheet}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+            contentInset={{ bottom: 220 }}
+            scrollIndicatorInsets={{ bottom: 220 }}
+            onStartShouldSetResponder={() => true}
+          >
             <Text style={styles.filterTitle}>Filter</Text>
 
             <Text style={styles.filterSectionLabel}>Type</Text>
             <View style={styles.filterCheckGroup}>
-              {[
+              {([
                 { key: 'savedOnly', label: 'Saved only' },
-                { key: 'buyNow', label: 'Buy Now' },
-              ].map(({ key, label }) => (
+                { key: 'printsAvailable', label: 'Prints Available' },
+              ] as { key: 'savedOnly' | 'printsAvailable'; label: string }[]).map(({ key, label }) => (
                 <Pressable
                   key={key}
                   style={styles.filterCheckRow}
-                  onPress={() => setDraftFilters((prev) => ({ ...prev, [key]: !prev[key as keyof MarketplaceFilters] }))}
+                  onPress={() => setDraftFilters((prev) => ({ ...prev, [key]: !prev[key] }))}
                 >
-                  <View style={[styles.filterCheckbox, draftFilters[key as keyof MarketplaceFilters] && styles.filterCheckboxChecked]}>
-                    {draftFilters[key as keyof MarketplaceFilters] && <Text style={styles.filterCheckTick}>✓</Text>}
+                  <View style={[styles.filterCheckbox, draftFilters[key] && styles.filterCheckboxChecked]}>
+                    {draftFilters[key] && <Text style={styles.filterCheckTick}>✓</Text>}
                   </View>
                   <Text style={styles.filterCheckLabel}>{label}</Text>
                 </Pressable>
               ))}
             </View>
 
-            <Text style={styles.filterSectionLabel}>Celebrity / Autographer</Text>
+            <Text style={styles.filterSectionLabel}>Creator</Text>
             <TextInput
               style={styles.filterInput}
-              placeholder="e.g. Taylor Swift"
+              placeholder="Creator Name"
               placeholderTextColor="#aaa"
               value={draftFilters.creator}
               onChangeText={(v) => setDraftFilters((prev) => ({ ...prev, creator: v }))}
@@ -1020,25 +1108,23 @@ useFocusEffect(
               autoCorrect={false}
             />
 
-            <Text style={styles.filterSectionLabel}>Price Range ($)</Text>
-            <View style={styles.filterRangeRow}>
-              <TextInput
-                style={[styles.filterInput, { flex: 1 }]}
-                placeholder="Min"
-                placeholderTextColor="#aaa"
-                keyboardType="decimal-pad"
-                value={draftFilters.minPrice}
-                onChangeText={(v) => setDraftFilters((prev) => ({ ...prev, minPrice: v }))}
-              />
-              <Text style={styles.filterRangeSep}>–</Text>
-              <TextInput
-                style={[styles.filterInput, { flex: 1 }]}
-                placeholder="Max"
-                placeholderTextColor="#aaa"
-                keyboardType="decimal-pad"
-                value={draftFilters.maxPrice}
-                onChangeText={(v) => setDraftFilters((prev) => ({ ...prev, maxPrice: v }))}
-              />
+            <Text style={styles.filterSectionLabel}>Creator Filters</Text>
+            <View style={styles.filterCheckGroup}>
+              {[
+                { key: 'acceptsPersonalizedRequests' as const, label: 'Accepts Personalized Requests' },
+                { key: 'verifiedUser' as const, label: 'Verified User' },
+              ].map(({ key, label }) => (
+                <Pressable
+                  key={key}
+                  style={styles.filterCheckRow}
+                  onPress={() => setDraftFilters((prev) => ({ ...prev, [key]: !prev[key] }))}
+                >
+                  <View style={[styles.filterCheckbox, draftFilters[key] && styles.filterCheckboxChecked]}>
+                    {draftFilters[key] && <Text style={styles.filterCheckTick}>✓</Text>}
+                  </View>
+                  <Text style={styles.filterCheckLabel}>{label}</Text>
+                </Pressable>
+              ))}
             </View>
 
             <Text style={styles.filterSectionLabel}>Sort By</Text>
@@ -1046,8 +1132,6 @@ useFocusEffect(
               {([
                 { key: 'newest', label: 'Newest first' },
                 { key: 'oldest', label: 'Oldest first' },
-                { key: 'price_asc', label: 'Price: Low to High' },
-                { key: 'price_desc', label: 'Price: High to Low' },
               ] as { key: MarketplaceSort; label: string }[]).map(({ key, label }) => (
                 <Pressable key={key} style={styles.filterCheckRow} onPress={() => setDraftSort(key)}>
                   <View style={[styles.filterCheckbox, draftSort === key && styles.filterCheckboxChecked]}>
@@ -1070,11 +1154,12 @@ useFocusEffect(
             >
               <Text style={styles.filterClearText}>Clear All</Text>
             </Pressable>
-            <Pressable style={{ marginTop: 8, marginBottom: 16 }} onPress={() => setFilterVisible(false)}>
+            <Pressable style={{ marginTop: 20, marginBottom: 24 }} onPress={() => setFilterVisible(false)}>
               <Text style={styles.tradeCancelText}>Cancel</Text>
             </Pressable>
           </ScrollView>
-        </View>
+          </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
 
     </View>
@@ -1225,7 +1310,7 @@ const styles = StyleSheet.create({
     fontFamily: BrandFonts.primary,
   },
   marketplaceCard: {
-    borderRadius: 20,
+    borderRadius: 0,
     backgroundColor: '#fff',
     borderWidth: 1,
     borderColor: '#e9dcc1',
@@ -1447,6 +1532,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    marginBottom: 3,
+  },
+  modalNameText: {
+    fontSize: 16,
+    color: '#fff',
+    fontFamily: BrandFonts.primary,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  modalMetaLine: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: 'rgba(255,255,255,0.6)',
+    fontFamily: BrandFonts.primary,
+    fontWeight: '500',
+    textAlign: 'center',
   },
   nameBadge: {
     width: 20,
@@ -1458,50 +1559,6 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
     backgroundColor: 'black',
     alignItems: 'center',
-  },
-  modalHeaderRow: {
-    width: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-    minHeight: 34,
-    marginBottom: 6,
-  },
-  modalHeaderMetaLeft: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    alignItems: 'flex-start',
-    gap: 2,
-  },
-  modalHeaderMetaText: {
-    fontSize: 12,
-    lineHeight: 15,
-    color: '#fff',
-    fontFamily: BrandFonts.primary,
-    fontWeight: '600',
-  },
-  modalInfoRow: {
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    minHeight: 18,
-    marginTop: 2,
-  },
-  modalInfoLeft: {
-    width: '44%',
-    alignItems: 'flex-start',
-  },
-  modalInfoCenter: {
-    width: '40%',
-    alignItems: 'center',
-  },
-  modalInfoText: {
-    fontSize: 12,
-    lineHeight: 15,
-    color: '#fff',
-    fontFamily: BrandFonts.primary,
-    fontWeight: '600',
   },
   modalSeriesText: {
     fontSize: 12,
@@ -1566,7 +1623,7 @@ const styles = StyleSheet.create({
   tradeCancelText: {
     textAlign: 'center',
     color: '#999',
-    fontSize: 15,
+    fontSize: 16,
     fontFamily: BrandFonts.primary,
   },
   tabRow: {
@@ -1800,10 +1857,15 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'flex-end',
   },
+  filterSheetScroll: {
+    width: '100%',
+    flexGrow: 0,
+  },
   filterSheet: {
     backgroundColor: '#fff',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
+    marginTop: 12,
     padding: 24,
   },
   filterTitle: {

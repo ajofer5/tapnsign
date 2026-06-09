@@ -1,7 +1,7 @@
 import { BrandColors, BrandFonts } from '@/constants/theme';
 import { AddressDetails, AddressSheet } from '@stripe/stripe-react-native';
 import { useEffect, useState } from 'react';
-import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 type PrintPreview = {
   next_print_sequence_number: number;
@@ -23,6 +23,7 @@ type Props = {
   printStep: 'preview' | 'processing';
   addressSheetVisible: boolean;
   creatingPrint: boolean;
+  loadingPrintPreview?: boolean;
   onClose: () => void;
   onProceedToPayment: () => void;
   onAddressSubmit: (address: AddressDetails) => void;
@@ -37,6 +38,7 @@ export function AutographPrintModal({
   printStep,
   addressSheetVisible,
   creatingPrint,
+  loadingPrintPreview = false,
   onClose,
   onProceedToPayment,
   onAddressSubmit,
@@ -52,9 +54,6 @@ export function AutographPrintModal({
   const printLayoutUrl = printPreview?.print_layout_url ?? null;
   const orderedUrls = [printPreviewUrl, printLayoutUrl].filter((u): u is string => !!u);
   const currentUrl = orderedUrls[urlFallbackIndex] ?? null;
-  const previewSource = currentUrl
-    ? { uri: currentUrl }
-    : require('../assets/images/print_preview.png');
 
   useEffect(() => {
     setUrlFallbackIndex(0);
@@ -73,7 +72,7 @@ export function AutographPrintModal({
           contentContainerStyle={styles.printSheet}
           onStartShouldSetResponder={() => true}
         >
-          {printItem && printPreview ? (
+          {printItem ? (
             <>
               {printStep === 'preview' && (
                 <>
@@ -81,18 +80,24 @@ export function AutographPrintModal({
                   <Text style={styles.previewLabel}>Print layout preview</Text>
 
                   <View style={[styles.previewFrame, { width: previewCardWidth }]}>
-                    <Image
-                      source={previewSource}
-                      style={[styles.printPreviewImage, { width: previewImageWidth, height: previewImageHeight }]}
-                      resizeMode="contain"
-                      onError={(event) => {
-                        console.warn('[AutographPrintModal] print preview image failed to load', {
-                          url: currentUrl,
-                          error: event.nativeEvent.error,
-                        });
-                        setUrlFallbackIndex(prev => prev + 1);
-                      }}
-                    />
+                    {currentUrl ? (
+                      <Image
+                        source={{ uri: currentUrl }}
+                        style={[styles.printPreviewImage, { width: previewImageWidth, height: previewImageHeight }]}
+                        resizeMode="contain"
+                        onError={(event) => {
+                          console.warn('[AutographPrintModal] print preview image failed to load', {
+                            url: currentUrl,
+                            error: event.nativeEvent.error,
+                          });
+                          setUrlFallbackIndex(prev => prev + 1);
+                        }}
+                      />
+                    ) : (
+                      <View style={[styles.printPreviewLoadingPanel, { width: previewImageWidth, height: previewImageHeight }]}>
+                        <ActivityIndicator color="#001B5C" />
+                      </View>
+                    )}
                     <View pointerEvents="none" style={[styles.previewWatermark, { width: previewImageWidth, height: previewImageHeight }]}>
                       <View style={styles.previewWatermarkBand}>
                         <Text style={styles.previewWatermarkText}>PREVIEW</Text>
@@ -102,14 +107,25 @@ export function AutographPrintModal({
                   </View>
 
                   <Text style={styles.printInfoText}>
-                    Official 8×10 memorabilia print.
+                    {loadingPrintPreview
+                      ? 'Preparing your official print preview.'
+                      : 'Official 8×10 memorabilia print.'}
                   </Text>
+                  {loadingPrintPreview ? (
+                    <ActivityIndicator color="#111" style={{ marginTop: 12 }} />
+                  ) : null}
                   <Pressable
-                    style={[styles.certCloseButton, { marginTop: 8 }]}
+                    style={[
+                      styles.certCloseButton,
+                      { marginTop: 8 },
+                      (!printPreview || loadingPrintPreview || creatingPrint) && styles.certCloseButtonDisabled,
+                    ]}
                     onPress={onProceedToPayment}
-                    disabled={creatingPrint}
+                    disabled={!printPreview || loadingPrintPreview || creatingPrint}
                   >
-                    <Text style={styles.closeButtonText}>Order Print - $19.95</Text>
+                    <Text style={styles.closeButtonText}>
+                      {loadingPrintPreview ? 'Preparing Preview…' : 'Order Print - $19.99'}
+                    </Text>
                   </Pressable>
 
                   <Pressable onPress={onClose} style={{ marginTop: 20 }}>
@@ -186,6 +202,14 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     borderRadius: 0,
   },
+  printPreviewLoadingPanel: {
+    alignSelf: 'center',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f2f0ea',
+    borderWidth: 1,
+    borderColor: '#ded8cb',
+  },
   previewWatermark: {
     position: 'absolute',
     alignSelf: 'center',
@@ -240,6 +264,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 40,
     borderWidth: 1.5,
     borderColor: '#fff',
+  },
+  certCloseButtonDisabled: {
+    opacity: 0.45,
   },
   closeButtonText: {
     color: '#fff',

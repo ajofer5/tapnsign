@@ -1,19 +1,23 @@
 import { AutographPlayer } from '@/components/autograph-player';
+import { AutographFilterSheet } from '@/components/autograph-filter-sheet';
+import { AutographPrintModal } from '@/components/autograph-print-modal';
 import { CardMetadataBlock } from '@/components/card-metadata-block';
 import { CertificateSheet } from '@/components/certificate-sheet';
 import { NameWithSequence } from '@/components/public-video-card';
 import { PublicVideoThumbnail } from '@/components/public-video-thumbnail';
 import { BrandColors, BrandFonts } from '@/constants/theme';
-import { fetchAutographTemplateIds } from '@/lib/autograph-template';
 import { callEdgeFunction } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { buildAutographUrl } from '@/lib/public-links';
 import { supabase } from '@/lib/supabase';
+import { openAuthenticatedWebPath } from '@/lib/web-handoff';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStripe } from '@stripe/stripe-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   FlatList,
   Image,
@@ -43,6 +47,8 @@ type AutograpshFilters = {
   series: string;
   listed: boolean;
   unlisted: boolean;
+  acceptsPersonalizedRequests: boolean;
+  verifiedUser: boolean;
 };
 
 const defaultAutographFilters: AutograpshFilters = {
@@ -50,6 +56,8 @@ const defaultAutographFilters: AutograpshFilters = {
   series: '',
   listed: false,
   unlisted: false,
+  acceptsPersonalizedRequests: false,
+  verifiedUser: false,
 };
 
 type AutographSort = 'newest' | 'oldest';
@@ -77,7 +85,9 @@ type AutographItem = {
   strokeColor: string;
   templateId?: string | null;
   creatorName: string | null;
+  creatorVerified: boolean;
   creatorNameVerified: boolean;
+  creatorPersonalizedRequestsEnabled: boolean;
   creatorSequenceNumber: number | null;
   seriesName: string | null;
   seriesSequenceNumber: number | null;
@@ -103,6 +113,9 @@ type PrintPreview = {
   total_print_count: number;
   next_print_sequence_number: number;
   next_print_label: string;
+  print_layout_url?: string | null;
+  print_preview_url?: string | null;
+  print_layout_version?: string | null;
   owner_print_count: number;
   latest_owner_print: {
     id: string;
@@ -130,7 +143,9 @@ type OwnedListingRow = {
   stroke_color: string | null;
   template_id?: string | null;
   creator_display_name: string | null;
+  creator_verified: boolean | null;
   creator_name_verified: boolean | null;
+  creator_personalized_requests_enabled: boolean | null;
   creator_sequence_number: number | null;
   series_name: string | null;
   series_sequence_number: number | null;
@@ -156,6 +171,8 @@ type OfferQueueRow = {
   creator_name: string | null;
   creator_sequence_number: number | null;
 };
+
+const COLLECTION_PAGE_SIZE = 24;
 
 function formatDateTime(value: string) {
   const date = new Date(value);
@@ -228,7 +245,9 @@ function mapOwnedListingRow(row: OwnedListingRow): AutographItem {
     strokeColor: row.stroke_color ?? '#001B5C',
     templateId: row.template_id ?? null,
     creatorName: row.creator_display_name ?? null,
+    creatorVerified: !!row.creator_verified,
     creatorNameVerified: !!row.creator_name_verified,
+    creatorPersonalizedRequestsEnabled: !!row.creator_personalized_requests_enabled,
     creatorSequenceNumber: row.creator_sequence_number ?? null,
     seriesName: row.series_name ?? null,
     seriesSequenceNumber: row.series_sequence_number ?? null,
@@ -254,6 +273,7 @@ function mapOfferQueueRow(row: OfferQueueRow): IncomingOfferItem {
 
 export default function AutographsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [data, setData] = useState<AutographItem[]>([]);
   const [incomingOffers, setIncomingOffers] = useState<IncomingOfferItem[]>([]);
   const [selectedItem, setSelectedItem] = useState<AutographItem | null>(null);
@@ -290,15 +310,13 @@ export default function AutographsScreen() {
   const [loadingPrintPreview, setLoadingPrintPreview] = useState(false);
   const [creatingPrint, setCreatingPrint] = useState(false);
   const [printSessionKey, setPrintSessionKey] = useState('');
+  const [loadingCollection, setLoadingCollection] = useState(false);
+  const [loadingMoreCollection, setLoadingMoreCollection] = useState(false);
+  const [hasMoreCollection, setHasMoreCollection] = useState(true);
 
   // Print order flow
-  const [printStep, setPrintStep] = useState<'preview' | 'shipping' | 'processing'>('preview');
-  const [shippingName, setShippingName] = useState('');
-  const [shippingLine1, setShippingLine1] = useState('');
-  const [shippingLine2, setShippingLine2] = useState('');
-  const [shippingCity, setShippingCity] = useState('');
-  const [shippingState, setShippingState] = useState('');
-  const [shippingZip, setShippingZip] = useState('');
+  const [printStep, setPrintStep] = useState<'preview' | 'processing'>('preview');
+  const [addressSheetVisible, setAddressSheetVisible] = useState(false);
 
   // Damage claim flow
   const [damageClaim, setDamageClaim] = useState<{
@@ -323,22 +341,10 @@ export default function AutographsScreen() {
     setAutoAcceptAbove(false);
   };
 
-  const openSellSheet = (items: AutographItem[]) => {
-    setSellItems(items);
-
-    if (items.length === 1) {
-      const item = items[0];
-      setListingMode(item.isForSale ? item.listingMode : 'buy_now');
-      setPriceInput(item.priceCents != null ? (item.priceCents / 100).toFixed(2) : '');
-      setAutoDeclineBelow(item.isForSale ? item.autoDeclineBelow : false);
-      setAutoAcceptAbove(item.isForSale ? item.autoAcceptAbove : false);
-      return;
-    }
-
-    setListingMode('buy_now');
-    setPriceInput('');
-    setAutoDeclineBelow(false);
-    setAutoAcceptAbove(false);
+  const openSellSheet = (_items: AutographItem[]) => {
+    void openAuthenticatedWebPath('/app/me/listings').catch(() => {
+      Alert.alert('Seller Workspace', 'Could not open the web seller workspace. Please try again.');
+    });
   };
 
   const handleListForSale = async () => {
@@ -438,8 +444,11 @@ export default function AutographsScreen() {
               await callEdgeFunction('delete-autograph', { autograph_id: item.id });
               closeModal();
               setData((prev) => prev.filter((i) => i.id !== item.id));
-            } catch {
-              Alert.alert('Error', 'Could not delete autograph. Please try again.');
+            } catch (error) {
+              Alert.alert(
+                'Could Not Delete',
+                error instanceof Error ? error.message : 'Could not delete autograph. Please try again.'
+              );
             }
           },
         },
@@ -448,16 +457,21 @@ export default function AutographsScreen() {
   };
 
   const openPrintPreview = async (item: AutographItem) => {
+    setPrintItem(item);
+    setPrintPreview(null);
     setLoadingPrintPreview(true);
     setPrintSessionKey(`${Date.now()}-${Math.random().toString(36).slice(2)}`);
     try {
       const preview = await callEdgeFunction<PrintPreview>('preview-autograph-print', {
         autograph_id: item.id,
       });
-      setPrintItem(item);
       setPrintPreview(preview);
-    } catch {
-      Alert.alert('Print Autograph', 'Could not load the print preview. Please try again.');
+    } catch (error) {
+      setPrintItem(null);
+      Alert.alert(
+        'Print Autograph',
+        error instanceof Error ? error.message : 'Could not load the print preview. Please try again.'
+      );
     } finally {
       setLoadingPrintPreview(false);
     }
@@ -468,35 +482,27 @@ export default function AutographsScreen() {
     setPrintItem(null);
     setPrintPreview(null);
     setPrintStep('preview');
-    setShippingName('');
-    setShippingLine1('');
-    setShippingLine2('');
-    setShippingCity('');
-    setShippingState('');
-    setShippingZip('');
+    setAddressSheetVisible(false);
   };
 
-  const handleProceedToShipping = () => {
+  const handleProceedToPayment = () => {
     if (!printPreview) return;
-    setPrintStep('shipping');
+    setAddressSheetVisible(true);
   };
 
-  const handleSubmitPrintOrder = async () => {
+  const handleAddressSubmit = async (addressDetails: import('@stripe/stripe-react-native').AddressDetails) => {
+    setAddressSheetVisible(false);
     if (!printItem || !printPreview) return;
 
-    const missingFields = [
-      !shippingName.trim() && 'Full name',
-      !shippingLine1.trim() && 'Street address',
-      !shippingCity.trim() && 'City',
-      !shippingState.trim() && 'State',
-      !shippingZip.trim() && 'ZIP code',
-    ].filter(Boolean);
-
-    if (missingFields.length > 0) {
-      Alert.alert('Missing Information', `Please fill in: ${missingFields.join(', ')}.`);
-      return;
-    }
-
+    const a = addressDetails.address;
+    const addr = {
+      name: addressDetails.name ?? '',
+      line1: a?.line1 ?? '',
+      line2: a?.line2 ?? '',
+      city: a?.city ?? '',
+      state: a?.state ?? '',
+      zip: a?.postalCode ?? '',
+    };
     setCreatingPrint(true);
     setPrintStep('processing');
 
@@ -517,7 +523,7 @@ export default function AutographsScreen() {
 
       if (initError) {
         Alert.alert('Payment Error', 'Could not start payment. Please try again.');
-        setPrintStep('shipping');
+        setPrintStep('preview');
         setCreatingPrint(false);
         return;
       }
@@ -527,21 +533,22 @@ export default function AutographsScreen() {
         if (paymentError.code !== 'Canceled') {
           Alert.alert('Payment Failed', 'Could not complete payment. Please try again.');
         }
-        setPrintStep('shipping');
+        setPrintStep('preview');
         setCreatingPrint(false);
         return;
       }
 
-      // Step 3: submit print order — edge function generates the 8×12 layout automatically
+      // Step 3: submit print order
       await callEdgeFunction('submit-print-order', {
         autograph_id: printItem.id,
         payment_event_id: paymentData.payment_event_id,
-        shipping_name: shippingName.trim(),
-        shipping_line1: shippingLine1.trim(),
-        shipping_line2: shippingLine2.trim() || null,
-        shipping_city: shippingCity.trim(),
-        shipping_state: shippingState.trim(),
-        shipping_zip: shippingZip.trim(),
+        image_url: printPreview.print_layout_url ?? null,
+        shipping_name: addr.name,
+        shipping_line1: addr.line1,
+        shipping_line2: addr.line2 || null,
+        shipping_city: addr.city,
+        shipping_state: addr.state,
+        shipping_zip: addr.zip,
       });
 
       setPrintPreview((prev) => prev ? ({ ...prev, owner_print_count: (prev.owner_print_count ?? 0) + 1 }) : prev);
@@ -555,23 +562,10 @@ export default function AutographsScreen() {
         'Print Order Failed',
         getErrorMessage(error, 'Could not place your print order. Please try again.')
       );
-      setPrintStep('shipping');
+      setPrintStep('preview');
     } finally {
       setCreatingPrint(false);
     }
-  };
-
-  const openDamageClaim = (printId: string, autographId: string) => {
-    setDamageClaim({
-      printId,
-      autographId,
-      step: 'intro',
-      claimId: null,
-      frontPhotoUri: null,
-      backPhotoUri: null,
-      destructionPhotoUri: null,
-      submitting: false,
-    });
   };
 
   const pickDamagePhoto = async (side: 'front' | 'back' | 'destruction') => {
@@ -779,46 +773,93 @@ export default function AutographsScreen() {
 
   const handleModalShow = () => {};
 
+  const loadInitialCollection = useCallback(async () => {
+    if (!user) return;
+    setLoadingCollection(true);
+    try {
+      const response = await supabase.rpc('get_owned_listing_feed', {
+        p_owner_id: user.id,
+        p_limit: COLLECTION_PAGE_SIZE,
+        p_before_created_at: null,
+        p_before_id: null,
+      });
+
+      if (response.error) {
+        console.log('Load autographs error:', response.error);
+        setData([]);
+        setHasMoreCollection(false);
+        return;
+      }
+
+      const nextItems = (response.data as OwnedListingRow[] ?? []).map(mapOwnedListingRow);
+      setHasMoreCollection(nextItems.length === COLLECTION_PAGE_SIZE);
+      setData(nextItems);
+    } finally {
+      setLoadingCollection(false);
+    }
+  }, [user]);
+
+  const loadMoreCollectionPage = useCallback(async (cursorItem?: AutographItem | null) => {
+    if (!user || loadingMoreCollection || !hasMoreCollection || !cursorItem) return;
+    setLoadingMoreCollection(true);
+    try {
+      const response = await supabase.rpc('get_owned_listing_feed', {
+        p_owner_id: user.id,
+        p_limit: COLLECTION_PAGE_SIZE,
+        p_before_created_at: cursorItem.createdAt,
+        p_before_id: cursorItem.id,
+      });
+
+      if (response.error) {
+        console.log('Load more autographs error:', response.error);
+        return;
+      }
+
+      const nextItems = (response.data as OwnedListingRow[] ?? []).map(mapOwnedListingRow);
+      setHasMoreCollection(nextItems.length === COLLECTION_PAGE_SIZE);
+      setData((prev) => [...prev, ...nextItems]);
+    } finally {
+      setLoadingMoreCollection(false);
+    }
+  }, [hasMoreCollection, loadingMoreCollection, user]);
+
+  const loadOfferQueue = useCallback(async () => {
+    if (!user) return;
+    const offersRes = await supabase.rpc('get_offer_queue_feed', {
+      p_owner_id: user.id,
+      p_limit: 100,
+      p_before_headline_amount: null,
+      p_before_headline_created_at: null,
+      p_before_autograph_id: null,
+    });
+
+    if (offersRes.error) {
+      console.log('Load offers error:', offersRes.error);
+      setIncomingOffers([]);
+      return;
+    }
+
+    const offerRows = (offersRes.data as OfferQueueRow[] ?? []);
+    setIncomingOffers(offerRows.map(mapOfferQueueRow));
+  }, [user]);
+
   useFocusEffect(
     useCallback(() => {
       if (!user) return;
-      (async () => {
-        try {
-          await callEdgeFunction('expire-autograph-offers', {});
-        } catch {}
+      let cancelled = false;
 
-        Promise.all([
-          supabase.rpc('get_owned_listing_feed', {
-            p_owner_id: user.id,
-            p_limit: 200,
-            p_before_created_at: null,
-            p_before_id: null,
-          }),
-          supabase.rpc('get_offer_queue_feed', {
-            p_owner_id: user.id,
-            p_limit: 200,
-            p_before_headline_amount: null,
-            p_before_headline_created_at: null,
-            p_before_autograph_id: null,
-          }),
-        ]).then(async ([autographsRes, offersRes]) => {
-          const rows = autographsRes.data;
-          const error = autographsRes.error;
-          if (error) { console.log('Load autographs error:', error); setData([]); return; }
-          const items: AutographItem[] = (rows as OwnedListingRow[] ?? []).map(mapOwnedListingRow);
-          const templateIds = await fetchAutographTemplateIds(items.map((item) => item.id));
-          const enrichedItems = items.map((item) => ({
-            ...item,
-            templateId: templateIds[item.id] ?? item.templateId ?? 'classic',
-          }));
-          const offerRows = (offersRes.data as OfferQueueRow[] ?? []);
-          const offers = offerRows.map(mapOfferQueueRow);
-
-          setData(enrichedItems);
-          setIncomingOffers(offers);
-        });
+      void (async () => {
+        if (cancelled) return;
+        await loadInitialCollection();
+        if (!cancelled) {
+          void loadOfferQueue();
+        }
       })();
-    }, [user])
+
+      return () => {
+        cancelled = true;
+      };
+    }, [loadInitialCollection, loadOfferQueue, user])
   );
 
   const handleIncomingOffer = async (offerId: string, action: 'accept' | 'decline') => {
@@ -835,8 +876,11 @@ export default function AutographsScreen() {
           ? 'The buyer now has 24 hours to complete the purchase.'
           : 'The offer was declined.'
       );
-    } catch {
-      Alert.alert('Offer Error', 'Could not update offer. Please try again.');
+    } catch (error) {
+      Alert.alert(
+        'Offer Error',
+        error instanceof Error ? error.message : 'Could not update offer. Please try again.'
+      );
     } finally {
       setOfferActioningId(null);
     }
@@ -854,6 +898,8 @@ export default function AutographsScreen() {
     }
     if (filters.listed && !filters.unlisted) items = items.filter((i) => i.saleState !== 'not_for_sale');
     if (filters.unlisted && !filters.listed) items = items.filter((i) => i.saleState === 'not_for_sale');
+    if (filters.acceptsPersonalizedRequests) items = items.filter((i) => i.creatorPersonalizedRequestsEnabled);
+    if (filters.verifiedUser) items = items.filter((i) => i.creatorVerified);
     if (sort === 'newest') items = [...items].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     if (sort === 'oldest') items = [...items].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
     return items;
@@ -864,11 +910,46 @@ export default function AutographsScreen() {
     [filteredData, selectedIds]
   );
 
-  const isFiltered = filters.creator.trim() !== '' || filters.series.trim() !== '' || filters.listed || filters.unlisted || sort !== 'newest';
+  const isFiltered =
+    filters.creator.trim() !== '' ||
+    filters.series.trim() !== '' ||
+    filters.listed ||
+    filters.unlisted ||
+    filters.acceptsPersonalizedRequests ||
+    filters.verifiedUser;
 
   const emptyComponent = useMemo(
-    () => <Text style={styles.emptyText}>No autograph captures saved yet.</Text>,
-    []
+    () => (
+      loadingCollection ? (
+        <View style={styles.loadingState}>
+          <ActivityIndicator size="small" color={BrandColors.primary} />
+          <Text style={styles.loadingStateText}>Loading collection…</Text>
+        </View>
+      ) : (
+        <Text style={styles.emptyText}>No autograph captures saved yet.</Text>
+      )
+    ),
+    [loadingCollection]
+  );
+
+  const listFooter = useMemo(
+    () => (
+      loadingMoreCollection ? (
+        <View style={styles.listFooter}>
+          <ActivityIndicator size="small" color={BrandColors.primary} />
+          <Text style={styles.loadingMoreText}>Loading more…</Text>
+        </View>
+      ) : null
+    ),
+    [loadingMoreCollection]
+  );
+
+  const listContentStyle = useMemo(
+    () => ({
+      ...styles.listContent,
+      paddingBottom: insets.bottom + 88,
+    }),
+    [insets.bottom]
   );
 
   const autographMap = useMemo(
@@ -1024,6 +1105,13 @@ export default function AutographsScreen() {
                     <Text style={styles.offerStatusDetail}>
                       Backup offers are preserved and will reactivate if payment is not completed.
                     </Text>
+                    <Pressable
+                      style={[styles.offerPrimaryButton, styles.offerRetryButton, offerActioningId === group.accepted.id && styles.offerButtonDisabled]}
+                      onPress={() => handleIncomingOffer(group.accepted!.id, 'accept')}
+                      disabled={offerActioningId === group.accepted.id}
+                    >
+                      <Text style={styles.offerPrimaryButtonText}>{offerActioningId === group.accepted.id ? '...' : 'Retry Transfer'}</Text>
+                    </Pressable>
                   </View>
                 ) : group.pending[0] ? (
                   <View style={styles.offerCardActions}>
@@ -1060,7 +1148,19 @@ export default function AutographsScreen() {
         columnWrapperStyle={styles.gridRow}
         ListHeaderComponent={listHeader}
         ListEmptyComponent={emptyComponent}
-        contentContainerStyle={styles.listContent}
+        ListFooterComponent={listFooter}
+        contentContainerStyle={listContentStyle}
+        initialNumToRender={8}
+        maxToRenderPerBatch={8}
+        updateCellsBatchingPeriod={50}
+        windowSize={5}
+        removeClippedSubviews={Platform.OS !== 'web'}
+        onEndReachedThreshold={0.35}
+        onEndReached={() => {
+          if (!isFiltered && !seriesSelectionMode) {
+            void loadMoreCollectionPage(data[data.length - 1] ?? null);
+          }
+        }}
         renderItem={({ item }) => {
           const isSelectable = seriesSelectionMode && canCreateSeriesWithItem(item);
           const isSelected = selectedIds.has(item.id);
@@ -1108,7 +1208,7 @@ export default function AutographsScreen() {
                       openSellSheet([item]);
                     }}
                   >
-                    <Text style={styles.listedBadgeText}>Listed</Text>
+                    <Text style={styles.listedBadgeText}>Web Listing</Text>
                   </Pressable>
                 )}
                 {seriesSelectionMode && (
@@ -1214,10 +1314,7 @@ export default function AutographsScreen() {
                         openSellSheet([item]);
                       }}
                     >
-                      <Text style={styles.contextMenuItemText}>Edit Listing</Text>
-                    </Pressable>
-                    <Pressable style={styles.contextMenuItem} onPress={() => { setContextMenuVisible(false); handleRemoveFromSale(selectedItem); }}>
-                      <Text style={styles.contextMenuItemText}>Remove Listing</Text>
+                      <Text style={styles.contextMenuItemText}>Manage Listing on Web</Text>
                     </Pressable>
                   </>
                 ) : (
@@ -1230,7 +1327,7 @@ export default function AutographsScreen() {
                       openSellSheet([item]);
                     }}
                   >
-                    <Text style={styles.contextMenuItemText}>Sell</Text>
+                    <Text style={styles.contextMenuItemText}>List on Web</Text>
                   </Pressable>
                 )}
 
@@ -1353,176 +1450,20 @@ export default function AutographsScreen() {
         </Pressable>
       </Modal>
 
-      {/* Print modal */}
-      <Modal
-        visible={!!printItem && !!printPreview}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={closePrintPreview}
-      >
-        <Pressable style={styles.sellSheetOverlay} onPress={printStep === 'processing' ? undefined : closePrintPreview}>
-          <ScrollView
-            style={{ width: '100%' }}
-            contentContainerStyle={styles.printSheet}
-            onStartShouldSetResponder={() => true}
-          >
-            {printItem && printPreview ? (
-              <>
-                {/* Step: preview */}
-                {printStep === 'preview' && (
-                  <>
-                    <Text style={styles.certTitle}>Print Autograph</Text>
-
-                    <View style={styles.printCard}>
-                      <View style={styles.printArtifact8x10}>
-                        <View style={styles.printLandscape}>
-                          <View style={styles.printOuterBorder} />
-                          <View style={styles.printInnerBorder} />
-
-                          <View style={styles.printHeroPlaceholder} />
-
-                          <View style={styles.printSignaturePlaceholder}>
-                            <View style={styles.printSignatureStrokeOne} />
-                            <View style={styles.printSignatureStrokeTwo} />
-                            <View style={styles.printSignatureStrokeThree} />
-                          </View>
-
-                          <View style={styles.printBadgePlaceholder}>
-                            <View style={styles.printBadgeQrPlaceholder}>
-                              <View style={styles.printBadgeQrGrid} />
-                            </View>
-                            <View style={styles.printBadgeLogoPlaceholder} />
-                          </View>
-
-                          <View style={styles.printMetaPlaceholder}>
-                            <Text style={styles.printMetaLinePrimary}>
-                              {printItem.creatorName?.toUpperCase() ?? 'CREATOR NAME'}
-                              {printItem.creatorSequenceNumber != null ? ` #${printItem.creatorSequenceNumber}` : ''}
-                            </Text>
-                            <Text style={styles.printMetaLineSecondary}>
-                              {`Captured on ${formatCardDate(printItem.createdAt)}`}
-                            </Text>
-                            <Text style={styles.printMetaLineSecondary}>
-                              {`Print #${printPreview.next_print_sequence_number}`}
-                            </Text>
-                            {printItem.seriesName ? (
-                              <Text style={styles.printMetaLineTertiary}>{printItem.seriesName}</Text>
-                            ) : null}
-                          </View>
-
-                          <View style={styles.printFrameRow}>
-                            {[0, 1, 2, 3].map((frameIndex) => (
-                              <View key={frameIndex} style={styles.printSmallFramePlaceholder} />
-                            ))}
-                          </View>
-                        </View>
-                      </View>
-                    </View>
-
-                    <>
-                      <Text style={styles.printInfoText}>
-                        Official 8×10 memorabilia print.
-                      </Text>
-                      <Pressable
-                        style={[styles.certCloseButton, { marginTop: 8 }]}
-                        onPress={handleProceedToShipping}
-                      >
-                        <Text style={styles.closeButtonText}>
-                          Order Print - $11.95
-                        </Text>
-                      </Pressable>
-                    </>
-
-                    <Pressable onPress={closePrintPreview} style={{ marginTop: 12 }}>
-                      <Text style={styles.certDate}>Close</Text>
-                    </Pressable>
-                  </>
-                )}
-
-                {/* Step: shipping */}
-                {printStep === 'shipping' && (
-                  <>
-                    <Text style={styles.certTitle}>Shipping Address</Text>
-                    <Text style={styles.certDate}>US addresses only. Shipping cost calculated at checkout.</Text>
-
-                    <TextInput
-                      style={styles.printInput}
-                      placeholder="Full name"
-                      placeholderTextColor="#999"
-                      value={shippingName}
-                      onChangeText={setShippingName}
-                      autoCapitalize="words"
-                    />
-                    <TextInput
-                      style={styles.printInput}
-                      placeholder="Street address"
-                      placeholderTextColor="#999"
-                      value={shippingLine1}
-                      onChangeText={setShippingLine1}
-                      autoCapitalize="words"
-                    />
-                    <TextInput
-                      style={styles.printInput}
-                      placeholder="Apt, suite, unit (optional)"
-                      placeholderTextColor="#999"
-                      value={shippingLine2}
-                      onChangeText={setShippingLine2}
-                      autoCapitalize="words"
-                    />
-                    <TextInput
-                      style={styles.printInput}
-                      placeholder="City"
-                      placeholderTextColor="#999"
-                      value={shippingCity}
-                      onChangeText={setShippingCity}
-                      autoCapitalize="words"
-                    />
-                    <View style={{ flexDirection: 'row', gap: 10 }}>
-                      <TextInput
-                        style={[styles.printInput, { flex: 1 }]}
-                        placeholder="State (e.g. IN)"
-                        placeholderTextColor="#999"
-                        value={shippingState}
-                        onChangeText={(t) => setShippingState(t.toUpperCase().slice(0, 2))}
-                        autoCapitalize="characters"
-                        maxLength={2}
-                      />
-                      <TextInput
-                        style={[styles.printInput, { flex: 2 }]}
-                        placeholder="ZIP code"
-                        placeholderTextColor="#999"
-                        value={shippingZip}
-                        onChangeText={setShippingZip}
-                        keyboardType="number-pad"
-                        maxLength={10}
-                      />
-                    </View>
-
-                    <Pressable
-                      style={[styles.certCloseButton, { marginTop: 8 }]}
-                      onPress={handleSubmitPrintOrder}
-                    >
-                      <Text style={styles.closeButtonText}>Pay $16.99</Text>
-                    </Pressable>
-
-                    <Pressable onPress={() => setPrintStep('preview')} style={{ marginTop: 12 }}>
-                      <Text style={styles.certDate}>Back</Text>
-                    </Pressable>
-                  </>
-                )}
-
-                {/* Step: processing */}
-                {printStep === 'processing' && (
-                  <View style={{ alignItems: 'center', paddingVertical: 40 }}>
-                    <Text style={styles.certTitle}>Processing…</Text>
-                    <Text style={styles.printInfoText}>Please do not close this screen.</Text>
-                  </View>
-                )}
-              </>
-            ) : null}
-          </ScrollView>
-        </Pressable>
-      </Modal>
+      <AutographPrintModal
+        visible={!!printItem}
+        printItem={printItem}
+        printPreview={printPreview}
+        printStep={printStep}
+        addressSheetVisible={addressSheetVisible}
+        creatingPrint={creatingPrint}
+        loadingPrintPreview={loadingPrintPreview}
+        onClose={closePrintPreview}
+        onProceedToPayment={handleProceedToPayment}
+        onAddressSubmit={handleAddressSubmit}
+        onAddressError={() => setAddressSheetVisible(false)}
+        formatCardDate={formatCardDate}
+      />
 
       {/* Damage claim modal */}
       <Modal
@@ -1681,88 +1622,30 @@ export default function AutographsScreen() {
         </Pressable>
       </Modal>
 
-      <Modal
+      <AutographFilterSheet
         visible={filterVisible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setFilterVisible(false)}
-      >
-        <View style={styles.filterOverlay}>
-          <ScrollView style={{ width: '100%' }} contentContainerStyle={styles.filterSheet} keyboardShouldPersistTaps="handled">
-            <Text style={styles.filterTitle}>Filter</Text>
-
-            <Text style={styles.filterSectionLabel}>Status</Text>
-            <View style={styles.filterCheckGroup}>
-              {[
-                { key: 'listed', label: 'For Sale' },
-                { key: 'unlisted', label: 'Not for Sale' },
-              ].map(({ key, label }) => (
-                <Pressable
-                  key={key}
-                  style={styles.filterCheckRow}
-                  onPress={() => setDraftFilters((prev) => ({ ...prev, [key]: !prev[key as keyof AutograpshFilters] }))}
-                >
-                  <View style={[styles.filterCheckbox, draftFilters[key as keyof AutograpshFilters] && styles.filterCheckboxChecked]}>
-                    {draftFilters[key as keyof AutograpshFilters] && <Text style={styles.filterCheckTick}>✓</Text>}
-                  </View>
-                  <Text style={styles.filterCheckLabel}>{label}</Text>
-                </Pressable>
-              ))}
-            </View>
-
-            <Text style={styles.filterSectionLabel}>Celebrity / Autographer</Text>
-            <TextInput
-              style={styles.filterInput}
-              placeholder="e.g. Taylor Swift"
-              placeholderTextColor="#aaa"
-              value={draftFilters.creator}
-              onChangeText={(v) => setDraftFilters((prev) => ({ ...prev, creator: v }))}
-              autoCorrect={false}
-            />
-
-            <Text style={styles.filterSectionLabel}>Series</Text>
-            <TextInput
-              style={styles.filterInput}
-              placeholder="e.g. Hawaii Trip"
-              placeholderTextColor="#aaa"
-              value={draftFilters.series}
-              onChangeText={(v) => setDraftFilters((prev) => ({ ...prev, series: v }))}
-              autoCorrect={false}
-            />
-
-            <Text style={styles.filterSectionLabel}>Sort By</Text>
-            <View style={styles.filterCheckGroup}>
-              {([
-                { key: 'newest', label: 'Newest first' },
-                { key: 'oldest', label: 'Oldest first' },
-              ] as { key: AutographSort; label: string }[]).map(({ key, label }) => (
-                <Pressable key={key} style={styles.filterCheckRow} onPress={() => setDraftSort(key)}>
-                  <View style={[styles.filterCheckbox, draftSort === key && styles.filterCheckboxChecked]}>
-                    {draftSort === key && <Text style={styles.filterCheckTick}>✓</Text>}
-                  </View>
-                  <Text style={styles.filterCheckLabel}>{label}</Text>
-                </Pressable>
-              ))}
-            </View>
-
-            <Pressable
-              style={styles.filterApplyButton}
-              onPress={() => { setFilters(draftFilters); setSort(draftSort); setFilterVisible(false); }}
-            >
-              <Text style={styles.filterApplyText}>Apply</Text>
-            </Pressable>
-            <Pressable
-              style={styles.filterClearButton}
-              onPress={() => { setFilters(defaultAutographFilters); setDraftFilters(defaultAutographFilters); setSort('newest'); setDraftSort('newest'); setFilterVisible(false); }}
-            >
-              <Text style={styles.filterClearText}>Clear All</Text>
-            </Pressable>
-            <Pressable style={{ marginTop: 8, marginBottom: 16 }} onPress={() => setFilterVisible(false)}>
-              <Text style={[styles.certDate, { textAlign: 'center' }]}>Cancel</Text>
-            </Pressable>
-          </ScrollView>
-        </View>
-      </Modal>
+        draftFilters={draftFilters}
+        draftSort={draftSort}
+        onToggleFilter={(key) =>
+          setDraftFilters((prev) => ({ ...prev, [key]: !prev[key] }))
+        }
+        onCreatorChange={(value) => setDraftFilters((prev) => ({ ...prev, creator: value }))}
+        onSeriesChange={(value) => setDraftFilters((prev) => ({ ...prev, series: value }))}
+        onSortChange={setDraftSort}
+        onApply={() => {
+          setFilters(draftFilters);
+          setSort(draftSort);
+          setFilterVisible(false);
+        }}
+        onClear={() => {
+          setFilters(defaultAutographFilters);
+          setDraftFilters(defaultAutographFilters);
+          setSort('newest');
+          setDraftSort('newest');
+          setFilterVisible(false);
+        }}
+        onClose={() => setFilterVisible(false)}
+      />
 
       {/* Sale-state sheet — top-level Modal, launched from the header action */}
       <Modal
@@ -1870,12 +1753,33 @@ export default function AutographsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 16,
+    paddingHorizontal: 16,
     backgroundColor: BrandColors.background,
   },
   listContent: {
     paddingBottom: 24,
     flexGrow: 1,
+  },
+  listFooter: {
+    alignItems: 'center',
+    paddingVertical: 18,
+    gap: 8,
+  },
+  loadingMoreText: {
+    fontSize: 13,
+    color: '#666',
+    fontFamily: BrandFonts.primary,
+  },
+  loadingState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 48,
+    gap: 10,
+  },
+  loadingStateText: {
+    fontSize: 14,
+    color: '#666',
+    fontFamily: BrandFonts.primary,
   },
   gridRow: {
     paddingHorizontal: 12,
@@ -1884,7 +1788,7 @@ const styles = StyleSheet.create({
   },
   gridCard: {
     flex: 1,
-    borderRadius: 12,
+    borderRadius: 0,
     overflow: 'hidden',
     backgroundColor: '#fff',
   },
@@ -1895,7 +1799,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 8,
     left: 8,
-    backgroundColor: '#1D6EF2',
+    backgroundColor: '#001B5C',
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 4,
@@ -2039,7 +1943,7 @@ const styles = StyleSheet.create({
   offerThumbnail: {
     width: 56,
     height: 56,
-    borderRadius: 10,
+    borderRadius: 0,
     backgroundColor: '#d9d9d9',
     justifyContent: 'center',
     alignItems: 'center',
@@ -2104,6 +2008,9 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingVertical: 10,
     alignItems: 'center',
+  },
+  offerRetryButton: {
+    marginTop: 10,
   },
   offerPrimaryButtonText: {
     color: '#fff',
@@ -2348,169 +2255,6 @@ const styles = StyleSheet.create({
     paddingBottom: 28,
     backgroundColor: BrandColors.background,
   },
-  printCard: {
-    width: '100%',
-    maxWidth: 380,
-    backgroundColor: '#fffdf8',
-    borderRadius: 22,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: '#e9deca',
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 4,
-  },
-  printArtifact8x10: {
-    width: '100%',
-    aspectRatio: 4 / 5,
-    borderRadius: 18,
-    overflow: 'hidden',
-    backgroundColor: '#050505',
-    padding: 14,
-  },
-  printLandscape: {
-    flex: 1,
-    backgroundColor: '#050505',
-  },
-  printOuterBorder: {
-    ...StyleSheet.absoluteFillObject,
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.42)',
-    borderRadius: 8,
-  },
-  printInnerBorder: {
-    position: 'absolute',
-    top: 12,
-    left: 12,
-    right: 12,
-    bottom: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.22)',
-    borderRadius: 4,
-  },
-  printHeroPlaceholder: {
-    position: 'absolute',
-    left: '8.8%',
-    top: '8.8%',
-    width: '37%',
-    height: '65.5%',
-    backgroundColor: '#f2ede3',
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.5)',
-  },
-  printSignaturePlaceholder: {
-    position: 'absolute',
-    left: '59.5%',
-    top: '8.9%',
-    width: '27.1%',
-    height: '26.8%',
-    backgroundColor: '#000',
-    borderWidth: 2,
-    borderColor: 'rgba(241,193,104,0.6)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  printSignatureStrokeOne: {
-    position: 'absolute',
-    width: '72%',
-    height: 3,
-    backgroundColor: '#F1C168',
-    borderRadius: 999,
-    transform: [{ rotate: '-18deg' }, { translateY: -16 }],
-  },
-  printSignatureStrokeTwo: {
-    position: 'absolute',
-    width: '58%',
-    height: 3,
-    backgroundColor: '#F1C168',
-    borderRadius: 999,
-    transform: [{ rotate: '14deg' }],
-  },
-  printSignatureStrokeThree: {
-    position: 'absolute',
-    width: '66%',
-    height: 3,
-    backgroundColor: '#F1C168',
-    borderRadius: 999,
-    transform: [{ rotate: '-8deg' }, { translateY: 18 }],
-  },
-  printBadgePlaceholder: {
-    position: 'absolute',
-    right: '12.2%',
-    top: '39.2%',
-    width: '8.9%',
-    height: '13.1%',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  printBadgeQrPlaceholder: {
-    width: '100%',
-    aspectRatio: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  printBadgeQrGrid: {
-    width: '70%',
-    height: '70%',
-    borderWidth: 2,
-    borderColor: '#111',
-    borderStyle: 'dashed',
-  },
-  printBadgeLogoPlaceholder: {
-    width: '100%',
-    height: '18%',
-    backgroundColor: 'rgba(255,255,255,0.72)',
-    borderRadius: 999,
-  },
-  printMetaPlaceholder: {
-    position: 'absolute',
-    left: '49.5%',
-    top: '38.8%',
-    width: '28.1%',
-    minHeight: '16%',
-    justifyContent: 'flex-start',
-  },
-  printMetaLinePrimary: {
-    fontSize: 11,
-    lineHeight: 14,
-    color: '#fff',
-    fontFamily: BrandFonts.primary,
-    fontWeight: '700',
-    letterSpacing: 0.8,
-  },
-  printMetaLineSecondary: {
-    marginTop: 4,
-    fontSize: 9,
-    lineHeight: 12,
-    color: 'rgba(255,255,255,0.72)',
-    fontFamily: BrandFonts.primary,
-  },
-  printMetaLineTertiary: {
-    marginTop: 4,
-    fontSize: 8,
-    lineHeight: 11,
-    color: 'rgba(255,255,255,0.56)',
-    fontFamily: BrandFonts.primary,
-  },
-  printFrameRow: {
-    position: 'absolute',
-    left: '52.9%',
-    right: '7.7%',
-    bottom: '9.4%',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  printSmallFramePlaceholder: {
-    width: '21%',
-    aspectRatio: 3 / 5,
-    backgroundColor: '#f2ede3',
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.5)',
-  },
   printInfoText: {
     maxWidth: 380,
     marginTop: 14,
@@ -2657,6 +2401,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    marginTop: 16,
     marginBottom: 12,
   },
   headerButtons: {
@@ -2739,111 +2484,6 @@ const styles = StyleSheet.create({
     color: '#666',
     marginBottom: 20,
     textAlign: 'center',
-    fontFamily: BrandFonts.primary,
-  },
-  filterOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
-  },
-  filterSheet: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 24,
-  },
-  filterTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#111',
-    fontFamily: BrandFonts.primary,
-    marginBottom: 20,
-  },
-  filterSectionLabel: {
-    fontSize: 11,
-    color: '#999',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 8,
-    marginTop: 16,
-  },
-  filterCheckGroup: {
-    gap: 4,
-  },
-  filterCheckRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 6,
-    gap: 10,
-  },
-  filterCheckbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 5,
-    borderWidth: 2,
-    borderColor: '#111',
-    backgroundColor: '#fff',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  filterCheckboxChecked: {
-    backgroundColor: '#111',
-  },
-  filterCheckTick: {
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  filterCheckLabel: {
-    fontSize: 15,
-    color: '#111',
-    fontFamily: BrandFonts.primary,
-  },
-  filterInput: {
-    backgroundColor: '#f5f5f5',
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
-    color: '#111',
-    borderWidth: 1,
-    borderColor: '#ddd',
-    fontFamily: BrandFonts.primary,
-  },
-  filterRangeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  filterRangeSep: {
-    fontSize: 16,
-    color: '#999',
-  },
-  filterApplyButton: {
-    backgroundColor: '#111',
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: 24,
-  },
-  filterApplyText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-    fontFamily: BrandFonts.primary,
-  },
-  filterClearButton: {
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: 'center',
-    marginTop: 8,
-    borderWidth: 1.5,
-    borderColor: '#111',
-  },
-  filterClearText: {
-    color: '#111',
-    fontSize: 15,
-    fontWeight: '600',
     fontFamily: BrandFonts.primary,
   },
   printInput: {
