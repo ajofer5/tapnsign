@@ -38,6 +38,7 @@ export async function GET(request: NextRequest) {
       method: 'POST',
       headers: {
         apikey: getSupabaseAnonKey(),
+        Authorization: `Bearer ${getSupabaseAnonKey()}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
