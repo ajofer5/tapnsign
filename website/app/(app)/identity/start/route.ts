@@ -9,10 +9,14 @@ function getWebsiteBaseUrl(request: NextRequest) {
   return process.env.NEXT_PUBLIC_SITE_URL ?? request.nextUrl.origin;
 }
 
+function redirectAfterPost(url: string | URL) {
+  return NextResponse.redirect(url, { status: 303 });
+}
+
 export async function POST(request: NextRequest) {
   const user = await getWebSessionUser();
   if (!user) {
-    return NextResponse.redirect(new URL('/login', request.url));
+    return redirectAfterPost(new URL('/login', request.url));
   }
 
   const supabase = createWebsiteAdminSupabaseClient();
@@ -24,11 +28,11 @@ export async function POST(request: NextRequest) {
     .maybeSingle();
 
   if (profile?.suspended_at) {
-    return NextResponse.redirect(new URL('/identity?error=suspended', request.url));
+    return redirectAfterPost(new URL('/identity?error=suspended', request.url));
   }
 
   if (profile?.role === 'verified' && profile?.verification_status === 'verified') {
-    return NextResponse.redirect(new URL('/identity?error=already_verified', request.url));
+    return redirectAfterPost(new URL('/identity?error=already_verified', request.url));
   }
 
   const baseUrl = getWebsiteBaseUrl(request);
@@ -83,7 +87,7 @@ export async function POST(request: NextRequest) {
         .single();
 
       if (insertError || !inserted) {
-        return NextResponse.redirect(new URL('/identity?error=payment', request.url));
+        return redirectAfterPost(new URL('/identity?error=payment', request.url));
       }
       paymentEventId = inserted.id;
     }
@@ -98,11 +102,11 @@ export async function POST(request: NextRequest) {
     });
 
     if (!session.url) {
-      return NextResponse.redirect(new URL('/identity?error=stripe', request.url));
+      return redirectAfterPost(new URL('/identity?error=stripe', request.url));
     }
 
-    return NextResponse.redirect(session.url);
+    return redirectAfterPost(session.url);
   } catch {
-    return NextResponse.redirect(new URL('/identity?error=stripe', request.url));
+    return redirectAfterPost(new URL('/identity?error=stripe', request.url));
   }
 }
