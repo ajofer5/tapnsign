@@ -13,8 +13,8 @@ function getSupabaseAnonKey() {
   return value;
 }
 
-function sanitizeNextPath(value: string | null) {
-  if (!value) return '/';
+function sanitizeNextPath(value: string | null, fallback = '/') {
+  if (!value) return fallback;
   if (!value.startsWith('/') || value.startsWith('//')) return '/';
   return value;
 }
@@ -26,7 +26,7 @@ type RedeemResponse = {
 
 export async function GET(request: NextRequest) {
   const token = request.nextUrl.searchParams.get('token');
-  const requestedNextPath = sanitizeNextPath(request.nextUrl.searchParams.get('next'));
+  const requestedNextPath = request.nextUrl.searchParams.get('next');
 
   if (!token) {
     return NextResponse.redirect(new URL('/?handoff=missing', request.url));
@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
       },
       body: JSON.stringify({
         token,
-        next_path: requestedNextPath,
+        ...(requestedNextPath ? { next_path: sanitizeNextPath(requestedNextPath) } : {}),
       }),
       cache: 'no-store',
     });
