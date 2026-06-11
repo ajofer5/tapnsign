@@ -1,4 +1,7 @@
+'use client';
+
 import Link from 'next/link';
+import { useState } from 'react';
 import { type WebsiteListing } from '../lib/listings';
 
 export function WebListingCard({
@@ -10,32 +13,59 @@ export function WebListingCard({
   isSaved?: boolean;
   savePath?: string;
 }) {
+  const [playing, setPlaying] = useState(false);
   const creatorName = listing.creator?.display_name ?? 'Creator';
 
   return (
     <article className="overflow-hidden rounded-none bg-white shadow-sm">
-      <Link href={`/autograph/${listing.id}`} className="block">
-        {listing.thumbnail_url ? (
-          <img
-            src={listing.thumbnail_url}
-            alt={creatorName}
-            className="aspect-[3/5] w-full object-cover"
-          />
-        ) : listing.video_url ? (
+      <div className="relative aspect-[3/5] w-full bg-[#1C1C1F]">
+        {playing && listing.video_url ? (
           <video
             src={listing.video_url}
             autoPlay
             muted
             loop
             playsInline
-            className="aspect-[3/5] w-full object-cover"
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+        ) : listing.thumbnail_url ? (
+          <img
+            src={listing.thumbnail_url}
+            alt={creatorName}
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+        ) : listing.video_url ? (
+          <video
+            src={listing.video_url}
+            muted
+            playsInline
+            className="absolute inset-0 h-full w-full object-cover"
           />
         ) : (
-          <div className="flex aspect-[3/5] items-center justify-center bg-[#1C1C1F] text-sm font-semibold uppercase tracking-[0.25em] text-white/50">
+          <div className="flex h-full items-center justify-center text-sm font-semibold uppercase tracking-[0.25em] text-white/50">
             Ophinia
           </div>
         )}
-      </Link>
+
+        {/* Play / Pause overlay */}
+        {listing.video_url ? (
+          <button
+            onClick={() => setPlaying((p) => !p)}
+            className="absolute inset-0 flex items-center justify-center"
+            aria-label={playing ? 'Pause' : 'Play'}
+          >
+            {!playing && (
+              <span className="flex h-12 w-12 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6 translate-x-0.5">
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+              </span>
+            )}
+          </button>
+        ) : (
+          <Link href={`/autograph/${listing.id}`} className="absolute inset-0" />
+        )}
+      </div>
 
       <div className="p-3.5">
         <div className="flex items-start justify-between gap-2">

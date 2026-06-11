@@ -3,6 +3,10 @@ import { usersAreBlocked } from '../../../../../lib/blocks';
 import { createStripeCheckoutSession } from '../../../../../lib/stripe';
 import { createWebsiteAdminSupabaseClient } from '../../../../../lib/supabase';
 import { getWebSessionUser } from '../../../../../lib/web-auth';
+import {
+  PERSONALIZED_REQUEST_MIN_CENTS,
+  personalizedTextIsAllowed,
+} from '../../../../../lib/personalized-policy';
 
 function getWebsiteBaseUrl(request: NextRequest) {
   return process.env.NEXT_PUBLIC_SITE_URL ?? request.nextUrl.origin;
@@ -36,8 +40,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (!recipientName) {
     return NextResponse.redirect(new URL(`/profile/${creatorId}?request_error=recipient`, request.url));
   }
-  if (!amountCents) {
+  if (!amountCents || amountCents < PERSONALIZED_REQUEST_MIN_CENTS) {
     return NextResponse.redirect(new URL(`/profile/${creatorId}?request_error=amount`, request.url));
+  }
+  if (!personalizedTextIsAllowed([recipientName, inscriptionText, requesterNote])) {
+    return NextResponse.redirect(new URL(`/profile/${creatorId}?request_error=content`, request.url));
   }
 
   const supabase = createWebsiteAdminSupabaseClient();
@@ -56,7 +63,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (await usersAreBlocked(user.id, creatorId)) {
     return NextResponse.redirect(new URL(`/profile/${creatorId}?request_error=blocked`, request.url));
   }
-  if (creatorProfile.personalized_min_price_cents && amountCents < creatorProfile.personalized_min_price_cents) {
+  const minimumCents = Math.max(
+    creatorProfile.personalized_min_price_cents ?? 0,
+    PERSONALIZED_REQUEST_MIN_CENTS,
+  );
+  if (amountCents < minimumCents) {
     return NextResponse.redirect(new URL(`/profile/${creatorId}?request_error=min_price`, request.url));
   }
 
@@ -143,7 +154,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       buyerId: user.id,
       sellerId: creatorId,
       purpose: 'personalized_request_authorization',
-      description: `Personalized autograph request for ${recipientName}`,
+      description: `Personalized print request for ${recipientName}`,
       captureMethod: 'manual',
       extraMetadata: {
         creator_id: creatorId,

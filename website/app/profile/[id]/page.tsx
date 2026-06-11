@@ -52,33 +52,30 @@ export default async function ProfilePage({
         {/* Profile header */}
         <section className="web-panel p-8">
           <div className="flex items-start gap-5">
-            {profile.avatar_url ? (
-              <img
-                src={profile.avatar_url}
-                alt={profile.display_name}
-                className="h-40 w-24 shrink-0 rounded-none object-cover"
-              />
-            ) : (
-              <div className="flex h-40 w-24 shrink-0 items-center justify-center rounded-none bg-[#001B5C] text-3xl font-black text-white">
-                {profile.display_name.slice(0, 1).toUpperCase()}
-              </div>
-            )}
+            <div className="flex shrink-0 flex-col items-center gap-2">
+              {profile.avatar_url ? (
+                <img
+                  src={profile.avatar_url}
+                  alt={profile.display_name}
+                  className="h-40 w-24 rounded-none object-cover"
+                />
+              ) : (
+                <div className="flex h-40 w-24 items-center justify-center rounded-none bg-[#001B5C] text-3xl font-black text-white">
+                  {profile.display_name.slice(0, 1).toUpperCase()}
+                </div>
+              )}
+              {profile.verified ? (
+                <span className="rounded-[4px] bg-[#EFF6EC] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#2B6A1C]">
+                  Verified
+                </span>
+              ) : null}
+            </div>
             <div className="min-w-0 flex-1">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-500">
-                Public Profile
-              </p>
-              <h1 className="mt-2 break-words text-4xl font-black tracking-tight text-black">
+              <h1 className="break-words text-2xl font-black tracking-tight text-black">
                 {profile.display_name}
               </h1>
-              {profile.verified ? (
-                <div className="mt-3">
-                  <span className="rounded-[4px] bg-[#EFF6EC] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#2B6A1C]">
-                    Verified
-                  </span>
-                </div>
-              ) : null}
               {profile.bio ? (
-                <p className="mt-4 break-words text-sm leading-7 text-gray-700 md:text-base">
+                <p className="mt-3 break-words text-sm leading-7 text-gray-700 md:text-base">
                   {profile.bio}
                 </p>
               ) : null}
