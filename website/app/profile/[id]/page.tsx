@@ -50,7 +50,7 @@ export default async function ProfilePage({
 
       <div className="mx-auto max-w-6xl px-6 py-10">
         {/* Profile header */}
-        <section className="web-panel p-8">
+        <section className="rounded-none bg-white p-5 shadow-sm">
           <div className="flex items-start gap-5">
             <div className="flex shrink-0 flex-col items-center gap-2">
               {profile.avatar_url ? (
