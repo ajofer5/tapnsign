@@ -244,16 +244,44 @@ function strokesToSvgPathsCentered(strokes, strokeColor, targetW, targetH) {
   return paths.join('\n');
 }
 
-async function fetchAsBase64(url) {
+async function fetchAsBase64(url, options = {}) {
   try {
     const res = await fetch(url);
     if (!res.ok) {
       console.error(`[print-renderer] fetchAsBase64 failed: ${res.status} ${url}`);
       return '';
     }
-    const buffer = Buffer.from(await res.arrayBuffer());
+    const sourceBuffer = Buffer.from(await res.arrayBuffer());
+    const {
+      width,
+      height,
+      fit = 'cover',
+      format = 'jpeg',
+      quality = 88,
+      background = { r: 0, g: 0, b: 0, alpha: 0 },
+    } = options;
+
+    if (width || height) {
+      const pipeline = sharp(sourceBuffer)
+        .rotate()
+        .resize({
+          width,
+          height,
+          fit,
+          background,
+        });
+
+      if (format === 'png') {
+        const buffer = await pipeline.png().toBuffer();
+        return `data:image/png;base64,${buffer.toString('base64')}`;
+      }
+
+      const buffer = await pipeline.jpeg({ quality }).toBuffer();
+      return `data:image/jpeg;base64,${buffer.toString('base64')}`;
+    }
+
     const ct = res.headers.get('content-type') ?? 'image/jpeg';
-    return `data:${ct};base64,${buffer.toString('base64')}`;
+    return `data:${ct};base64,${sourceBuffer.toString('base64')}`;
   } catch (err) {
     console.error(`[print-renderer] fetchAsBase64 error: ${err.message} ${url}`);
     return '';
@@ -649,18 +677,53 @@ app.post('/render', async (req, res) => {
       frameUrls.push(frameUrls[frameUrls.length - 1]);
     }
 
-    // Fetch original object URLs and let Sharp/librsvg handle sizing locally.
-    // This avoids Supabase Storage image transformation billing.
+    // Fetch original object URLs and downsize before embedding them in SVG.
+    // Embedding unbounded base64 data can exceed librsvg/libxml parser limits.
     const sanitizedFrameUrls = frameUrls.slice(0, 5).map(sanitizeStorageUrl);
     console.log('[print-renderer] version:', RENDERER_VERSION);
     console.log('[print-renderer] fetching frames and badge from:', sanitizedFrameUrls);
     const [frame12DataUri, sf0, sf1, sf2, sf3, badgeDataUri] = await Promise.all([
-      fetchAsBase64(sanitizedFrameUrls[4]),
-      fetchAsBase64(sanitizedFrameUrls[0]),
-      fetchAsBase64(sanitizedFrameUrls[1]),
-      fetchAsBase64(sanitizedFrameUrls[2]),
-      fetchAsBase64(sanitizedFrameUrls[3]),
-      fetchAsBase64(sanitizeStorageUrl(autograph.verify_badge_url)),
+      fetchAsBase64(sanitizedFrameUrls[4], {
+        width: FRAME12.w,
+        height: FRAME12.h,
+        fit: 'cover',
+        format: 'jpeg',
+        quality: 90,
+      }),
+      fetchAsBase64(sanitizedFrameUrls[0], {
+        width: SMALL_FRAMES[0].w,
+        height: SMALL_FRAMES[0].h,
+        fit: 'cover',
+        format: 'jpeg',
+        quality: 88,
+      }),
+      fetchAsBase64(sanitizedFrameUrls[1], {
+        width: SMALL_FRAMES[1].w,
+        height: SMALL_FRAMES[1].h,
+        fit: 'cover',
+        format: 'jpeg',
+        quality: 88,
+      }),
+      fetchAsBase64(sanitizedFrameUrls[2], {
+        width: SMALL_FRAMES[2].w,
+        height: SMALL_FRAMES[2].h,
+        fit: 'cover',
+        format: 'jpeg',
+        quality: 88,
+      }),
+      fetchAsBase64(sanitizedFrameUrls[3], {
+        width: SMALL_FRAMES[3].w,
+        height: SMALL_FRAMES[3].h,
+        fit: 'cover',
+        format: 'jpeg',
+        quality: 88,
+      }),
+      fetchAsBase64(sanitizeStorageUrl(autograph.verify_badge_url), {
+        width: BADGE_AREA.w,
+        height: BADGE_AREA.h,
+        fit: 'contain',
+        format: 'png',
+      }),
     ]);
     console.log('[print-renderer] assets fetched, building SVG');
 
