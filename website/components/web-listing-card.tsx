@@ -70,9 +70,7 @@ export function WebListingCard({
                 </span>
               )}
             </button>
-          ) : (
-            <Link href={`/autograph/${listing.id}`} className="absolute inset-0" />
-          )}
+          ) : null}
         </div>
 
         {/* Metadata + button */}

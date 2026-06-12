@@ -19,7 +19,7 @@ function getProdigiUrl() {
 
 async function retrieveStripeCheckoutSession(sessionId: string) {
   const response = await fetch(
-    `https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(sessionId)}?expand[]=payment_intent&expand[]=shipping_details`,
+    `https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(sessionId)}?expand[]=payment_intent`,
     {
       headers: { Authorization: `Bearer ${getStripeSecretKey()}` },
       cache: 'no-store',

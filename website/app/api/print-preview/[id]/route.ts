@@ -18,6 +18,7 @@ export async function GET(
       prints_enabled,
       print_limit,
       thumbnail_url,
+      print_layout_url,
       creator_id,
       creator:creator_id ( display_name ),
       print_count:autograph_prints ( count )
@@ -45,7 +46,7 @@ export async function GET(
     autograph_id: data.id,
     creator_name: creatorName,
     creator_id: data.creator_id,
-    thumbnail_url: data.thumbnail_url,
+    thumbnail_url: (data as any).print_layout_url ?? data.thumbnail_url,
     prints_enabled: data.prints_enabled,
     item_cents: 1500,
     shipping_cents: 499,
