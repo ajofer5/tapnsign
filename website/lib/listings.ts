@@ -1,5 +1,7 @@
 import { createWebsiteAdminSupabaseClient } from './supabase';
 
+import { DIGITAL_TRADING_ENABLED } from './digital-trading';
+
 export type WebsiteListing = {
   id: string;
   certificate_id: string;
@@ -27,6 +29,8 @@ export type WebsiteListing = {
   series_max_size: number | null;
   offer_locked_until: string | null;
   print_count: number | null;
+  prints_enabled: boolean;
+  print_limit: number | null;
 };
 
 export function mapWebsiteListingRow(row: any): WebsiteListing {
@@ -61,6 +65,8 @@ export function mapWebsiteListingRow(row: any): WebsiteListing {
     series_max_size: row.series_max_size ?? null,
     offer_locked_until: row.offer_locked_until ?? null,
     print_count: row.print_count ?? null,
+    prints_enabled: !!row.prints_enabled,
+    print_limit: row.print_limit ?? null,
   };
 }
 
@@ -81,10 +87,12 @@ export function formatDate(value: string) {
 }
 
 export function canBuyNow(item: Pick<WebsiteListing, 'sale_state' | 'listing_mode' | 'offer_locked_until'>) {
+  if (!DIGITAL_TRADING_ENABLED) return false;
   return item.sale_state === 'fixed' && item.listing_mode === 'buy_now' && !item.offer_locked_until;
 }
 
 export function canMakeOffer(item: Pick<WebsiteListing, 'sale_state' | 'listing_mode' | 'offer_locked_until'>) {
+  if (!DIGITAL_TRADING_ENABLED) return false;
   return item.sale_state === 'fixed' && item.listing_mode === 'make_offer' && !item.offer_locked_until;
 }
 
@@ -112,6 +120,8 @@ export async function getWebsiteListing(id: string, viewerId?: string | null): P
       sale_state,
       listing_mode,
       price_cents,
+      prints_enabled,
+      print_limit,
       video_url,
       thumbnail_url,
       creator_sequence_number,

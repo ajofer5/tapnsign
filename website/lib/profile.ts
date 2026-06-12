@@ -10,6 +10,7 @@ export type WebsiteProfile = {
   verified: boolean;
   personalized_requests_enabled: boolean;
   personalized_min_price_cents: number | null;
+  personalized_requests_at_capacity: boolean;
   verification_status?: 'none' | 'pending' | 'verified' | 'failed' | 'expired';
   member_since: string;
   creator_since?: string | null;
@@ -31,7 +32,24 @@ export async function getWebsiteProfile(id: string): Promise<WebsiteProfile | nu
   if (!data) return null;
 
   const profile = data as any;
-  const activeListings = ((profile.active_listings ?? profile.public_videos ?? []) as any[]).map(mapWebsiteListingRow);
+  const activeListings = ((profile.active_listings ?? profile.public_videos ?? []) as any[])
+    .map(mapWebsiteListingRow)
+    .filter((listing) => listing.prints_enabled);
+  let personalizedRequestsAtCapacity = false;
+  let personalizedRequestsEnabled = !!profile.personalized_requests_enabled;
+
+  if (personalizedRequestsEnabled) {
+    const { count } = await supabase
+      .from('personalized_autograph_requests')
+      .select('id', { count: 'exact', head: true })
+      .eq('creator_id', id)
+      .in('status', ['pending', 'countered', 'accepted', 'fulfilled']);
+
+    personalizedRequestsAtCapacity = (count ?? 0) >= 15;
+    if (personalizedRequestsAtCapacity) {
+      personalizedRequestsEnabled = false;
+    }
+  }
 
   return {
     id: profile.id,
@@ -40,8 +58,9 @@ export async function getWebsiteProfile(id: string): Promise<WebsiteProfile | nu
     bio: profile.bio ?? null,
     instagram_handle: profile.instagram_handle ?? null,
     verified: !!profile.verified,
-    personalized_requests_enabled: !!profile.personalized_requests_enabled,
+    personalized_requests_enabled: personalizedRequestsEnabled,
     personalized_min_price_cents: profile.personalized_min_price_cents ?? null,
+    personalized_requests_at_capacity: personalizedRequestsAtCapacity,
     verification_status: profile.verification_status ?? 'none',
     member_since: profile.member_since,
     creator_since: profile.creator_since ?? null,
