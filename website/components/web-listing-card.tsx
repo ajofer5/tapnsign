@@ -26,8 +26,8 @@ export function WebListingCard({
   return (
     <>
       <article className="overflow-hidden rounded-none border border-gray-200 bg-white">
-        {/* Media area */}
-        <div className="relative aspect-[3/5] w-full bg-[#1C1C1F]">
+        {/* Media area — natural height so image ratio determines the card shape */}
+        <div className="relative w-full bg-[#1C1C1F] overflow-hidden">
           {playing && listing.video_url ? (
             <video
               src={listing.video_url}
@@ -35,14 +35,14 @@ export function WebListingCard({
               muted
               loop
               playsInline
-              className="absolute inset-0 h-full w-full object-cover"
+              className="block w-full h-auto"
             />
           ) : cardImageUrl ? (
             <>
               <img
                 src={cardImageUrl}
                 alt={creatorName}
-                className="absolute inset-0 h-full w-full object-contain"
+                className="block w-full h-auto"
                 draggable={false}
               />
               {/* Watermark — only on print layout images */}
@@ -77,10 +77,10 @@ export function WebListingCard({
               src={listing.video_url}
               muted
               playsInline
-              className="absolute inset-0 h-full w-full object-cover"
+              className="block w-full h-auto"
             />
           ) : (
-            <div className="flex h-full items-center justify-center text-sm font-semibold uppercase tracking-[0.25em] text-white/50">
+            <div className="flex aspect-[3/5] items-center justify-center text-sm font-semibold uppercase tracking-[0.25em] text-white/50">
               Ophinia
             </div>
           )}

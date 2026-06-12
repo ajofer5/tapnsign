@@ -106,16 +106,16 @@ export function PrintCheckoutModal({ autographId, onClose }: Props) {
           {preview && (
             <>
               {/* Full-width print preview image with watermark */}
-              <div className="relative overflow-hidden rounded-lg bg-[#151718]" style={{ aspectRatio: '4/5' }}>
+              <div className="relative overflow-hidden rounded-lg bg-[#151718]">
                 {preview.thumbnail_url ? (
                   <img
                     src={preview.thumbnail_url}
                     alt={preview.creator_name}
-                    className="h-full w-full object-contain"
+                    className="block w-full h-auto"
                     draggable={false}
                   />
                 ) : (
-                  <div className="flex h-full items-center justify-center text-[9px] font-bold uppercase tracking-widest text-white/40">
+                  <div className="flex aspect-[4/5] items-center justify-center text-[9px] font-bold uppercase tracking-widest text-white/40">
                     Ophinia
                   </div>
                 )}
