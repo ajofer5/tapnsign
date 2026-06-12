@@ -91,7 +91,7 @@ export function PrintCheckoutModal({ autographId, onClose }: Props) {
           </button>
         </div>
 
-        <div className="p-5">
+        <div className="max-h-[80vh] overflow-y-auto p-5">
           {/* Loading / Error */}
           {!preview && !loadError && (
             <div className="flex h-32 items-center justify-center">
@@ -105,49 +105,67 @@ export function PrintCheckoutModal({ autographId, onClose }: Props) {
 
           {preview && (
             <>
-              {/* Preview card + details */}
-              <div className="flex gap-4">
-                <div className="shrink-0">
-                  {preview.thumbnail_url ? (
-                    <img
-                      src={preview.thumbnail_url}
-                      alt={preview.creator_name}
-                      className="h-32 w-[77px] rounded-lg object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-32 w-[77px] items-center justify-center rounded-lg bg-[#151718] text-[9px] font-bold uppercase tracking-widest text-white/40">
-                      Ophinia
+              {/* Full-width print preview image with watermark */}
+              <div className="relative overflow-hidden rounded-lg bg-[#151718]" style={{ aspectRatio: '4/5' }}>
+                {preview.thumbnail_url ? (
+                  <img
+                    src={preview.thumbnail_url}
+                    alt={preview.creator_name}
+                    className="h-full w-full object-contain"
+                    draggable={false}
+                  />
+                ) : (
+                  <div className="flex h-full items-center justify-center text-[9px] font-bold uppercase tracking-widest text-white/40">
+                    Ophinia
+                  </div>
+                )}
+                {/* Watermark overlay */}
+                <div className="pointer-events-none absolute inset-0 select-none overflow-hidden">
+                  {[0, 1, 2, 3, 4].map((i) => (
+                    <div
+                      key={i}
+                      className="absolute whitespace-nowrap text-[11px] font-black uppercase tracking-[0.35em] text-white opacity-20"
+                      style={{
+                        transform: 'rotate(-35deg)',
+                        left: '-20%',
+                        top: `${i * 22 - 5}%`,
+                        width: '140%',
+                      }}
+                    >
+                      {'PREVIEW · OPHINIA · PREVIEW · OPHINIA · PREVIEW · OPHINIA · '}
                     </div>
-                  )}
+                  ))}
                 </div>
+              </div>
 
-                <div className="min-w-0 flex-1">
+              {/* Creator info + quantity */}
+              <div className="mt-4 flex items-start justify-between gap-3">
+                <div className="min-w-0">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400">Official Print</p>
                   <p className="mt-0.5 text-sm font-black text-black">{preview.creator_name}</p>
                   <p className="mt-1 text-xs text-gray-500">8×10 lustre photo print · ships from US</p>
-
-                  {/* Quantity */}
-                  <div className="mt-3 flex items-center gap-3">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Qty</span>
-                    <div className="flex items-center gap-0">
-                      <button
-                        onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                        className="flex h-7 w-7 items-center justify-center rounded-l-md border border-gray-200 text-sm font-semibold transition-colors hover:bg-gray-50 disabled:opacity-40"
-                        disabled={quantity <= 1}
-                      >
-                        −
-                      </button>
-                      <span className="flex h-7 w-7 items-center justify-center border-y border-gray-200 text-sm font-bold tabular-nums">
-                        {quantity}
-                      </span>
-                      <button
-                        onClick={() => setQuantity((q) => Math.min(5, q + 1))}
-                        className="flex h-7 w-7 items-center justify-center rounded-r-md border border-gray-200 text-sm font-semibold transition-colors hover:bg-gray-50 disabled:opacity-40"
-                        disabled={quantity >= 5}
-                      >
-                        +
-                      </button>
-                    </div>
+                </div>
+                {/* Quantity */}
+                <div className="flex shrink-0 items-center gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Qty</span>
+                  <div className="flex items-center">
+                    <button
+                      onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                      className="flex h-7 w-7 items-center justify-center rounded-l-md border border-gray-200 text-sm font-semibold transition-colors hover:bg-gray-50 disabled:opacity-40"
+                      disabled={quantity <= 1}
+                    >
+                      −
+                    </button>
+                    <span className="flex h-7 w-7 items-center justify-center border-y border-gray-200 text-sm font-bold tabular-nums">
+                      {quantity}
+                    </span>
+                    <button
+                      onClick={() => setQuantity((q) => Math.min(5, q + 1))}
+                      className="flex h-7 w-7 items-center justify-center rounded-r-md border border-gray-200 text-sm font-semibold transition-colors hover:bg-gray-50 disabled:opacity-40"
+                      disabled={quantity >= 5}
+                    >
+                      +
+                    </button>
                   </div>
                 </div>
               </div>
