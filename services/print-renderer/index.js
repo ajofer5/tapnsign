@@ -30,8 +30,8 @@ const INTERNAL_SECRET = process.env.INTERNAL_FUNCTION_SECRET ?? '';
 const SUPABASE_URL = process.env.SUPABASE_URL ?? '';
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
 const OUTPUT_BUCKET = 'print-layouts';
-const RENDERER_VERSION = 'print-template-v3';
-const PREVIEW_VERSION = 'preview-v1';
+const RENDERER_VERSION = 'print-template-v4';
+const PREVIEW_VERSION = 'preview-v3';
 const BUNNY_STORAGE_API_KEY = process.env.BUNNY_STORAGE_API_KEY ?? '';
 const BUNNY_STORAGE_ZONE_NAME = process.env.BUNNY_STORAGE_ZONE_NAME ?? '';
 const BUNNY_CDN_HOSTNAME = process.env.BUNNY_CDN_HOSTNAME ?? '';
@@ -90,16 +90,10 @@ const ty = (v) => Math.round(v * SY);
 const FRAME12 = { x: tx(89),  y: ty(88),  w: tx(373), h: ty(624) };
 const SIG_SQ  = { x: tx(600), y: ty(89),  w: tx(273), h: ty(257) };
 
-const _QR_AREA   = { x: tx(793), y: ty(390), w: tx(90), h: ty(88) };
-const _LOGO_AREA = { y: ty(492), h: ty(26) };
-const BADGE_AREA = {
-  x: _QR_AREA.x,
-  y: _QR_AREA.y,
-  w: _QR_AREA.w,
-  h: (_LOGO_AREA.y + _LOGO_AREA.h) - _QR_AREA.y,
-};
+const BADGE_AREA = { x: tx(807), y: ty(486), w: tx(76), h: ty(76) };
 
 const META_AREA = { x: tx(499), y: ty(388), w: tx(284), h: ty(142) };
+const DISCLOSURE_AREA = { x: tx(600), y: ty(748), w: tx(335), h: ty(24) };
 
 const SF_Y     = ty(573);
 const SF_W     = tx(88);
@@ -112,6 +106,76 @@ const SMALL_FRAMES = [
   { x: tx(533) + (SF_W + SF_GAP) * 2, y: SF_Y, w: SF_W, h: SF_H },
   { x: tx(533) + (SF_W + SF_GAP) * 3, y: SF_Y, w: SF_W, h: SF_H },
 ];
+
+function getPreviewRect(sourceRect, metadata, previewWidth, previewHeight) {
+  const sourceWidth = metadata.width || CANVAS_W;
+  const sourceHeight = metadata.height || CANVAS_H;
+
+  if (Math.abs(sourceWidth - CANVAS_W) <= Math.abs(sourceWidth - CANVAS_H)) {
+    return {
+      x: Math.round(sourceRect.x * (previewWidth / sourceWidth)),
+      y: Math.round(sourceRect.y * (previewHeight / sourceHeight)),
+      w: Math.round(sourceRect.w * (previewWidth / sourceWidth)),
+      h: Math.round(sourceRect.h * (previewHeight / sourceHeight)),
+    };
+  }
+
+  // Fallback for a portrait intermediate: map landscape coordinates through
+  // the 90-degree portrait transform used by the SVG template.
+  return {
+    x: Math.round(sourceRect.y * (previewWidth / sourceWidth)),
+    y: Math.round((CANVAS_W - sourceRect.x - sourceRect.w) * (previewHeight / sourceHeight)),
+    w: Math.round(sourceRect.h * (previewWidth / sourceWidth)),
+    h: Math.round(sourceRect.w * (previewHeight / sourceHeight)),
+  };
+}
+
+function buildPreviewProtectionSvg({ width, height, qrRect }) {
+  const qrPad = Math.max(8, Math.round(width * 0.014));
+  const x = Math.max(0, qrRect.x - qrPad);
+  const y = Math.max(0, qrRect.y - qrPad);
+  const w = Math.min(width - x, qrRect.w + qrPad * 2);
+  const h = Math.min(height - y, qrRect.h + qrPad * 2);
+  const centerX = x + w / 2;
+  const centerY = y + h / 2;
+  const fontSize = Math.max(22, Math.round(width * 0.055));
+  const smallFontSize = Math.max(10, Math.round(width * 0.018));
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+  <g transform="translate(${width / 2} ${height / 2}) rotate(-32)">
+    ${[-1, 0, 1].map((row) => `
+      <text x="0" y="${row * fontSize * 3.2}" text-anchor="middle"
+        font-family="Arial, Helvetica, sans-serif" font-size="${fontSize}"
+        font-weight="800" fill="#ffffff" opacity="0.22" letter-spacing="8">PREVIEW</text>
+    `).join('\n')}
+  </g>
+  <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#050505" opacity="0.94"/>
+  <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="#ffffff" stroke-width="2" opacity="0.48"/>
+  <line x1="${x + 8}" y1="${y + 8}" x2="${x + w - 8}" y2="${y + h - 8}" stroke="#ffffff" stroke-width="4" opacity="0.55"/>
+  <line x1="${x + w - 8}" y1="${y + 8}" x2="${x + 8}" y2="${y + h - 8}" stroke="#ffffff" stroke-width="4" opacity="0.55"/>
+  <text x="${centerX}" y="${centerY - smallFontSize * 0.3}" text-anchor="middle"
+    font-family="Arial, Helvetica, sans-serif" font-size="${smallFontSize}"
+    font-weight="800" fill="#ffffff" opacity="0.92">QR HIDDEN</text>
+  <text x="${centerX}" y="${centerY + smallFontSize * 1.1}" text-anchor="middle"
+    font-family="Arial, Helvetica, sans-serif" font-size="${Math.max(8, Math.round(smallFontSize * 0.78))}"
+    font-weight="700" fill="#ffffff" opacity="0.72">IN PREVIEW</text>
+</svg>`;
+}
+
+async function createProtectedPreviewBuffer(layoutBuffer) {
+  const metadata = await sharp(layoutBuffer).metadata();
+  const previewWidth = 800;
+  const previewHeight = Math.round(previewWidth * ((metadata.height || CANVAS_H) / (metadata.width || CANVAS_W)));
+  const qrRect = getPreviewRect(BADGE_AREA, metadata, previewWidth, previewHeight);
+  const protectionSvg = buildPreviewProtectionSvg({ width: previewWidth, height: previewHeight, qrRect });
+
+  return sharp(layoutBuffer)
+    .resize({ width: previewWidth })
+    .composite([{ input: Buffer.from(protectionSvg), top: 0, left: 0 }])
+    .jpeg({ quality: 82 })
+    .toBuffer();
+}
 
 // ---------------------------------------------------------------------------
 // SVG helpers
@@ -325,25 +389,12 @@ function buildLayoutSvg({
     }
   }
 
-  // Verify badge (QR code)
+  // Verify badge (QR code). Keep this isolated so previews can reliably hide it.
   elements.push(`
     <image href="${badgeDataUri}"
       x="${BADGE_AREA.x}" y="${BADGE_AREA.y}" width="${BADGE_AREA.w}" height="${BADGE_AREA.h}"
       preserveAspectRatio="xMidYMid meet"/>
   `);
-
-  // Ophinia logo — positioned in the logo area below the QR badge
-  if (_logoDataUri) {
-    const LOGO_X = _QR_AREA.x;
-    const LOGO_Y = _LOGO_AREA.y;
-    const LOGO_W = _QR_AREA.w;
-    const LOGO_H = _LOGO_AREA.h;
-    elements.push(`
-      <image href="${_logoDataUri}"
-        x="${LOGO_X}" y="${LOGO_Y}" width="${LOGO_W}" height="${LOGO_H}"
-        preserveAspectRatio="xMidYMid meet"/>
-    `);
-  }
 
   // Metadata text — Optima installed as system font via Dockerfile
   const metaLines = [
@@ -366,6 +417,44 @@ function buildLayoutSvg({
       >${escapeXml(line.text)}</text>
     `);
   });
+
+  // Bottom authenticity disclosure
+  const disclosureText = 'Digital authenticity powered by';
+  const disclosureFontSize = 34;
+  const disclosureY = DISCLOSURE_AREA.y + 18;
+  const logoW = tx(86);
+  const logoH = ty(18);
+  const logoX = DISCLOSURE_AREA.x + tx(240);
+  elements.push(`
+    <text
+      x="${DISCLOSURE_AREA.x}"
+      y="${disclosureY}"
+      font-family="Optima, Optima Nova LT, serif"
+      font-size="${disclosureFontSize}"
+      fill="white"
+      opacity="0.58"
+      letter-spacing="0.8"
+    >${escapeXml(disclosureText)}</text>
+  `);
+  if (_logoDataUri) {
+    elements.push(`
+      <image href="${_logoDataUri}"
+        x="${logoX}" y="${DISCLOSURE_AREA.y}" width="${logoW}" height="${logoH}"
+        preserveAspectRatio="xMidYMid meet" opacity="0.7"/>
+    `);
+  } else {
+    elements.push(`
+      <text
+        x="${logoX}"
+        y="${disclosureY}"
+        font-family="Optima, Optima Nova LT, serif"
+        font-size="${disclosureFontSize}"
+        font-weight="bold"
+        fill="white"
+        opacity="0.7"
+      >Ophinia</text>
+    `);
+  }
 
   // Decorative borders
   elements.push(`
@@ -403,7 +492,11 @@ function isAuthorized(req) {
 // Routes
 // ---------------------------------------------------------------------------
 
-app.get('/health', (_req, res) => res.json({ ok: true, version: RENDERER_VERSION }));
+app.get('/health', (_req, res) => res.json({
+  ok: true,
+  version: RENDERER_VERSION,
+  preview_version: PREVIEW_VERSION,
+}));
 
 app.post('/render', async (req, res) => {
   if (!isAuthorized(req)) {
@@ -467,7 +560,7 @@ app.post('/render', async (req, res) => {
         const prLayoutResp = await fetch(printRecord.print_layout_url);
         if (prLayoutResp.ok) {
           const prLayoutBuffer = Buffer.from(await prLayoutResp.arrayBuffer());
-          const prPreviewBuffer = await sharp(prLayoutBuffer).resize({ width: 800 }).jpeg({ quality: 82 }).toBuffer();
+          const prPreviewBuffer = await createProtectedPreviewBuffer(prLayoutBuffer);
           const generatedPreviewUrl = await uploadToBunnyStorage(prPreviewBuffer, prPreviewPath, 'image/jpeg');
           return res.json({
             print_layout_url: printRecord.print_layout_url,
@@ -513,7 +606,7 @@ app.post('/render', async (req, res) => {
       const layoutResp = await fetch(cachedLayoutUrl);
       if (!layoutResp.ok) throw new Error(`Failed to fetch cached layout: ${layoutResp.status}`);
       const layoutBuffer = Buffer.from(await layoutResp.arrayBuffer());
-      const previewBuffer = await sharp(layoutBuffer).resize({ width: 800 }).jpeg({ quality: 82 }).toBuffer();
+      const previewBuffer = await createProtectedPreviewBuffer(layoutBuffer);
       const printPreviewUrl = await uploadToBunnyStorage(previewBuffer, previewBunnyPath, 'image/jpeg');
       if (printRecord) {
         await supabase
@@ -590,7 +683,7 @@ app.post('/render', async (req, res) => {
     console.log('[print-renderer] PNG bytes:', pngBuffer.length);
 
     // Generate small preview JPG alongside the full layout
-    const previewBuffer = await sharp(pngBuffer).resize({ width: 800 }).jpeg({ quality: 82 }).toBuffer();
+    const previewBuffer = await createProtectedPreviewBuffer(pngBuffer);
     console.log('[print-renderer] preview JPG bytes:', previewBuffer.length);
 
     // Upload both in parallel
