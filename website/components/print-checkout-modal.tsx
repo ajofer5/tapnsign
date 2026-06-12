@@ -119,22 +119,31 @@ export function PrintCheckoutModal({ autographId, onClose }: Props) {
                     Ophinia
                   </div>
                 )}
-                {/* Watermark overlay */}
-                <div className="pointer-events-none absolute inset-0 select-none overflow-hidden">
-                  {[0, 1, 2, 3, 4].map((i) => (
-                    <div
-                      key={i}
-                      className="absolute whitespace-nowrap text-[11px] font-black uppercase tracking-[0.35em] text-white opacity-20"
-                      style={{
-                        transform: 'rotate(-35deg)',
-                        left: '-20%',
-                        top: `${i * 22 - 5}%`,
-                        width: '140%',
-                      }}
-                    >
-                      {'PREVIEW · OPHINIA · PREVIEW · OPHINIA · PREVIEW · OPHINIA · '}
-                    </div>
-                  ))}
+                {/* Watermark overlay — matches app style */}
+                <div className="pointer-events-none absolute inset-0 select-none overflow-hidden flex items-center justify-center">
+                  {/* Diagonal band */}
+                  <div
+                    className="absolute w-[150%] py-3 flex items-center justify-center"
+                    style={{
+                      transform: 'rotate(-28deg)',
+                      backgroundColor: 'rgba(255,255,255,0.82)',
+                      borderTop: '1px solid rgba(0,27,92,0.35)',
+                      borderBottom: '1px solid rgba(0,27,92,0.35)',
+                    }}
+                  >
+                    <span className="text-[#001B5C] text-2xl font-black tracking-[0.08em] uppercase">
+                      PREVIEW
+                    </span>
+                  </div>
+                  {/* Bottom badge */}
+                  <div
+                    className="absolute bottom-2.5 px-2.5 py-1"
+                    style={{ backgroundColor: 'rgba(0,27,92,0.82)' }}
+                  >
+                    <span className="text-white text-[10px] font-bold uppercase tracking-[0.12em]">
+                      Official print preview
+                    </span>
+                  </div>
                 </div>
               </div>
 

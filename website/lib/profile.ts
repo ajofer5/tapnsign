@@ -35,6 +35,32 @@ export async function getWebsiteProfile(id: string): Promise<WebsiteProfile | nu
   const activeListings = ((profile.active_listings ?? profile.public_videos ?? []) as any[])
     .map(mapWebsiteListingRow)
     .filter((listing) => listing.prints_enabled);
+
+  // Prefetch print_layout_url for any listings that don't have it cached yet.
+  // Renderer caches by autograph_id so these calls are fast after mint time.
+  const rendererUrl = process.env.PRINT_RENDERER_URL ?? '';
+  const internalSecret = process.env.INTERNAL_FUNCTION_SECRET ?? '';
+  const needsLayout = activeListings.filter((l) => !l.print_layout_url);
+  if (rendererUrl && needsLayout.length > 0) {
+    await Promise.allSettled(
+      needsLayout.map(async (listing) => {
+        try {
+          const resp = await fetch(`${rendererUrl}/render`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-internal-secret': internalSecret },
+            body: JSON.stringify({ autograph_id: listing.id, internal_secret: internalSecret }),
+          });
+          if (!resp.ok) return;
+          const data = await resp.json();
+          const url = typeof data?.print_layout_url === 'string' ? data.print_layout_url : null;
+          if (url) {
+            listing.print_layout_url = url;
+            supabase.from('autographs').update({ print_layout_url: url }).eq('id', listing.id).then(() => {});
+          }
+        } catch { /* non-fatal */ }
+      })
+    );
+  }
   let personalizedRequestsAtCapacity = false;
   let personalizedRequestsEnabled = !!profile.personalized_requests_enabled;
 
