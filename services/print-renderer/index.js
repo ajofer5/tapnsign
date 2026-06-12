@@ -13,8 +13,6 @@
  */
 
 const express = require('express');
-const fs = require('fs');
-const path = require('path');
 const sharp = require('sharp');
 const { createClient } = require('@supabase/supabase-js');
 
@@ -68,12 +66,6 @@ function normalizeHostname(hostname) {
 
 const NORMALIZED_BUNNY_CDN_HOSTNAME = normalizeHostname(BUNNY_CDN_HOSTNAME);
 
-// Load logo once at startup
-const _logoPath = path.join(__dirname, 'assets', 'ophinia-logo-white.png');
-const _logoDataUri = fs.existsSync(_logoPath)
-  ? `data:image/png;base64,${fs.readFileSync(_logoPath).toString('base64')}`
-  : null;
-
 // ---------------------------------------------------------------------------
 // Layout constants — landscape 3000×2400 (10"×8" @ 300 DPI)
 // Derived from Figma template at 1008×809px
@@ -90,10 +82,10 @@ const ty = (v) => Math.round(v * SY);
 const FRAME12 = { x: tx(89),  y: ty(88),  w: tx(373), h: ty(624) };
 const SIG_SQ  = { x: tx(600), y: ty(89),  w: tx(273), h: ty(257) };
 
-const BADGE_AREA = { x: tx(802), y: ty(468), w: tx(84), h: ty(84) };
+const BADGE_AREA = { x: tx(802), y: ty(440), w: tx(84), h: ty(84) };
 
 const META_AREA = { x: tx(499), y: ty(388), w: tx(284), h: ty(142) };
-const DISCLOSURE_AREA = { x: tx(635), y: ty(761), w: tx(300), h: ty(24) };
+const DISCLOSURE_AREA = { x: tx(615), y: ty(765), w: tx(320), h: ty(24) };
 
 const SF_Y     = ty(573);
 const SF_W     = tx(88);
@@ -371,9 +363,7 @@ function buildLayoutSvg({
   const date = new Date(capturedAt).toLocaleDateString('en-US', {
     month: 'long', day: 'numeric', year: 'numeric',
   });
-  const nameLabel = sequenceNumber != null
-    ? `${creatorName.toUpperCase()} #${sequenceNumber}`
-    : creatorName.toUpperCase();
+  const nameLabel = creatorName.toUpperCase();
 
   const elements = [];
 
@@ -426,11 +416,12 @@ function buildLayoutSvg({
 
   // Metadata text — Optima installed as system font via Dockerfile
   const metaLines = [
-    { text: nameLabel,                         fontSize: 71, opacity: 1.00, bold: true,  letterSpacing: 3 },
+    { text: nameLabel,                         fontSize: 68, opacity: 1.00, bold: true,  letterSpacing: 3 },
     { text: `Captured on ${date}`,             fontSize: 52, opacity: 0.75, bold: false, letterSpacing: 1 },
-    ...(seriesName ? [{ text: seriesName,      fontSize: 48, opacity: 0.82, bold: false, letterSpacing: 1 }] : []),
+    ...(sequenceNumber != null ? [{ text: `Card #${sequenceNumber}`, fontSize: 46, opacity: 0.82, bold: false, letterSpacing: 1 }] : []),
+    ...(seriesName ? [{ text: seriesName,      fontSize: 40, opacity: 0.64, bold: false, letterSpacing: 1 }] : []),
   ];
-  const lineH = 92;
+  const lineH = 76;
   metaLines.forEach((line, i) => {
     elements.push(`
       <text
@@ -447,12 +438,9 @@ function buildLayoutSvg({
   });
 
   // Bottom authenticity disclosure
-  const disclosureText = 'Digital authenticity powered by';
-  const disclosureFontSize = 34;
-  const logoW = tx(86);
-  const logoH = ty(18);
-  const logoX = DISCLOSURE_AREA.x + tx(245);
-  const disclosureY = DISCLOSURE_AREA.y + Math.round(logoH * 0.72);
+  const disclosureText = 'Digital authenticity powered by Ophinia.';
+  const disclosureFontSize = 32;
+  const disclosureY = DISCLOSURE_AREA.y + 18;
   elements.push(`
     <text
       x="${DISCLOSURE_AREA.x}"
@@ -464,25 +452,6 @@ function buildLayoutSvg({
       letter-spacing="0.8"
     >${escapeXml(disclosureText)}</text>
   `);
-  if (_logoDataUri) {
-    elements.push(`
-      <image href="${_logoDataUri}"
-        x="${logoX}" y="${DISCLOSURE_AREA.y}" width="${logoW}" height="${logoH}"
-        preserveAspectRatio="xMidYMid meet" opacity="0.7"/>
-    `);
-  } else {
-    elements.push(`
-      <text
-        x="${logoX}"
-        y="${disclosureY}"
-        font-family="Optima, Optima Nova LT, serif"
-        font-size="${disclosureFontSize}"
-        font-weight="bold"
-        fill="white"
-        opacity="0.7"
-      >Ophinia</text>
-    `);
-  }
 
   // Decorative borders
   elements.push(`
