@@ -38,11 +38,40 @@ export function WebListingCard({
               className="absolute inset-0 h-full w-full object-cover"
             />
           ) : cardImageUrl ? (
-            <img
-              src={cardImageUrl}
-              alt={creatorName}
-              className="absolute inset-0 h-full w-full object-cover"
-            />
+            <>
+              <img
+                src={cardImageUrl}
+                alt={creatorName}
+                className="absolute inset-0 h-full w-full object-contain"
+                draggable={false}
+              />
+              {/* Watermark — only on print layout images */}
+              {listing.print_layout_url ? (
+                <div className="pointer-events-none absolute inset-0 select-none overflow-hidden flex items-center justify-center">
+                  <div
+                    className="absolute w-[150%] py-2 flex items-center justify-center"
+                    style={{
+                      transform: 'rotate(-28deg)',
+                      backgroundColor: 'rgba(255,255,255,0.82)',
+                      borderTop: '1px solid rgba(0,27,92,0.35)',
+                      borderBottom: '1px solid rgba(0,27,92,0.35)',
+                    }}
+                  >
+                    <span className="text-[#001B5C] text-base font-black tracking-[0.08em] uppercase">
+                      PREVIEW
+                    </span>
+                  </div>
+                  <div
+                    className="absolute bottom-2 px-2 py-0.5"
+                    style={{ backgroundColor: 'rgba(0,27,92,0.82)' }}
+                  >
+                    <span className="text-white text-[9px] font-bold uppercase tracking-[0.1em]">
+                      Official print preview
+                    </span>
+                  </div>
+                </div>
+              ) : null}
+            </>
           ) : listing.video_url ? (
             <video
               src={listing.video_url}
