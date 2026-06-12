@@ -3,6 +3,28 @@ import { createWebsiteAdminSupabaseClient } from '../../../../lib/supabase';
 
 export const runtime = 'nodejs';
 
+async function fetchPrintLayoutUrl(autographId: string): Promise<string | null> {
+  const rendererUrl = process.env.PRINT_RENDERER_URL ?? '';
+  const internalSecret = process.env.INTERNAL_FUNCTION_SECRET ?? '';
+  if (!rendererUrl) return null;
+
+  try {
+    const response = await fetch(`${rendererUrl}/render`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-internal-secret': internalSecret,
+      },
+      body: JSON.stringify({ autograph_id: autographId, internal_secret: internalSecret }),
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    return typeof data?.print_layout_url === 'string' ? data.print_layout_url : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -14,7 +36,6 @@ export async function GET(
     .from('autographs')
     .select(`
       id,
-      created_at,
       prints_enabled,
       print_limit,
       thumbnail_url,
@@ -42,11 +63,21 @@ export async function GET(
 
   const creatorName = (data.creator as any)?.display_name ?? 'Creator';
 
+  // Use cached print_layout_url if available; otherwise call renderer and cache it
+  let previewUrl: string | null = (data as any).print_layout_url ?? null;
+  if (!previewUrl) {
+    previewUrl = await fetchPrintLayoutUrl(id);
+    if (previewUrl) {
+      // Cache for future profile page loads (fire-and-forget)
+      supabase.from('autographs').update({ print_layout_url: previewUrl }).eq('id', id).then(() => {});
+    }
+  }
+
   return NextResponse.json({
     autograph_id: data.id,
     creator_name: creatorName,
     creator_id: data.creator_id,
-    thumbnail_url: (data as any).print_layout_url ?? data.thumbnail_url,
+    thumbnail_url: previewUrl ?? data.thumbnail_url,
     prints_enabled: data.prints_enabled,
     item_cents: 1500,
     shipping_cents: 499,

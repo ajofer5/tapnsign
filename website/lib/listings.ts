@@ -31,6 +31,7 @@ export type WebsiteListing = {
   print_count: number | null;
   prints_enabled: boolean;
   print_limit: number | null;
+  print_layout_url: string | null;
 };
 
 export function mapWebsiteListingRow(row: any): WebsiteListing {
@@ -67,6 +68,7 @@ export function mapWebsiteListingRow(row: any): WebsiteListing {
     print_count: row.print_count ?? null,
     prints_enabled: !!row.prints_enabled,
     print_limit: row.print_limit ?? null,
+    print_layout_url: row.print_layout_url ?? null,
   };
 }
 

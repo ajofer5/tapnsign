@@ -21,6 +21,7 @@ export function WebListingCard({
   const [playing, setPlaying] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const creatorName = listing.creator?.display_name ?? 'Creator';
+  const cardImageUrl = listing.print_layout_url ?? listing.thumbnail_url;
 
   return (
     <>
@@ -36,9 +37,9 @@ export function WebListingCard({
               playsInline
               className="absolute inset-0 h-full w-full object-cover"
             />
-          ) : listing.thumbnail_url ? (
+          ) : cardImageUrl ? (
             <img
-              src={listing.thumbnail_url}
+              src={cardImageUrl}
               alt={creatorName}
               className="absolute inset-0 h-full w-full object-cover"
             />
