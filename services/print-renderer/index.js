@@ -90,10 +90,10 @@ const ty = (v) => Math.round(v * SY);
 const FRAME12 = { x: tx(89),  y: ty(88),  w: tx(373), h: ty(624) };
 const SIG_SQ  = { x: tx(600), y: ty(89),  w: tx(273), h: ty(257) };
 
-const BADGE_AREA = { x: tx(807), y: ty(486), w: tx(76), h: ty(76) };
+const BADGE_AREA = { x: tx(802), y: ty(468), w: tx(84), h: ty(84) };
 
 const META_AREA = { x: tx(499), y: ty(388), w: tx(284), h: ty(142) };
-const DISCLOSURE_AREA = { x: tx(600), y: ty(748), w: tx(335), h: ty(24) };
+const DISCLOSURE_AREA = { x: tx(635), y: ty(761), w: tx(300), h: ty(24) };
 
 const SF_Y     = ty(573);
 const SF_W     = tx(88);
@@ -426,11 +426,11 @@ function buildLayoutSvg({
 
   // Metadata text — Optima installed as system font via Dockerfile
   const metaLines = [
-    { text: nameLabel,                         fontSize: 72, opacity: 1.00, bold: true,  letterSpacing: 3 },
+    { text: nameLabel,                         fontSize: 71, opacity: 1.00, bold: true,  letterSpacing: 3 },
     { text: `Captured on ${date}`,             fontSize: 52, opacity: 0.75, bold: false, letterSpacing: 1 },
-    ...(seriesName ? [{ text: seriesName,      fontSize: 48, opacity: 0.65, bold: false, letterSpacing: 1 }] : []),
+    ...(seriesName ? [{ text: seriesName,      fontSize: 48, opacity: 0.82, bold: false, letterSpacing: 1 }] : []),
   ];
-  const lineH = 100;
+  const lineH = 92;
   metaLines.forEach((line, i) => {
     elements.push(`
       <text
@@ -449,10 +449,10 @@ function buildLayoutSvg({
   // Bottom authenticity disclosure
   const disclosureText = 'Digital authenticity powered by';
   const disclosureFontSize = 34;
-  const disclosureY = DISCLOSURE_AREA.y + 18;
   const logoW = tx(86);
   const logoH = ty(18);
-  const logoX = DISCLOSURE_AREA.x + tx(240);
+  const logoX = DISCLOSURE_AREA.x + tx(245);
+  const disclosureY = DISCLOSURE_AREA.y + Math.round(logoH * 0.72);
   elements.push(`
     <text
       x="${DISCLOSURE_AREA.x}"
