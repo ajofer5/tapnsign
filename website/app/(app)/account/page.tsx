@@ -1,4 +1,7 @@
-import { updateDisplayNameAction, updateInstagramAction, updatePersonalizedSettingsAction, updateProfileAvatarAction, useVerifiedNameAction } from './actions';
+import Link from 'next/link';
+import { updateBioAction, updateDisplayNameAction, updatePersonalizedSettingsAction, updateProfileAvatarAction, useVerifiedNameAction } from './actions';
+import { MAX_DISPLAY_NAME_LENGTH } from '../../../../lib/display-name';
+import { PERSONALIZED_REQUEST_MIN_CENTS } from '../../../lib/personalized-policy';
 import { requireWebSessionUser } from '../../../lib/web-auth';
 import { createWebsiteAdminSupabaseClient } from '../../../lib/supabase';
 
@@ -11,12 +14,6 @@ function formatVerificationState(value?: string | null) {
   if (value === 'failed') return 'Failed';
   if (value === 'expired') return 'Expired';
   return value;
-}
-
-function formatInstagramStatus(value?: string | null, handle?: string | null) {
-  if (!handle) return 'Not Linked';
-  if (value === 'verified') return 'Verified';
-  return 'Connected';
 }
 
 export default async function AccountPage({
@@ -35,11 +32,11 @@ export default async function AccountPage({
       validated_name,
       name_verified,
       avatar_url,
+      bio,
       profile_avatar_autograph_id,
       role,
+      verified,
       verification_status,
-      instagram_handle,
-      instagram_status,
       personalized_requests_enabled,
       personalized_min_price_cents,
       created_at
@@ -54,50 +51,23 @@ export default async function AccountPage({
   });
 
   const status = resolvedSearch?.status;
-  const memberSince = profile?.created_at
-    ? new Date(profile.created_at).toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      })
-    : '—';
+  const displayName = profile?.display_name ?? user.display_name;
+  const bio = (profile as any)?.bio ?? '';
+  const isVerified = !!(profile as any)?.verified;
+
+  const accountStatusLabel = isVerified
+    ? 'Verified Creator'
+    : (profile as any)?.role === 'verified'
+      ? 'Creator'
+      : 'Member';
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-10">
-      <div className="flex flex-col items-center text-center">
-        {(profile as any)?.avatar_url ? (
-          <img
-            src={(profile as any).avatar_url}
-            alt={profile?.display_name ?? user.display_name}
-            className="h-24 w-24 rounded-full object-cover shadow-sm"
-          />
-        ) : (
-          <div className="flex h-24 w-24 items-center justify-center rounded-full bg-[#001B5C] text-3xl font-black text-white shadow-sm">
-            {(profile?.display_name ?? user.display_name).slice(0, 1).toUpperCase()}
-          </div>
-        )}
-        <p className="mt-6 text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
-          Account
-        </p>
-        <h1 className="mt-3 text-4xl font-black tracking-tight text-black">
-          {profile?.display_name ?? user.display_name}
-        </h1>
-        <p className="mt-3 max-w-xl text-base leading-7 text-gray-600">
-          Update your public Ophinia identity on the web. Creator verification and minting remain app-first for now.
-        </p>
-        <form action="/logout" method="post" className="mt-6">
-          <button
-            type="submit"
-            className="rounded-xl border border-black px-5 py-3 text-sm font-semibold text-black transition-colors hover:bg-black hover:text-white"
-          >
-            Sign Out
-          </button>
-        </form>
-      </div>
+    <div className="mx-auto max-w-2xl px-6 py-10">
 
+      {/* Status banner */}
       {status ? (
         <div
-          className={`mt-8 rounded-lg px-5 py-4 text-sm font-medium ${
+          className={`mb-6 rounded-lg px-5 py-4 text-sm font-medium ${
             status.includes('error') || status.includes('missing')
               ? 'bg-[#FDECEC] text-[#B3261E]'
               : 'bg-[#EFF6EC] text-[#2B6A1C]'
@@ -105,249 +75,280 @@ export default async function AccountPage({
         >
           {status === 'verified_name_saved' && 'Verified name applied. Your badge is now active.'}
           {status === 'name_saved' && 'Display name updated.'}
-          {status === 'instagram_saved' && 'Instagram handle saved.'}
-          {status === 'instagram_removed' && 'Instagram handle removed.'}
+          {status === 'bio_saved' && 'Bio updated.'}
+          {status === 'name_too_long' && `Display name must be ${MAX_DISPLAY_NAME_LENGTH} characters or fewer.`}
           {status === 'avatar_saved' && 'Profile image updated.'}
           {status === 'avatar_cleared' && 'Profile image cleared.'}
           {status === 'personalized_saved' && 'Personalized requests enabled.'}
           {status === 'personalized_disabled' && 'Personalized requests disabled.'}
           {status === 'name_missing' && 'Please enter a display name.'}
           {status === 'name_error' && 'Could not save your display name. Please try again.'}
-          {status === 'instagram_error' && 'Could not save your Instagram handle. Please try again.'}
+          {status === 'bio_error' && 'Could not save your bio. Please try again.'}
           {status === 'avatar_error' && 'Could not update your profile image. Please try again.'}
           {status === 'personalized_error' && 'Could not save personalized request settings. Please check the minimum price and try again.'}
         </div>
       ) : null}
 
-      <div className="mt-8 space-y-6">
-        <section className="web-panel p-7">
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
-            Account Details
-          </p>
-          <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            <DetailCard label="Email" value={user.email ?? '—'} />
-            <DetailCard label="Status" value={profile?.role === 'verified' ? 'Verified' : 'Member'} />
-            <DetailCard label="Verification" value={formatVerificationState(profile?.verification_status)} />
-            <DetailCard label="Instagram" value={formatInstagramStatus((profile as any)?.instagram_status, (profile as any)?.instagram_handle)} />
-            <DetailCard label="Member Since" value={memberSince} />
-          </div>
-        </section>
-
-        <section className="web-panel p-7">
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
-            Personalized Requests
-          </p>
-          <p className="mt-3 text-sm leading-6 text-gray-600">
-            Let collectors request private custom autographs directly from your profile. Verified creators can set a minimum personalized request price.
-          </p>
-          {profile?.role === 'verified' ? (
-            <form action={updatePersonalizedSettingsAction} className="mt-5 space-y-4">
-              <label className="flex items-center justify-between rounded-lg bg-[#F7F7F8] px-4 py-4 text-sm font-medium text-black">
-                <span>Enable personalized autograph requests</span>
-                <input
-                  type="checkbox"
-                  name="personalized_requests_enabled"
-                  defaultChecked={!!(profile as any)?.personalized_requests_enabled}
-                  className="h-5 w-5 accent-[#001B5C]"
-                />
-              </label>
-              <div className="flex items-center rounded-lg border border-transparent bg-[#F7F7F8] px-4 py-4 focus-within:border-[#001B5C] focus-within:bg-white">
-                <span className="mr-2 text-base font-semibold text-gray-500">$</span>
-                <input
-                  type="number"
-                  name="personalized_min_price"
-                  min="1"
-                  step="0.01"
-                  defaultValue={
-                    (profile as any)?.personalized_min_price_cents
-                      ? ((profile as any).personalized_min_price_cents / 100).toFixed(2)
-                      : '10.00'
-                  }
-                  className="w-full bg-transparent text-base text-black outline-none placeholder:text-[#999]"
-                />
-              </div>
-              <button
-                type="submit"
-                className="w-full rounded-lg bg-[#001B5C] px-6 py-4 text-base font-semibold text-white transition-colors hover:bg-[#00144A]"
-              >
-                Save Personalized Settings
-              </button>
-            </form>
-          ) : (
-            <p className="mt-5 text-sm leading-6 text-gray-600">
-              Personalized autograph requests are available once your Ophinia creator account is verified.
-            </p>
-          )}
-        </section>
-
-        {(profile as any)?.validated_name ? (
-          <section className="web-panel p-7">
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
-              Verified Name Badge
-            </p>
-            <p className="mt-3 text-sm leading-6 text-gray-600">
-              Your identity was verified as <span className="font-semibold text-black">{(profile as any).validated_name}</span>. Using your verified name displays a badge on your autograph cards, letting collectors confirm your identity.
-            </p>
-            {(profile as any)?.name_verified ? (
-              <div className="mt-5 flex items-center gap-3 rounded-lg bg-[#EFF6EC] px-4 py-4">
-                <span className="text-lg">✓</span>
-                <div>
-                  <p className="text-sm font-semibold text-[#2B6A1C]">Badge active</p>
-                  <p className="text-xs text-[#2B6A1C]">Your display name matches your verified name. The badge is showing on your cards.</p>
-                </div>
-              </div>
+      {/* Profile card */}
+      <div className="mb-4 rounded-[6px] border border-gray-200 bg-white p-5">
+        <div className="flex items-start gap-5">
+          {/* Portrait avatar */}
+          <div className="w-[60px] shrink-0 overflow-hidden rounded-[4px] bg-[#1C1C1F]">
+            {(profile as any)?.avatar_url ? (
+              <img
+                src={(profile as any).avatar_url}
+                alt={displayName}
+                className="aspect-[3/5] w-full object-cover"
+              />
             ) : (
-              <form action={useVerifiedNameAction} className="mt-5">
+              <div className="flex aspect-[3/5] w-full items-center justify-center text-xl font-black text-white/50">
+                {displayName.slice(0, 1).toUpperCase()}
+              </div>
+            )}
+          </div>
+
+          {/* Name + bio */}
+          <div className="min-w-0 flex-1">
+            <div className="text-xl font-black text-black">{displayName}</div>
+            <div className="mt-0.5 text-xs font-semibold uppercase tracking-[0.16em] text-gray-400">
+              {accountStatusLabel}
+            </div>
+            <form action={updateBioAction} className="mt-3">
+              <textarea
+                name="bio"
+                defaultValue={bio}
+                maxLength={100}
+                placeholder="Add a short bio…"
+                rows={2}
+                className="w-full resize-none rounded-lg border border-gray-200 bg-[#F7F7F8] px-3 py-2 text-sm text-black outline-none transition-colors placeholder:text-gray-400 focus:border-[#001B5C] focus:bg-white"
+              />
+              <div className="mt-2 flex items-center justify-between gap-3">
+                <span className="text-[11px] text-gray-400">{bio.length}/100</span>
                 <button
                   type="submit"
-                  className="w-full rounded-lg bg-[#001B5C] px-6 py-4 text-base font-semibold text-white transition-colors hover:bg-[#00144a]"
+                  className="rounded-lg border border-gray-300 px-4 py-2 text-xs font-semibold text-gray-700 transition-colors hover:border-black hover:text-black"
                 >
-                  Use verified name &amp; show badge
+                  Save Bio
                 </button>
-                <p className="mt-3 text-xs text-gray-500">Your current display name will be replaced with your government-verified name. You can switch back to a custom name at any time — the badge will hide until you switch back.</p>
-              </form>
-            )}
-          </section>
-        ) : null}
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
 
-        <section className="web-panel p-7">
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
-            Display Name
-          </p>
-          <form action={updateDisplayNameAction} className="mt-5 space-y-4">
-            <input
-              type="text"
-              name="display_name"
-              defaultValue={profile?.display_name ?? user.display_name}
-              placeholder="Display name"
-              className="w-full rounded-lg border border-transparent bg-[#F7F7F8] px-4 py-4 text-base text-black outline-none transition-colors placeholder:text-[#999] focus:border-[#001B5C] focus:bg-white"
-              required
-            />
-            <button
-              type="submit"
-              className="w-full rounded-lg bg-[#001B5C] px-6 py-4 text-base font-semibold text-white transition-colors hover:bg-[#00144A]"
-            >
-              Save Name
-            </button>
-          </form>
-        </section>
+      {/* Account info rows */}
+      <div className="mb-4 overflow-hidden rounded-[6px] border border-gray-200 bg-white">
+        <AccountRow label="Email" value={user.email ?? '—'} />
+        <AccountRow label="Status" value={accountStatusLabel} />
+        <AccountRow label="Verification" value={formatVerificationState(profile?.verification_status)} isLast />
+      </div>
 
-        <section className="web-panel p-7">
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
-            Instagram
-          </p>
-          <p className="mt-3 text-sm leading-6 text-gray-600">
-            Add your Instagram handle to show a linked social profile on your Ophinia account.
-          </p>
-          <form action={updateInstagramAction} className="mt-5 space-y-4">
-            <div className="flex items-center rounded-lg border border-transparent bg-[#F7F7F8] px-4 py-4 focus-within:border-[#001B5C] focus-within:bg-white">
-              <span className="mr-2 text-base font-semibold text-gray-500">@</span>
+      {/* Display Name */}
+      <div className="mb-4 rounded-[6px] border border-gray-200 bg-white p-5">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500">Display Name</p>
+        <form action={updateDisplayNameAction} className="mt-4 space-y-3">
+          <input
+            type="text"
+            name="display_name"
+            defaultValue={displayName}
+            maxLength={MAX_DISPLAY_NAME_LENGTH}
+            placeholder="Display name"
+            className="w-full rounded-lg border border-gray-200 bg-[#F7F7F8] px-4 py-3 text-sm text-black outline-none transition-colors placeholder:text-gray-400 focus:border-[#001B5C] focus:bg-white"
+            required
+          />
+          <button
+            type="submit"
+            className="w-full rounded-lg bg-[#001B5C] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#00144A]"
+          >
+            Save Name
+          </button>
+        </form>
+      </div>
+
+      {/* Personalized Requests */}
+      <div className="mb-4 rounded-[6px] border border-gray-200 bg-white p-5">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500">Personalized Requests</p>
+        <p className="mt-3 text-sm leading-6 text-gray-600">
+          Let collectors request private custom prints directly from your profile.
+        </p>
+        {isVerified ? (
+          <form action={updatePersonalizedSettingsAction} className="mt-4 space-y-3">
+            <label className="flex items-center justify-between rounded-lg bg-[#F7F7F8] px-4 py-3 text-sm font-medium text-black">
+              <span>Enable personalized print requests</span>
               <input
-                type="text"
-                name="instagram_handle"
-                defaultValue={(profile as any)?.instagram_handle ?? ''}
-                placeholder="your_handle"
-                className="w-full bg-transparent text-base text-black outline-none placeholder:text-[#999]"
-                autoCapitalize="none"
-                autoCorrect="off"
+                type="checkbox"
+                name="personalized_requests_enabled"
+                defaultChecked={!!(profile as any)?.personalized_requests_enabled}
+                className="h-5 w-5 accent-[#001B5C]"
+              />
+            </label>
+            <div className="flex items-center rounded-lg border border-gray-200 bg-[#F7F7F8] px-4 py-3 focus-within:border-[#001B5C] focus-within:bg-white">
+              <span className="mr-2 text-sm font-semibold text-gray-500">$</span>
+              <input
+                type="number"
+                name="personalized_min_price"
+                min={(PERSONALIZED_REQUEST_MIN_CENTS / 100).toFixed(2)}
+                step="0.01"
+                defaultValue={
+                  (profile as any)?.personalized_min_price_cents
+                    ? ((profile as any).personalized_min_price_cents / 100).toFixed(2)
+                    : (PERSONALIZED_REQUEST_MIN_CENTS / 100).toFixed(2)
+                }
+                className="w-full bg-transparent text-sm text-black outline-none placeholder:text-gray-400"
               />
             </div>
             <button
               type="submit"
-              className="w-full rounded-lg bg-[#001B5C] px-6 py-4 text-base font-semibold text-white transition-colors hover:bg-[#00144A]"
+              className="w-full rounded-lg bg-[#001B5C] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#00144A]"
             >
-              Save Instagram
+              Save Settings
             </button>
           </form>
-        </section>
-
-        <section className="web-panel p-7">
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
-            Profile Image
+        ) : (
+          <p className="mt-3 text-sm leading-6 text-gray-500">
+            Available once your Ophinia creator account is verified.
           </p>
+        )}
+      </div>
+
+      {/* Verified Name Badge */}
+      {(profile as any)?.validated_name ? (
+        <div className="mb-4 rounded-[6px] border border-gray-200 bg-white p-5">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500">Verified Name Badge</p>
           <p className="mt-3 text-sm leading-6 text-gray-600">
-            Choose a profile image from one of your active autographs.
+            Your identity was verified as{' '}
+            <span className="font-semibold text-black">{(profile as any).validated_name}</span>.
           </p>
+          {(profile as any)?.name_verified ? (
+            <div className="mt-4 flex items-center gap-3 rounded-lg bg-[#EFF6EC] px-4 py-3">
+              <span className="text-base">✓</span>
+              <div>
+                <p className="text-sm font-semibold text-[#2B6A1C]">Badge active</p>
+                <p className="text-xs leading-5 text-[#2B6A1C]">Your display name matches your verified name.</p>
+              </div>
+            </div>
+          ) : (
+            <form action={useVerifiedNameAction} className="mt-4">
+              <button
+                type="submit"
+                className="w-full rounded-lg bg-[#001B5C] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#00144a]"
+              >
+                Use verified name &amp; show badge
+              </button>
+              <p className="mt-3 text-xs leading-5 text-gray-500">
+                Your current display name will be replaced with your government-verified name. You can switch back at any time.
+              </p>
+            </form>
+          )}
+        </div>
+      ) : null}
 
-          {avatarOptions && avatarOptions.length > 0 ? (
-            <div className="mt-5 grid gap-4 sm:grid-cols-2">
-              {avatarOptions.map((option: any) => {
-                const isSelected = option.id === (profile as any)?.profile_avatar_autograph_id;
-                return (
-                  <form
-                    key={option.id}
-                    action={updateProfileAvatarAction}
-                    className={`rounded-[14px] border p-4 transition-colors ${
-                      isSelected ? 'border-[#001B5C] bg-[#F3F6FF]' : 'border-gray-200 bg-[#F7F7F8]'
+      {/* Profile Image */}
+      <div className="mb-4 rounded-[6px] border border-gray-200 bg-white p-5">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500">Profile Image</p>
+        <p className="mt-3 text-sm leading-6 text-gray-600">
+          Choose a profile image from one of your autographs.
+        </p>
+
+        {avatarOptions && avatarOptions.length > 0 ? (
+          <div className="mt-4 grid grid-cols-3 gap-3 sm:grid-cols-4">
+            {avatarOptions.map((option: any) => {
+              const isSelected = option.id === (profile as any)?.profile_avatar_autograph_id;
+              return (
+                <form key={option.id} action={updateProfileAvatarAction}>
+                  <input type="hidden" name="autograph_id" value={option.id} />
+                  <button
+                    type="submit"
+                    className={`w-full overflow-hidden rounded-[4px] border transition-colors ${
+                      isSelected ? 'border-[#001B5C]' : 'border-gray-200 hover:border-gray-400'
                     }`}
                   >
-                    <input type="hidden" name="autograph_id" value={option.id} />
                     {option.thumbnail_url ? (
                       <img
                         src={option.thumbnail_url}
-                        alt={profile?.display_name ?? user.display_name}
-                        className="aspect-[4/5] w-full rounded-[12px] object-cover"
+                        alt={profile?.display_name ?? displayName}
+                        className="aspect-[3/5] w-full object-cover"
                       />
                     ) : (
-                      <div className="flex aspect-[4/5] w-full items-center justify-center rounded-[12px] bg-[#1C1C1F] text-sm font-semibold uppercase tracking-[0.25em] text-white/50">
-                        Ophinia
+                      <div className="flex aspect-[3/5] w-full items-center justify-center bg-[#1C1C1F] text-[9px] font-bold uppercase tracking-widest text-white/40">
+                        —
                       </div>
                     )}
-                    <div className="mt-3 flex items-center justify-between gap-3">
-                      <div className="text-sm font-semibold text-black">
-                        {option.creator_sequence_number != null ? `#${option.creator_sequence_number}` : 'Autograph'}
-                      </div>
-                      <button
-                        type="submit"
-                        className={`rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
-                          isSelected
-                            ? 'bg-[#001B5C] text-white'
-                            : 'border border-black text-black hover:bg-black hover:text-white'
-                        }`}
-                      >
-                        {isSelected ? 'Selected' : 'Use'}
-                      </button>
+                  </button>
+                  {isSelected && (
+                    <div className="mt-1 text-center text-[10px] font-semibold uppercase tracking-wide text-[#001B5C]">
+                      Active
                     </div>
-                  </form>
-                );
-              })}
-            </div>
-          ) : (
-            <p className="mt-5 text-sm text-gray-600">
-              You do not have any active autographs available to use as a profile image yet.
-            </p>
-          )}
-
-          {(profile as any)?.profile_avatar_autograph_id ? (
-            <form action={updateProfileAvatarAction} className="mt-5">
-              <button
-                type="submit"
-                className="w-full rounded-xl border border-black px-5 py-4 text-sm font-semibold text-black transition-colors hover:bg-black hover:text-white"
-              >
-                Clear Profile Image
-              </button>
-            </form>
-          ) : null}
-        </section>
-
-        <section className="web-panel p-7">
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
-            Creator Verification
+                  )}
+                </form>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="mt-4 text-sm text-gray-500">
+            No autographs available yet to use as a profile image.
           </p>
-          <p className="mt-3 text-sm leading-6 text-gray-600">
-            Ophinia creator verification and autograph minting are still handled in the mobile app. Use the web for profile, browsing, offers, checkout, and collection management.
-          </p>
-        </section>
+        )}
+
+        {(profile as any)?.profile_avatar_autograph_id ? (
+          <form action={updateProfileAvatarAction} className="mt-4">
+            <button
+              type="submit"
+              className="w-full rounded-lg border border-gray-300 px-5 py-3 text-sm font-semibold text-gray-700 transition-colors hover:border-black hover:text-black"
+            >
+              Clear Profile Image
+            </button>
+          </form>
+        ) : null}
+      </div>
+
+      {/* Creator Verification */}
+      <div className="mb-4 rounded-[6px] border border-gray-200 bg-white p-5">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500">Creator Verification</p>
+        <p className="mt-3 text-sm leading-6 text-gray-600">
+          Creator verification and autograph minting are handled in the Ophinia mobile app.
+        </p>
+      </div>
+
+      {/* Sign Out */}
+      <form action="/logout" method="post" className="mb-3">
+        <button
+          type="submit"
+          className="w-full rounded-lg border border-gray-300 px-5 py-3 text-sm font-semibold text-gray-700 transition-colors hover:border-black hover:text-black"
+        >
+          Sign Out
+        </button>
+      </form>
+
+      {/* Legal links */}
+      <div className="flex items-center justify-center gap-4 pt-2 text-xs text-gray-400">
+        <Link href="/privacy" className="hover:text-black">Privacy Policy</Link>
+        <span>·</span>
+        <Link href="/terms" className="hover:text-black">Terms of Service</Link>
+        <span>·</span>
+        <a href="mailto:hello@ophinia.com" className="hover:text-black">Contact Support</a>
       </div>
     </div>
   );
 }
 
-function DetailCard({ label, value }: { label: string; value: string }) {
+function AccountRow({
+  label,
+  value,
+  isLast = false,
+}: {
+  label: string;
+  value: string;
+  isLast?: boolean;
+}) {
   return (
-    <div className="rounded-lg bg-[#F7F7F8] px-4 py-4">
-      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">{label}</div>
-      <div className="mt-2 text-sm font-semibold text-black">{value}</div>
+    <div
+      className={`flex items-center justify-between px-5 py-4 ${
+        isLast ? '' : 'border-b border-gray-100'
+      }`}
+    >
+      <span className="text-sm text-gray-500">{label}</span>
+      <span className="text-sm font-semibold text-black">{value}</span>
     </div>
   );
 }

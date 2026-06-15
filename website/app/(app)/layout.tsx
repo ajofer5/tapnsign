@@ -18,7 +18,7 @@ export default async function WebAppLayout({ children }: { children: ReactNode }
               <Image src="/ophinia-logo.png" alt="Ophinia" width={120} height={32} className="h-8 w-auto" />
             </Link>
             <div className="hidden items-center gap-5 text-sm font-medium text-gray-600 md:flex">
-              <Link href={webRoutes.home} prefetch={false} className="hover:text-black">Home</Link>
+              <Link href={`/profile/${user.id}`} prefetch={false} className="hover:text-black">Profile</Link>
               <Link href={webRoutes.marketplace} prefetch={false} className="hover:text-black">Marketplace</Link>
               <Link href={webRoutes.collection} prefetch={false} className="hover:text-black">Collection</Link>
               <Link href={webRoutes.activity} prefetch={false} className="hover:text-black">Activity</Link>
@@ -30,7 +30,7 @@ export default async function WebAppLayout({ children }: { children: ReactNode }
             <div className="mt-1 flex items-center justify-end gap-3 text-xs font-medium text-gray-500">
               <Link href={webRoutes.saved} prefetch={false} className="hover:text-black">Saved</Link>
               <Link href={webRoutes.personalizedRequests} prefetch={false} className="hover:text-black">Requests</Link>
-              <Link href={webRoutes.myListings} prefetch={false} className="hover:text-black">Sell</Link>
+              <Link href={webRoutes.myListings} prefetch={false} className="hover:text-black">Prints</Link>
               <form action={webRoutes.logout} method="post">
                 <button
                   type="submit"

@@ -1,6 +1,6 @@
 # Creator Marketing Tips
 
-A TapnSign autograph is more than a signature — it's a verified digital collectible tied to your name, your image, and your reputation. How you build your catalog matters. Here's how to create lasting value for yourself and your collectors.
+An Ophinia autograph is more than a signature. It is a verified autograph tied to your name, your image, and your reputation. How you build your catalog matters. Here's how to create lasting value for yourself and your collectors.
 
 ---
 
@@ -47,7 +47,7 @@ A good starting approach: price your first series modestly, build a track record
 
 ## 5. Share Your QR Code Everywhere
 
-Your TapnSign QR code links directly to your profile. Put it to work:
+Your Ophinia QR code links directly to your profile. Put it to work:
 
 - Add it to your social media bio
 - Print it on business cards or at signing tables
@@ -68,10 +68,11 @@ Go-to-profile link and QR code are available in your Account under Marketing Too
 
 ## 7. Think Long Term
 
-The creators who build the most value on TapnSign are the ones who treat their digital catalog like a body of work — not a one-time event.
+The creators who build the most value on Ophinia are the ones who treat their autograph catalog like a body of work, not a one-time event.
 
 Release thoughtfully. Price consistently. Show up for your collectors. The value of your autographs over time reflects the care you put into creating them.
 
 ---
 
-*Have a tip or question? Reach us at hello@ophinia.com*
+Email: hello@ophinia.com
+Website: Ophinia.com

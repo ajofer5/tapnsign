@@ -9,7 +9,7 @@ const config: Config = {
           bg: '#F2F2F4',
           black: '#111111',
           navy: '#001B5C',
-          blue: '#0066FF',
+          blue: '#FA0909',
           violet: '#6722F7',
           gold: '#F1C168',
           ink: '#1F2430',

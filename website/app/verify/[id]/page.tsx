@@ -23,7 +23,7 @@ export async function generateMetadata({
   const { id } = await params;
   return {
     title: `Certificate of Authenticity — Ophinia`,
-    description: `Verify this Ophinia autograph certificate at tapnsign.com/verify/${id}`,
+    description: `Verify this Ophinia autograph certificate at ophinia.com/verify/${id}`,
   };
 }
 

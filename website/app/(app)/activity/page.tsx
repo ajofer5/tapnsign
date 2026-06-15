@@ -40,7 +40,7 @@ export default async function ActivityPage() {
             Your recent activity
           </h1>
           <p className="mt-4 max-w-3xl text-lg leading-8 text-gray-600">
-            Track purchases, sales, offers, and personalized request activity across your Ophinia account.
+            Track print orders, personalized requests, and account activity across your Ophinia account.
           </p>
         </div>
         <div className="rounded-lg bg-white px-5 py-3 text-sm font-semibold text-black shadow-sm">
@@ -52,7 +52,7 @@ export default async function ActivityPage() {
         <div className="web-panel mt-8 p-10 text-center">
           <h2 className="text-2xl font-black text-black">No activity yet</h2>
           <p className="mt-3 text-base text-gray-600">
-            Once you buy, sell, or interact with offers, your account activity will show up here.
+            Once you order prints, send personalized requests, or manage your account, activity will show up here.
           </p>
         </div>
       ) : (
@@ -148,10 +148,10 @@ function renderActivityMeta(entry: WebsiteActivityEntry) {
     return `The personalized request for ${entry.recipient_name} expired.`;
   }
   if (entry.type === 'personalized_request_fulfilled' && entry.request_role === 'requester' && entry.payment_due_at) {
-    return `Your personalized autograph is ready. Complete payment by ${formatDateTime(entry.payment_due_at)}.`;
+    return `Your personalized print is ready. Complete payment by ${formatDateTime(entry.payment_due_at)}.`;
   }
   if (entry.type === 'personalized_request_fulfilled' && entry.request_role === 'creator') {
-    return 'Your personalized autograph has been recorded and is waiting on buyer payment.';
+    return 'Your personalized print has been recorded and is waiting on buyer payment.';
   }
   if (entry.type === 'personalized_request_completed' && entry.recipient_name) {
     return `Completed for ${entry.recipient_name}.`;
@@ -160,14 +160,10 @@ function renderActivityMeta(entry: WebsiteActivityEntry) {
 }
 
 function getActivityHref(entry: WebsiteActivityEntry) {
-  if (entry.type === 'offer_accepted' && entry.offer_role === 'buyer' && !entry.accepted_transfer_id) {
-    return `/offers/${entry.id.replace('offer-', '')}/checkout`;
-  }
   if (
     entry.type === 'personalized_request_fulfilled' &&
     entry.request_role === 'requester' &&
-    entry.personalized_request_id &&
-    !entry.completed_transfer_id
+    entry.personalized_request_id
   ) {
     return `/personalized-requests/${entry.personalized_request_id}/checkout`;
   }

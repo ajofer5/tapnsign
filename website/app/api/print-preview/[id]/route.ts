@@ -79,7 +79,8 @@ export async function GET(
     creator_id: data.creator_id,
     thumbnail_url: previewUrl ?? data.thumbnail_url,
     prints_enabled: data.prints_enabled,
-    item_cents: 1500,
-    shipping_cents: 499,
+    item_cents: parseInt(process.env.PRINT_PRICE_CENTS ?? '1500', 10),
+    original_price_cents: parseInt(process.env.PRINT_ORIGINAL_PRICE_CENTS ?? '1500', 10),
+    shipping_cents: parseInt(process.env.SHIPPING_CENTS ?? '499', 10),
   });
 }

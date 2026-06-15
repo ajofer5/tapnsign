@@ -2,6 +2,8 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { MAX_DISPLAY_NAME_LENGTH, normalizeDisplayName } from '../../../../lib/display-name';
+import { PERSONALIZED_REQUEST_MIN_CENTS } from '../../../lib/personalized-policy';
 import { createWebsiteAdminSupabaseClient } from '../../../lib/supabase';
 import { requireWebSessionUser } from '../../../lib/web-auth';
 
@@ -39,13 +41,37 @@ export async function useVerifiedNameAction() {
   redirectAccount('verified_name_saved');
 }
 
+export async function updateBioAction(formData: FormData) {
+  const user = await requireWebSessionUser();
+  const rawBio = formData.get('bio');
+  const bio = typeof rawBio === 'string' ? rawBio.trim().slice(0, 100) : '';
+
+  const supabase = createWebsiteAdminSupabaseClient();
+  const { error } = await supabase
+    .from('profiles')
+    .update({ bio: bio || null })
+    .eq('id', user.id);
+
+  if (error) {
+    redirectAccount('bio_error');
+  }
+
+  revalidatePath('/account');
+  revalidatePath(`/profile/${user.id}`);
+  redirectAccount('bio_saved');
+}
+
 export async function updateDisplayNameAction(formData: FormData) {
   const user = await requireWebSessionUser();
   const rawName = formData.get('display_name');
-  const displayName = typeof rawName === 'string' ? rawName.trim() : '';
+  const displayName = typeof rawName === 'string' ? normalizeDisplayName(rawName) : '';
 
   if (!displayName) {
     redirectAccount('name_missing');
+  }
+
+  if (displayName.length > MAX_DISPLAY_NAME_LENGTH) {
+    redirectAccount('name_too_long');
   }
 
   const supabase = createWebsiteAdminSupabaseClient();
@@ -62,35 +88,6 @@ export async function updateDisplayNameAction(formData: FormData) {
   revalidatePath('/account');
   revalidatePath(`/profile/${user.id}`);
   redirectAccount('name_saved');
-}
-
-export async function updateInstagramAction(formData: FormData) {
-  const user = await requireWebSessionUser();
-  const rawHandle = formData.get('instagram_handle');
-  const handle = typeof rawHandle === 'string' ? rawHandle.trim().replace(/^@/, '') : '';
-
-  const supabase = createWebsiteAdminSupabaseClient();
-  const { error } = await supabase
-    .from('profiles')
-    .update({
-      instagram_handle: handle || null,
-      instagram_status: handle ? 'connected' : 'none',
-      instagram_verified_at: null,
-      instagram_verification_method: null,
-      instagram_verification_code: null,
-      instagram_verification_requested_at: null,
-      instagram_verification_expires_at: null,
-      instagram_verification_checked_at: null,
-    })
-    .eq('id', user.id);
-
-  if (error) {
-    redirectAccount('instagram_error');
-  }
-
-  revalidatePath('/account');
-  revalidatePath(`/profile/${user.id}`);
-  redirectAccount(handle ? 'instagram_saved' : 'instagram_removed');
 }
 
 export async function updateProfileAvatarAction(formData: FormData) {
@@ -135,18 +132,19 @@ export async function updatePersonalizedSettingsAction(formData: FormData) {
   const rawMinPrice = formData.get('personalized_min_price');
   const minPriceValue = typeof rawMinPrice === 'string' ? Number.parseFloat(rawMinPrice) : Number.NaN;
 
-  if (enabled && (!Number.isFinite(minPriceValue) || minPriceValue <= 0)) {
+  const minPriceCents = Math.round(minPriceValue * 100);
+  if (enabled && (!Number.isFinite(minPriceValue) || minPriceCents < PERSONALIZED_REQUEST_MIN_CENTS)) {
     redirectAccount('personalized_error');
   }
 
   const supabase = createWebsiteAdminSupabaseClient();
   const { data: profile } = await supabase
     .from('profiles')
-    .select('role')
+    .select('role, verified')
     .eq('id', user.id)
     .maybeSingle();
 
-  if (profile?.role !== 'verified') {
+  if (profile?.role !== 'verified' || profile?.verified !== true) {
     redirectAccount('personalized_error');
   }
 
@@ -154,7 +152,7 @@ export async function updatePersonalizedSettingsAction(formData: FormData) {
     .from('profiles')
     .update({
       personalized_requests_enabled: enabled,
-      personalized_min_price_cents: enabled ? Math.round(minPriceValue * 100) : null,
+      personalized_min_price_cents: enabled ? minPriceCents : null,
     })
     .eq('id', user.id);
 

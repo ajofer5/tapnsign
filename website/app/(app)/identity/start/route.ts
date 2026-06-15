@@ -23,12 +23,16 @@ export async function POST(request: NextRequest) {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('role, verification_status, suspended_at')
+    .select('role, verification_status, suspended_at, is_creator')
     .eq('id', user.id)
     .maybeSingle();
 
   if (profile?.suspended_at) {
     return redirectAfterPost(new URL('/identity?error=suspended', request.url));
+  }
+
+  if (profile?.is_creator !== true) {
+    return redirectAfterPost(new URL('/identity?error=ineligible', request.url));
   }
 
   if (profile?.role === 'verified' && profile?.verification_status === 'verified') {

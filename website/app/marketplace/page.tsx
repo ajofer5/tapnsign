@@ -62,11 +62,11 @@ export default async function MarketplacePage({
               Marketplace
             </p>
             <h1 className="mt-3 text-3xl font-black tracking-tight text-black md:text-4xl">
-              Verified digital autographs
+              Official autograph prints
             </h1>
           </div>
           <p className="max-w-2xl text-sm leading-7 text-gray-600 md:text-base">
-            Browse available listings, open an autograph, and continue into checkout or offers when you are ready.
+            Browse authenticated autographs and order official physical prints where available.
           </p>
         </section>
 
@@ -98,9 +98,9 @@ export default async function MarketplacePage({
           </>
         ) : (
           <div className="web-panel mt-8 p-10 text-center">
-            <h2 className="text-2xl font-black text-black">No active listings</h2>
+            <h2 className="text-2xl font-black text-black">No public prints</h2>
             <p className="mt-3 text-base text-gray-600">
-              Check back soon for newly listed autographs.
+              Check back soon for newly enabled official prints.
             </p>
           </div>
         )}

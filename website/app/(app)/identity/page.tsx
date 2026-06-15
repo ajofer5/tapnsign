@@ -14,12 +14,13 @@ export default async function VerifyPage({
   // Check if user is already verified
   const { data: profile } = await supabase
     .from('profiles')
-    .select('role, verification_status')
+    .select('role, verification_status, is_creator')
     .eq('id', user.id)
     .maybeSingle();
 
   const alreadyVerified =
     profile?.role === 'verified' && profile?.verification_status === 'verified';
+  const isEligibleForVerification = profile?.is_creator === true;
 
   // Check for a courtesy retry
   const { data: courtesyEvent } = await supabase
@@ -47,8 +48,8 @@ export default async function VerifyPage({
           Get Verified
         </h1>
         <p className="mt-4 text-lg leading-8 text-gray-600">
-          Verified creators get a badge on their profile and listings, building buyer trust and
-          unlocking higher visibility on the marketplace.
+          Verified creators get a badge on their profile and public prints, building fan trust and
+          unlocking higher visibility on Ophinia.
         </p>
 
         <div className="web-panel-inset mt-8 p-6">
@@ -63,7 +64,7 @@ export default async function VerifyPage({
           <ul className="mt-4 space-y-2 text-sm leading-7 text-gray-600">
             <li>✓ One-time fee — pay once, verified forever</li>
             <li>✓ Government-issued ID required for identity check</li>
-            <li>✓ Verification badge on your profile and all listings</li>
+            <li>✓ Verification badge on your profile and public prints</li>
             <li>✓ Promo codes accepted at checkout</li>
           </ul>
         </div>
@@ -84,13 +85,18 @@ export default async function VerifyPage({
             Your account is already verified.
           </div>
         ) : null}
-        {error && error !== 'already_verified' ? (
+        {error === 'ineligible' || !isEligibleForVerification ? (
+          <div className="mt-6 rounded-lg bg-[#FDECEC] px-5 py-4 text-sm font-medium text-[#B3261E]">
+            Creator verification is available only to users who are 18 or older.
+          </div>
+        ) : null}
+        {error && error !== 'already_verified' && error !== 'ineligible' ? (
           <div className="mt-6 rounded-lg bg-[#FDECEC] px-5 py-4 text-sm font-medium text-[#B3261E]">
             Could not complete verification checkout. Please try again or contact support.
           </div>
         ) : null}
 
-        {!alreadyVerified && status !== 'success' ? (
+        {!alreadyVerified && isEligibleForVerification && status !== 'success' ? (
           <form action="/identity/start" method="post" className="mt-8">
             <button
               type="submit"

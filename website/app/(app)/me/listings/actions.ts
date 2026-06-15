@@ -9,13 +9,11 @@ export type ListingActionState = {
   success?: string;
 };
 
-const MIN_PRICE_CENTS = 500;
-
-function parseMoneyToCents(raw: FormDataEntryValue | null) {
-  if (typeof raw !== 'string') return null;
-  const amount = Number.parseFloat(raw.trim().replace(/[$,\s]/g, ''));
-  if (!Number.isFinite(amount) || amount <= 0) return null;
-  return Math.round(amount * 100);
+function parseOptionalPositiveInteger(raw: FormDataEntryValue | null) {
+  if (typeof raw !== 'string' || raw.trim() === '') return null;
+  const value = Number.parseInt(raw.trim(), 10);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  return value;
 }
 
 export async function saveListingAction(
@@ -24,18 +22,12 @@ export async function saveListingAction(
 ): Promise<void> {
   const user = await requireWebSessionUser();
   const supabase = createWebsiteAdminSupabaseClient();
-  const listingMode = formData.get('listing_mode') === 'buy_now' ? 'buy_now' : 'make_offer';
-  const priceCents = parseMoneyToCents(formData.get('price'));
-  const autoDeclineBelow = formData.get('auto_decline_below') === 'on';
-  const autoAcceptAbove = formData.get('auto_accept_above') === 'on';
-
-  if (!priceCents || priceCents < MIN_PRICE_CENTS) {
-    throw new Error(`Price must be at least $${(MIN_PRICE_CENTS / 100).toFixed(2)}.`);
-  }
+  const printsEnabled = formData.get('prints_enabled') === 'on';
+  const printLimit = parseOptionalPositiveInteger(formData.get('print_limit'));
 
   const { data: autograph } = await supabase
     .from('autographs')
-    .select('id, owner_id, status')
+    .select('id, owner_id, creator_id, status')
     .eq('id', autographId)
     .maybeSingle();
 
@@ -43,18 +35,25 @@ export async function saveListingAction(
     throw new Error('Autograph is not available to list.');
   }
 
+  const updatePayload: Record<string, unknown> = {
+    visibility: printsEnabled ? 'public' : 'private',
+    sale_state: 'not_for_sale',
+    is_for_sale: false,
+    price_cents: null,
+    listing_mode: 'make_offer',
+    open_to_trade: false,
+    auto_decline_below: false,
+    auto_accept_above: false,
+  };
+
+  if (autograph.creator_id === user.id) {
+    updatePayload.prints_enabled = printsEnabled;
+    updatePayload.print_limit = printsEnabled ? printLimit : null;
+  }
+
   const { error } = await supabase
     .from('autographs')
-    .update({
-      visibility: 'public',
-      sale_state: 'fixed',
-      is_for_sale: true,
-      price_cents: priceCents,
-      listing_mode: listingMode,
-      open_to_trade: false,
-      auto_decline_below: listingMode === 'make_offer' ? autoDeclineBelow : false,
-      auto_accept_above: listingMode === 'make_offer' ? autoAcceptAbove : false,
-    })
+    .update(updatePayload)
     .eq('id', autographId)
     .eq('owner_id', user.id);
 

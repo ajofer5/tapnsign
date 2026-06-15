@@ -22,7 +22,7 @@ export default async function PersonalizedRequestsPage() {
             Private autograph commissions
           </h1>
           <p className="mt-4 max-w-3xl text-lg leading-8 text-gray-600">
-            Track personalized autograph requests across both sides of the transaction. Creator-side recording still continues in the mobile app.
+            Track personalized print requests across both sides of the transaction. Creator-side recording still continues in the mobile app.
           </p>
         </div>
         <div className="rounded-lg bg-white px-5 py-3 text-sm font-semibold text-black shadow-sm">
@@ -76,8 +76,7 @@ function RequestCard({
 }) {
   const checkoutHref =
     role === 'requester' &&
-    request.status === 'fulfilled' &&
-    !request.completed_transfer_id
+    request.status === 'fulfilled'
       ? `/personalized-requests/${request.id}/checkout`
       : null;
 
@@ -157,8 +156,8 @@ function getRequestMeta(
   }
   if (request.status === 'accepted') {
     return role === 'creator'
-      ? 'Accepted. Record the personalized autograph in the app to finish fulfillment.'
-      : 'Accepted. The creator can now record your personalized autograph.';
+      ? 'Accepted. Record the personalized print in the app to finish fulfillment.'
+      : 'Accepted. The creator can now record your personalized print.';
   }
   if (request.status === 'declined') {
     return 'This request was declined.';

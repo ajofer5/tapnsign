@@ -3,7 +3,7 @@
 **Effective Date:** April 19, 2026
 **Last Updated:** June 2, 2026 (rev. 10)
 
-These Terms of Service ("Terms") govern your use of the Ophinia mobile application (the "App") and related website experiences, including tapnsign.com (the "Website"), operated by TAPNSIGN LLC ("TAPNSIGN LLC," "Ophinia," "we," "us," or "our"), an Indiana limited liability company. By creating an account or using the App or Website, you agree to these Terms.
+These Terms of Service ("Terms") govern your use of the Ophinia mobile application (the "App") and related website experiences, including Ophinia.com (the "Website"), operated by Ophinia ("Ophinia," "we," "us," or "our"). By creating an account or using the App or Website, you agree to these Terms.
 
 ---
 
@@ -82,15 +82,15 @@ Ophinia allows users to make offers on eligible autographs and to purchase perso
 
 ## 8. Official Prints
 
-Ophinia offers an official print product ("Official Print") that allows the current owner of an autograph to order a physical numbered print based on that autograph.
+Ophinia offers an official print product ("Official Print") that allows eligible users to order a physical print based on an autograph.
 
 ### 8.1 Product Format
 
 Official Prints are currently offered in an **8×10** format. Pricing, shipping charges, and availability are shown at the time of order and may change from time to time.
 
-### 8.2 Numbered Prints
+### 8.2 Print Records
 
-Each approved print order receives its own print sequence number and platform print record. Print numbering, availability, and ordering rules are controlled by Ophinia and may change as the product evolves.
+Each approved print order receives a platform print record and may receive an internal print sequence number for tracking, fulfillment, support, and marketplace analytics. Internal print numbering, availability, and ordering rules are controlled by Ophinia and may change as the product evolves.
 
 ### 8.3 Fulfillment
 
@@ -140,7 +140,7 @@ You agree not to:
 - Impersonate any person or entity or misrepresent your affiliation
 - Attempt to gain unauthorized access to the App, Website, or supporting infrastructure
 - Scrape, crawl, extract, or use automated means to access the platform without permission
-- Manipulate prices, offers, checkout flows, recommendation systems, or platform signals
+- Manipulate prices, payments, recommendation systems, or platform signals
 - Engage in fraudulent transactions or submit false damage claims
 - Capture, upload, or sell autographs of another person without authorization
 - Misuse public certificate pages, profile links, or QR flows
@@ -151,7 +151,7 @@ You agree not to:
 ## 11. Intellectual Property
 
 - **Your content:** You retain ownership of content you lawfully create and upload. By uploading content, you grant us a non-exclusive, worldwide, royalty-free license to host, store, display, reproduce, process, and deliver that content as necessary to operate, promote, secure, and improve the App and Website
-- **Our content:** The Ophinia name, brand assets, product design, software, and related materials are owned by TAPNSIGN LLC or its licensors
+- **Our content:** The Ophinia name, brand assets, product design, software, and related materials are owned by Ophinia or its licensors
 - **Print content:** Official Prints are licensed for personal display and collection only unless we explicitly state otherwise
 
 ---
@@ -183,15 +183,15 @@ We do not guarantee that:
 
 ## 14. Limitation of Liability
 
-TO THE FULLEST EXTENT PERMITTED BY LAW, TAPNSIGN LLC SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, EXEMPLARY, OR PUNITIVE DAMAGES, OR FOR ANY LOSS OF PROFITS, DATA, GOODWILL, OR OTHER INTANGIBLE LOSSES, ARISING OUT OF OR RELATED TO YOUR USE OF THE APP OR WEBSITE.
+TO THE FULLEST EXTENT PERMITTED BY LAW, OPHINIA SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, EXEMPLARY, OR PUNITIVE DAMAGES, OR FOR ANY LOSS OF PROFITS, DATA, GOODWILL, OR OTHER INTANGIBLE LOSSES, ARISING OUT OF OR RELATED TO YOUR USE OF THE APP OR WEBSITE.
 
-TO THE FULLEST EXTENT PERMITTED BY LAW, OUR TOTAL LIABILITY TO YOU FOR ANY CLAIM ARISING OUT OF OR RELATING TO THE APP, WEBSITE, OR THESE TERMS WILL NOT EXCEED THE GREATER OF (A) THE AMOUNT YOU PAID TO TAPNSIGN LLC IN THE 12 MONTHS BEFORE THE CLAIM AROSE OR (B) $100.
+TO THE FULLEST EXTENT PERMITTED BY LAW, OUR TOTAL LIABILITY TO YOU FOR ANY CLAIM ARISING OUT OF OR RELATING TO THE APP, WEBSITE, OR THESE TERMS WILL NOT EXCEED THE GREATER OF (A) THE AMOUNT YOU PAID TO OPHINIA IN THE 12 MONTHS BEFORE THE CLAIM AROSE OR (B) $100.
 
 ---
 
 ## 15. Indemnification
 
-You agree to indemnify, defend, and hold harmless TAPNSIGN LLC and its members, officers, employees, contractors, agents, and licensors from and against any claims, liabilities, damages, losses, costs, and expenses (including reasonable attorneys' fees) arising out of or related to your content, your use of the App or Website, your transactions, or your violation of these Terms or any third-party rights.
+You agree to indemnify, defend, and hold harmless Ophinia and its members, officers, employees, contractors, agents, and licensors from and against any claims, liabilities, damages, losses, costs, and expenses (including reasonable attorneys' fees) arising out of or related to your content, your use of the App or Website, your transactions, or your violation of these Terms or any third-party rights.
 
 ---
 
@@ -217,6 +217,5 @@ We may update these Terms from time to time. We will notify you of material chan
 
 If you have questions about these Terms, please contact us:
 
-**TAPNSIGN LLC**
 Email: hello@ophinia.com
 Website: Ophinia.com

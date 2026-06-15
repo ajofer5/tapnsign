@@ -36,7 +36,7 @@ export default async function PersonalizedRequestCheckoutPage({
     <div className="mx-auto max-w-3xl px-6 py-10">
       <div className="web-panel p-8">
         <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
-          Personalized Autograph Checkout
+          Personalized Print Checkout
         </p>
         <h1 className="mt-3 text-4xl font-black tracking-tight text-black">
           {request.autograph?.creator_name ?? 'Ophinia Creator'}
@@ -63,7 +63,7 @@ export default async function PersonalizedRequestCheckoutPage({
 
         {status === 'success' ? (
           <div className="mt-6 rounded-lg bg-[#EFF6EC] px-5 py-4 text-sm font-medium text-[#2B6A1C]">
-            Purchase complete. Your personalized autograph is now in your Ophinia collection.
+            Purchase complete. Your personalized print is ready for fulfillment.
           </div>
         ) : null}
         {canceled ? (
@@ -77,7 +77,7 @@ export default async function PersonalizedRequestCheckoutPage({
           </div>
         ) : null}
 
-        {request.status === 'fulfilled' && !request.completed_transfer_id ? (
+        {request.status === 'fulfilled' ? (
           <form action={`/personalized-requests/${request.id}/checkout/start`} method="post" className="mt-8">
             <button
               type="submit"

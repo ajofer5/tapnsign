@@ -1,5 +1,6 @@
 import { createWebsiteAdminSupabaseClient } from './supabase';
 import { mapWebsiteListingRow, type WebsiteListing } from './listings';
+import { DIGITAL_TRADING_ENABLED } from './digital-trading';
 
 export type MarketplaceCursor = {
   beforeCreatedAt: string;
@@ -28,7 +29,9 @@ export async function getMarketplaceListings(
     throw new Error(error.message);
   }
 
-  const listings = (rows ?? []).map(mapWebsiteListingRow);
+  const listings = (rows ?? [])
+    .map(mapWebsiteListingRow)
+    .filter((listing: WebsiteListing) => DIGITAL_TRADING_ENABLED || listing.prints_enabled);
   const last = listings[listings.length - 1];
 
   return {

@@ -38,15 +38,35 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       })
       .eq('id', paymentEventId);
 
-    const { data: result, error } = await supabase
-      .rpc('rpc_finalize_personalized_request_purchase', {
-        p_request_id: requestId,
-        p_payment_event_id: paymentEventId,
-        p_buyer_id: user.id,
-      });
+    const completedAt = new Date().toISOString();
+    const { data: completedRequest, error } = await supabase
+      .from('personalized_autograph_requests')
+      .update({
+        status: 'completed',
+        completed_at: completedAt,
+        payment_event_id: paymentEventId,
+        updated_at: completedAt,
+      })
+      .eq('id', requestId)
+      .eq('requester_id', user.id)
+      .eq('status', 'fulfilled')
+      .select('id')
+      .maybeSingle();
 
-    if (error || !result) {
+    if (error || !completedRequest) {
       return NextResponse.redirect(new URL(`/personalized-requests/${requestId}/checkout?error=finalize`, request.url));
+    }
+
+    if (personalizedRequest.buyer_commitment_id) {
+      await supabase
+        .from('buyer_commitments')
+        .update({
+          status: 'charged',
+          charged_at: completedAt,
+          updated_at: completedAt,
+        })
+        .eq('id', personalizedRequest.buyer_commitment_id)
+        .eq('status', 'committed');
     }
 
     return NextResponse.redirect(new URL(`/personalized-requests/${requestId}/checkout?status=success`, request.url));

@@ -29,7 +29,7 @@ export default async function LoginPage({
   const loggedOut = resolvedSearch?.logged_out === '1';
 
   return (
-    <main className="min-h-screen bg-[#F2F2F4] px-6 py-10 md:py-16">
+    <main className="min-h-screen bg-white px-6 py-10 md:py-16">
       <div className="mx-auto flex min-h-[80vh] max-w-md flex-col items-center justify-center">
         <Link href="/" className="mb-8">
           <Image
@@ -83,7 +83,7 @@ export default async function LoginPage({
             name="email"
             defaultValue={email}
             placeholder="Email"
-            className="w-full rounded-lg border border-transparent bg-white px-4 py-4 text-base text-black outline-none transition-colors placeholder:text-[#999] focus:border-[#001B5C]"
+            className="w-full rounded-lg border border-gray-200 bg-white px-4 py-4 text-base text-black outline-none transition-colors placeholder:text-[#999] focus:border-[#001B5C]"
             autoComplete="email"
             required
           />
@@ -91,7 +91,7 @@ export default async function LoginPage({
             type="password"
             name="password"
             placeholder="Password"
-            className="w-full rounded-lg border border-transparent bg-white px-4 py-4 text-base text-black outline-none transition-colors placeholder:text-[#999] focus:border-[#001B5C]"
+            className="w-full rounded-lg border border-gray-200 bg-white px-4 py-4 text-base text-black outline-none transition-colors placeholder:text-[#999] focus:border-[#001B5C]"
             autoComplete="current-password"
             required
           />

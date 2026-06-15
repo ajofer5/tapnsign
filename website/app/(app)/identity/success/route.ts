@@ -30,6 +30,24 @@ export async function GET(request: NextRequest) {
     const supabase = createWebsiteAdminSupabaseClient();
     const now = new Date().toISOString();
 
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('is_creator, suspended_at, role, verification_status')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    if (profile?.suspended_at) {
+      return NextResponse.redirect(new URL('/identity?error=suspended', request.url));
+    }
+
+    if (profile?.is_creator !== true) {
+      return NextResponse.redirect(new URL('/identity?error=ineligible', request.url));
+    }
+
+    if (profile?.role === 'verified' && profile?.verification_status === 'verified') {
+      return NextResponse.redirect(new URL('/identity?error=already_verified', request.url));
+    }
+
     // Fetch the payment event to determine access type
     const { data: paymentEvent } = await supabase
       .from('payment_events')

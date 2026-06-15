@@ -4,6 +4,7 @@ export type WebsitePersonalizedRequest = {
   id: string;
   creator_id: string;
   requester_id: string;
+  buyer_commitment_id: string | null;
   minted_autograph_id: string | null;
   recipient_name: string;
   inscription_text: string | null;
@@ -62,6 +63,7 @@ export async function getPersonalizedRequest(id: string): Promise<WebsitePersona
       id,
       creator_id,
       requester_id,
+      buyer_commitment_id,
       minted_autograph_id,
       recipient_name,
       inscription_text,
@@ -96,6 +98,7 @@ export async function getPersonalizedRequest(id: string): Promise<WebsitePersona
     id: (data as any).id,
     creator_id: (data as any).creator_id,
     requester_id: (data as any).requester_id,
+    buyer_commitment_id: (data as any).buyer_commitment_id ?? null,
     minted_autograph_id: (data as any).minted_autograph_id ?? null,
     recipient_name: (data as any).recipient_name,
     inscription_text: (data as any).inscription_text ?? null,

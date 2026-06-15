@@ -8,6 +8,7 @@ type PreviewData = {
   creator_id: string;
   thumbnail_url: string | null;
   item_cents: number;
+  original_price_cents: number;
   shipping_cents: number;
 };
 
@@ -119,32 +120,6 @@ export function PrintCheckoutModal({ autographId, onClose }: Props) {
                     Ophinia
                   </div>
                 )}
-                {/* Watermark overlay — matches app style */}
-                <div className="pointer-events-none absolute inset-0 select-none overflow-hidden flex items-center justify-center">
-                  {/* Diagonal band */}
-                  <div
-                    className="absolute w-[150%] py-3 flex items-center justify-center"
-                    style={{
-                      transform: 'rotate(-28deg)',
-                      backgroundColor: 'rgba(255,255,255,0.82)',
-                      borderTop: '1px solid rgba(0,27,92,0.35)',
-                      borderBottom: '1px solid rgba(0,27,92,0.35)',
-                    }}
-                  >
-                    <span className="text-[#001B5C] text-2xl font-black tracking-[0.08em] uppercase">
-                      PREVIEW
-                    </span>
-                  </div>
-                  {/* Bottom badge */}
-                  <div
-                    className="absolute bottom-2.5 px-2.5 py-1"
-                    style={{ backgroundColor: 'rgba(0,27,92,0.82)' }}
-                  >
-                    <span className="text-white text-[10px] font-bold uppercase tracking-[0.12em]">
-                      Official print preview
-                    </span>
-                  </div>
-                </div>
               </div>
 
               {/* Creator info + quantity */}
@@ -181,6 +156,14 @@ export function PrintCheckoutModal({ autographId, onClose }: Props) {
 
               {/* Price breakdown */}
               <div className="mt-4 rounded-lg bg-gray-50 px-4 py-3 text-sm">
+                {preview.item_cents < preview.original_price_cents && (
+                  <div className="mb-2 flex items-center gap-2">
+                    <span className="rounded-[4px] bg-red-100 px-2 py-0.5 text-[11px] font-black uppercase tracking-wide text-red-600">
+                      {Math.round((1 - preview.item_cents / preview.original_price_cents) * 100)}% OFF
+                    </span>
+                    <span className="text-xs text-gray-400 line-through">{formatMoney(preview.original_price_cents)} regular price</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-gray-600">
                   <span>{formatMoney(preview.item_cents)} × {quantity}</span>
                   <span>{formatMoney(itemTotal)}</span>
@@ -193,6 +176,11 @@ export function PrintCheckoutModal({ autographId, onClose }: Props) {
                   <span>Total</span>
                   <span>{formatMoney(total)}</span>
                 </div>
+                {preview.item_cents < preview.original_price_cents && (
+                  <div className="mt-1 text-right text-xs font-semibold text-green-600">
+                    You save {formatMoney((preview.original_price_cents - preview.item_cents) * quantity)}
+                  </div>
+                )}
               </div>
 
               {/* Email */}
@@ -235,7 +223,11 @@ export function PrintCheckoutModal({ autographId, onClose }: Props) {
                 disabled={!ageConfirmed || submitting}
                 className="mt-4 w-full rounded-lg bg-[#001B5C] py-3.5 text-sm font-semibold text-white transition-colors hover:bg-[#00144A] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {submitting ? 'Redirecting to payment…' : `Buy Print — ${formatMoney(total)}`}
+                {submitting ? 'Redirecting to payment…' : (
+                  preview && preview.item_cents < preview.original_price_cents
+                    ? <>Buy Print — {formatMoney(total)} <span className="opacity-60 line-through">{formatMoney((preview.original_price_cents * quantity) + shipping)}</span></>
+                    : `Buy Print — ${formatMoney(total)}`
+                )}
               </button>
 
               <p className="mt-2 text-center text-[10px] text-gray-400">

@@ -1,10 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import {
-  canBuyNow,
-  canMakeOffer,
   formatDate,
-  formatMoney,
   getWebsiteListing,
 } from '../../../lib/listings';
 import { toggleWatchlistAction } from '../../../app/actions/watchlist';
@@ -52,33 +49,13 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
             <div className="flex flex-wrap items-end justify-between gap-6">
               <div>
                 <div className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
-                  {listing.offer_locked_until
-                    ? 'Status'
-                    : listing.listing_mode === 'buy_now'
-                      ? 'Price'
-                      : 'Estimated Value'}
+                  Official Print
                 </div>
                 <div className="mt-2 text-4xl font-black text-black">
-                  {listing.offer_locked_until ? 'Sale Pending' : formatMoney(listing.price_cents)}
+                  {listing.prints_enabled ? 'Prints Available' : 'View Only'}
                 </div>
               </div>
               <div className="flex flex-wrap gap-3">
-                {canBuyNow(listing) ? (
-                  <Link
-                    href={`/checkout/${listing.id}`}
-                    className="rounded-full bg-black px-6 py-3 text-center text-sm font-semibold text-white transition-colors hover:bg-[#2A2A2D]"
-                  >
-                    Buy
-                  </Link>
-                ) : null}
-                {canMakeOffer(listing) ? (
-                  <Link
-                    href={`/offer/${listing.id}`}
-                    className="rounded-full bg-black px-6 py-3 text-center text-sm font-semibold text-white transition-colors hover:bg-[#2A2A2D]"
-                  >
-                    Make Offer
-                  </Link>
-                ) : null}
                 <form action={toggleWatchlistAction.bind(null, listing.id, isSaved, `/autograph/${listing.id}`)}>
                   <button
                     type="submit"
@@ -94,7 +71,6 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
           <div className="mt-8 grid gap-6 md:grid-cols-2">
             <div className="space-y-4 text-sm text-gray-700">
               <Detail label="Captured" value={formatDate(listing.created_at)} />
-              <Detail label="Listed by" value={listing.owner?.display_name ?? '—'} />
               <Detail label="Creator verified" value={listing.creator?.verified ? 'Yes' : 'No'} />
             </div>
             <div className="space-y-3">

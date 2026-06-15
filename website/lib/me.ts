@@ -35,6 +35,8 @@ export type WebsiteMyListing = {
   auto_accept_above: boolean;
   offer_locked_until: string | null;
   print_count: number | null;
+  prints_enabled: boolean;
+  print_limit: number | null;
 };
 
 export type WebsiteIncomingOffer = {
@@ -107,6 +109,27 @@ export type WebsiteActivityEntry = {
   completed_transfer_id?: string | null;
 };
 
+type WebsiteActivityFeedRow = {
+  feed_id: string;
+  event_type: WebsiteActivityEntry['type'];
+  autograph_id: string | null;
+  creator_name: string;
+  creator_sequence_number: number | null;
+  series_name: string | null;
+  amount_cents: number;
+  event_at: string;
+  status?: WebsiteActivityEntry['status'] | null;
+  offer_role?: WebsiteActivityEntry['offer_role'] | null;
+  expires_at?: string | null;
+  payment_due_at?: string | null;
+  accepted_transfer_id?: string | null;
+  personalized_request_id?: string | null;
+  request_role?: WebsiteActivityEntry['request_role'] | null;
+  recipient_name?: string | null;
+  inscription_text?: string | null;
+  completed_transfer_id?: string | null;
+};
+
 function mapMyListingRow(row: any): WebsiteMyListing {
   const base = mapWebsiteListingRow(row);
   return {
@@ -115,6 +138,8 @@ function mapMyListingRow(row: any): WebsiteMyListing {
     series_max_size: base.series_max_size ?? null,
     offer_locked_until: base.offer_locked_until ?? null,
     print_count: base.print_count ?? null,
+    prints_enabled: base.prints_enabled,
+    print_limit: base.print_limit,
     creator_name: base.creator?.display_name ?? 'Creator',
     is_for_sale: !!row.is_for_sale,
     auto_decline_below: !!row.auto_decline_below,
@@ -255,174 +280,37 @@ export async function getMyOfferQueue(
   return { groups, nextCursor };
 }
 
-function parseAutographLabel(autograph: any) {
-  return {
-    creatorName: autograph?.creator?.display_name ?? 'Unknown',
-    creatorSequenceNumber: autograph?.creator_sequence_number ?? null,
-    seriesName: autograph?.series?.name ?? null,
-  };
-}
-
 export async function getMyActivity(userId: string): Promise<WebsiteActivityEntry[]> {
   const supabase = createWebsiteAdminSupabaseClient();
-  const [transfersRes, offersRes, personalizedRes] = await Promise.all([
-    supabase
-      .from('transfers')
-      .select(
-        'id, autograph_id, from_user_id, to_user_id, price_cents, transferred_at, autograph:autograph_id ( creator_sequence_number, creator:creator_id ( display_name ), series:series_id ( name ) )'
-      )
-      .or(`from_user_id.eq.${userId},to_user_id.eq.${userId}`)
-      .order('transferred_at', { ascending: false }),
-    supabase
-      .from('autograph_offers')
-      .select(
-        'id, autograph_id, buyer_id, owner_id, amount_cents, status, created_at, responded_at, expires_at, payment_due_at, accepted_transfer_id, autograph:autograph_id ( creator_sequence_number, creator:creator_id ( display_name ), series:series_id ( name ) )'
-      )
-      .or(`buyer_id.eq.${userId},owner_id.eq.${userId}`)
-      .order('created_at', { ascending: false }),
-    supabase
-      .from('personalized_autograph_requests')
-      .select(`
-        id,
-        creator_id,
-        requester_id,
-        minted_autograph_id,
-        recipient_name,
-        inscription_text,
-        amount_cents,
-        status,
-        created_at,
-        responded_at,
-        fulfilled_at,
-        completed_at,
-        expires_at,
-        payment_due_at,
-        completed_transfer_id,
-        creator:creator_id ( display_name ),
-        autograph:minted_autograph_id ( creator_sequence_number )
-      `)
-      .or(`creator_id.eq.${userId},requester_id.eq.${userId}`)
-      .order('created_at', { ascending: false }),
-  ]);
+  const { data, error } = await supabase.rpc('get_activity_feed', {
+    p_user_id: userId,
+    p_limit: 100,
+    p_before_event_at: null,
+    p_before_feed_id: null,
+  });
 
-  const results: WebsiteActivityEntry[] = [];
-
-  for (const transfer of transfersRes.data ?? []) {
-    const { creatorName, creatorSequenceNumber, seriesName } = parseAutographLabel(transfer.autograph);
-    if (transfer.from_user_id === userId) {
-      results.push({
-        id: `transfer-sold-${transfer.id}`,
-        type: 'sold',
-        autograph_id: transfer.autograph_id,
-        creator_name: creatorName,
-        creator_sequence_number: creatorSequenceNumber,
-        series_name: seriesName,
-        amount_cents: transfer.price_cents,
-        date: transfer.transferred_at,
-      });
-    } else {
-      results.push({
-        id: `transfer-purchased-${transfer.id}`,
-        type: 'purchased',
-        autograph_id: transfer.autograph_id,
-        creator_name: creatorName,
-        creator_sequence_number: creatorSequenceNumber,
-        series_name: seriesName,
-        amount_cents: transfer.price_cents,
-        date: transfer.transferred_at,
-      });
-    }
+  if (error || !data) {
+    return [];
   }
 
-  for (const offer of offersRes.data ?? []) {
-    const { creatorName, creatorSequenceNumber, seriesName } = parseAutographLabel(offer.autograph);
-    const isOwner = offer.owner_id === userId;
-    let type: WebsiteActivityEntry['type'];
-
-    if (offer.status === 'pending') {
-      type = isOwner ? 'offer_received' : 'offer_sent';
-    } else if (offer.status === 'accepted') {
-      type = 'offer_accepted';
-    } else if (offer.status === 'on_hold') {
-      type = 'offer_on_hold';
-    } else if (offer.status === 'declined') {
-      type = 'offer_declined';
-    } else if (offer.status === 'withdrawn') {
-      type = 'offer_withdrawn';
-    } else {
-      type = 'offer_expired';
-    }
-
-    results.push({
-      id: `offer-${offer.id}`,
-      type,
-      autograph_id: offer.autograph_id,
-      creator_name: creatorName,
-      creator_sequence_number: creatorSequenceNumber,
-      series_name: seriesName,
-      amount_cents: offer.amount_cents,
-      date: offer.responded_at ?? offer.created_at,
-      status: offer.status,
-      offer_role: isOwner ? 'owner' : 'buyer',
-      expires_at: offer.expires_at,
-      payment_due_at: offer.payment_due_at,
-      accepted_transfer_id: offer.accepted_transfer_id,
-    });
-  }
-
-  for (const request of personalizedRes.data ?? []) {
-    const isCreator = request.creator_id === userId;
-    const creatorRow = Array.isArray(request.creator)
-      ? (request.creator[0] as { display_name?: string | null } | undefined)
-      : (request.creator as { display_name?: string | null } | null | undefined);
-    const autographRow = Array.isArray(request.autograph)
-      ? (request.autograph[0] as { creator_sequence_number?: number | null } | undefined)
-      : (request.autograph as { creator_sequence_number?: number | null } | null | undefined);
-    let type: WebsiteActivityEntry['type'];
-
-    if (request.status === 'pending') {
-      type = isCreator ? 'personalized_request_received' : 'personalized_request_sent';
-    } else if (request.status === 'countered') {
-      type = 'personalized_request_countered';
-    } else if (request.status === 'accepted') {
-      type = 'personalized_request_accepted';
-    } else if (request.status === 'declined') {
-      type = 'personalized_request_declined';
-    } else if (request.status === 'withdrawn') {
-      type = 'personalized_request_withdrawn';
-    } else if (request.status === 'expired') {
-      type = 'personalized_request_expired';
-    } else if (request.status === 'fulfilled') {
-      type = 'personalized_request_fulfilled';
-    } else {
-      type = 'personalized_request_completed';
-    }
-
-    const requestDate =
-      request.completed_at ??
-      request.fulfilled_at ??
-      request.responded_at ??
-      request.created_at;
-
-    results.push({
-      id: `personalized-${request.id}`,
-      type,
-      autograph_id: request.minted_autograph_id ?? null,
-      creator_name: creatorRow?.display_name ?? 'Creator',
-      creator_sequence_number: autographRow?.creator_sequence_number ?? null,
-      series_name: null,
-      amount_cents: request.amount_cents,
-      date: requestDate,
-      expires_at: request.expires_at ?? null,
-      payment_due_at: request.payment_due_at ?? null,
-      personalized_request_id: request.id,
-      request_role: isCreator ? 'creator' : 'requester',
-      recipient_name: request.recipient_name,
-      inscription_text: request.inscription_text ?? null,
-      completed_transfer_id: request.completed_transfer_id ?? null,
-    });
-  }
-
-  results.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  return results;
+  return (data as WebsiteActivityFeedRow[]).map((row) => ({
+    id: row.feed_id,
+    type: row.event_type,
+    autograph_id: row.autograph_id,
+    creator_name: row.creator_name,
+    creator_sequence_number: row.creator_sequence_number ?? null,
+    series_name: row.series_name ?? null,
+    amount_cents: row.amount_cents,
+    date: row.event_at,
+    status: row.status ?? undefined,
+    offer_role: row.offer_role ?? undefined,
+    expires_at: row.expires_at ?? undefined,
+    payment_due_at: row.payment_due_at ?? undefined,
+    accepted_transfer_id: row.accepted_transfer_id ?? undefined,
+    personalized_request_id: row.personalized_request_id ?? undefined,
+    request_role: row.request_role ?? undefined,
+    recipient_name: row.recipient_name ?? undefined,
+    inscription_text: row.inscription_text ?? undefined,
+    completed_transfer_id: row.completed_transfer_id ?? undefined,
+  }));
 }

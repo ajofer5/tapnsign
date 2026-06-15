@@ -75,19 +75,19 @@ export default function HomePage() {
 
       <section className="bg-white px-6 py-20">
         <div className="mx-auto max-w-4xl">
-          <div className="mb-3 text-center text-sm font-bold uppercase tracking-widest text-[#6722F7]">
+          <div className="mb-3 text-center text-[1.75rem] font-bold uppercase tracking-widest text-[#001B5C]">
             Creators
           </div>
           <h2 className="mb-4 text-center text-3xl font-black md:text-4xl">
             Your name. Your image. Your terms.
           </h2>
           <p className="mx-auto mb-12 max-w-2xl text-center text-lg text-gray-500">
-            Ophinia gives creators direct control over verified autograph capture, pricing, and collectible ownership without compromising presentation.
+            Ophinia gives creators direct control over verified autograph capture, official prints, and certificate-backed presentation.
           </p>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <BulletCard text="Identity verified through Stripe Identity so fans know it is really you." />
             <BulletCard text="Capture a personalized video autograph in seconds." />
-            <BulletCard text="Set your own price and sell directly to your audience." />
+            <BulletCard text="Enable official print ordering for autographs you want to share publicly." />
             <BulletCard text="Every autograph stays tied to a permanent certificate record." />
           </div>
         </div>
@@ -95,20 +95,20 @@ export default function HomePage() {
 
       <section className="bg-white px-6 py-20">
         <div className="mx-auto max-w-4xl">
-          <div className="mb-3 text-center text-sm font-bold uppercase tracking-widest text-[#0066FF]">
+          <div className="mb-3 text-center text-[1.75rem] font-bold uppercase tracking-widest text-[#001B5C]">
             Collectors
           </div>
           <h2 className="mb-4 text-center text-3xl font-black md:text-4xl">
             Browse. Collect. Display.
           </h2>
           <p className="mx-auto mb-12 max-w-2xl text-center text-lg text-gray-500">
-            Browse authenticated listings, inspect the certificate, and build a collection that can live digitally and on the wall.
+            Browse authenticated autographs, inspect the certificate, and order official prints for the pieces you want on the wall.
           </p>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <BulletCard text="Purchase autographs directly from verified creators." />
+            <BulletCard text="Order official prints from authenticated creator autographs." />
             <BulletCard text="Every autograph includes a Certificate of Authenticity with QR verification." />
-            <BulletCard text="Save, share, and resell through the marketplace when you are ready." />
-            <BulletCard text="Order official prints to display the pieces you actually own." />
+            <BulletCard text="Save, share, and revisit autographs from the marketplace." />
+            <BulletCard text="Order official prints to display the pieces you love." />
           </div>
         </div>
       </section>
@@ -122,7 +122,7 @@ export default function HomePage() {
             Bring the autograph into the room.
           </h2>
           <p className="mx-auto max-w-xl text-lg text-[#D9E2FF]">
-            Digital ownership stays primary. Official prints give collectors a physical format without losing the certificate-driven provenance.
+            Official prints give collectors a physical format without losing the certificate-driven provenance.
           </p>
         </div>
       </section>
@@ -133,7 +133,7 @@ export default function HomePage() {
           Ready to browse?
         </h2>
         <p className="mb-10 text-lg text-gray-600">
-          Explore verified listings on the web, then use the app to create new autographs.
+          Explore verified autographs on the web, then use the app to create new autographs.
         </p>
         <div className="flex flex-wrap items-center justify-center gap-3">
           <Link
@@ -161,11 +161,11 @@ export default function HomePage() {
             <Link href={webRoutes.terms} className="transition-colors hover:text-black">
               Terms of Service
             </Link>
-            <a href="mailto:hello@tapnsign.com" className="transition-colors hover:text-black">
+            <a href="mailto:hello@ophinia.com" className="transition-colors hover:text-black">
               Contact
             </a>
           </div>
-          <div className="text-xs text-gray-600">© 2026 TAPNSIGN LLC</div>
+          <div className="text-xs text-gray-600">© 2026 Ophinia</div>
         </div>
       </footer>
     </main>

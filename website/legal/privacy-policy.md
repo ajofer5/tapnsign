@@ -3,7 +3,7 @@
 **Effective Date:** April 19, 2026
 **Last Updated:** June 2, 2026 (rev. 5)
 
-TAPNSIGN LLC ("TAPNSIGN LLC," "Ophinia," "we," "us," or "our") operates the Ophinia mobile application (the "App") and related website experiences, including tapnsign.com (the "Website"). This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our App or Website.
+Ophinia ("Ophinia," "we," "us," or "our") operates the Ophinia mobile application (the "App") and related website experiences, including Ophinia.com (the "Website"). This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our App or Website.
 
 Please read this policy carefully. By using the App or Website, you agree to the collection and use of information in accordance with this policy.
 
@@ -13,7 +13,7 @@ Please read this policy carefully. By using the App or Website, you agree to the
 
 ### Information You Provide
 - **Account information:** Display name, email address, password, sign-in credentials, date of birth information, and age-confirmation information when you register or connect a login method. If you create an account using a social sign-in method (Apple or Google), we collect your date of birth and age confirmation as part of completing your account setup before you can access the platform
-- **Profile information:** Profile photo, biography, Instagram handle, personalized-request settings, and other optional profile fields
+- **Profile information:** Profile photo, biography, personalized-request settings, and other optional profile fields
 - **Payment information:** Billing details processed through Stripe on our Website. We do not store your full card number
 - **Identity verification information:** If you apply for creator verification, identity information and government ID data are processed through Stripe Identity
 - **Shipping information:** If you order an official print, we collect your name and shipping address to fulfill that order
@@ -93,7 +93,7 @@ We use reasonable administrative, technical, and physical safeguards to protect 
 
 ## 6. Children's Privacy
 
-The App and Website are not directed to children under the age of 13, and we do not knowingly collect personal information from children under 13. If we learn that we have collected such information, we will delete it promptly. If you believe a child under 13 has provided us information, please contact us at hello@tapnsign.com.
+The App and Website are not directed to children under the age of 13, and we do not knowingly collect personal information from children under 13. If we learn that we have collected such information, we will delete it promptly. If you believe a child under 13 has provided us information, please contact us at hello@ophinia.com.
 
 Users who are at least 13 but under 18 may use collector-facing portions of Ophinia, such as browsing, saving, viewing, and sharing content, but certain features are restricted to adults. Users under 18 may not mint autographs, complete creator verification, sell, buy, make offers, order prints, or access other paid or payout-related activities.
 
@@ -110,7 +110,7 @@ You may:
 - **Request deletion of shipping information** after print fulfillment, subject to our retention obligations
 - **Request that we stop using interaction history for personalized recommendations** by contacting us
 
-To exercise these rights, contact us at hello@tapnsign.com. We may need to verify your identity before completing certain requests.
+To exercise these rights, contact us at hello@ophinia.com. We may need to verify your identity before completing certain requests.
 
 ---
 
@@ -118,7 +118,7 @@ To exercise these rights, contact us at hello@tapnsign.com. We may need to verif
 
 If you are a California resident, you may have additional rights under the California Consumer Privacy Act and related laws, including the right to know, access, correct, delete, and request information about how your personal information is used and disclosed, subject to applicable exceptions. We do not sell your personal information and do not share it for cross-context behavioral advertising as those terms are commonly used in California privacy law.
 
-To exercise applicable California rights, contact us at hello@tapnsign.com. We will respond to verifiable requests within the time required by law.
+To exercise applicable California rights, contact us at hello@ophinia.com. We will respond to verifiable requests within the time required by law.
 
 ---
 
@@ -138,6 +138,5 @@ We may update this Privacy Policy from time to time. We will notify you of mater
 
 If you have questions or concerns about this Privacy Policy, please contact us:
 
-**TAPNSIGN LLC**
 Email: hello@ophinia.com
 Website: Ophinia.com

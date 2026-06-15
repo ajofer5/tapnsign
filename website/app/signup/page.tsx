@@ -1,6 +1,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { createAccountAction } from './actions';
+import { MAX_DISPLAY_NAME_LENGTH } from '../../../lib/display-name';
 import { getWebSessionUser } from '../../lib/web-auth';
 import { sanitizeNextPath, webRoutes, withNext } from '../../lib/routes';
 
@@ -41,7 +42,7 @@ export default async function SignupPage({
             Start collecting on the web
           </h1>
           <p className="mt-4 max-w-xl text-lg leading-8 text-gray-600">
-            Create your Ophinia account here, then browse listings, save autographs, make offers, and complete purchases on the web.
+            Create your Ophinia account here, then browse authenticated autographs, save favorites, and order official prints where available.
           </p>
 
           {existingUser ? (
@@ -64,7 +65,15 @@ export default async function SignupPage({
                     ? 'An account with this email already exists. Try signing in instead.'
                     : error === 'email'
                       ? 'Please enter a valid email address.'
-                      : 'Could not create your account. Please try again.'}
+                      : error === 'display_name'
+                        ? `Display name must be ${MAX_DISPLAY_NAME_LENGTH} characters or fewer.`
+                        : error === 'dob'
+                          ? 'Please enter a valid date of birth.'
+                          : error === 'age'
+                            ? 'You must be at least 13 years old to create an account.'
+                            : error === 'terms'
+                              ? 'Please confirm that you are 13 or older and agree to the Terms of Service and Privacy Policy.'
+                              : 'Could not create your account. Please try again.'}
             </div>
           ) : null}
 
@@ -81,6 +90,7 @@ export default async function SignupPage({
                 placeholder="Your name"
                 className="mt-2 w-full rounded-2xl border border-gray-200 bg-white px-4 py-4 text-base text-black outline-none transition-colors placeholder:text-gray-400 focus:border-black"
                 autoComplete="nickname"
+                maxLength={MAX_DISPLAY_NAME_LENGTH}
                 required
               />
             </label>
@@ -112,6 +122,58 @@ export default async function SignupPage({
                 minLength={6}
                 required
               />
+            </label>
+
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 mb-2">
+                Date of Birth
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  name="dob_month"
+                  placeholder="MM"
+                  maxLength={2}
+                  className="w-16 rounded-2xl border border-gray-200 bg-white px-3 py-4 text-base text-black outline-none transition-colors placeholder:text-gray-400 focus:border-black text-center"
+                  required
+                />
+                <input
+                  type="text"
+                  name="dob_day"
+                  placeholder="DD"
+                  maxLength={2}
+                  className="w-16 rounded-2xl border border-gray-200 bg-white px-3 py-4 text-base text-black outline-none transition-colors placeholder:text-gray-400 focus:border-black text-center"
+                  required
+                />
+                <input
+                  type="text"
+                  name="dob_year"
+                  placeholder="YYYY"
+                  maxLength={4}
+                  className="w-24 rounded-2xl border border-gray-200 bg-white px-3 py-4 text-base text-black outline-none transition-colors placeholder:text-gray-400 focus:border-black text-center"
+                  required
+                />
+              </div>
+            </div>
+
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                name="age_confirmed"
+                value="1"
+                className="mt-1 h-4 w-4 flex-shrink-0 accent-black"
+                required
+              />
+              <span className="text-sm text-gray-600">
+                I am 13 or older and agree to the{' '}
+                <a href="/terms" className="font-semibold text-black underline hover:text-[#6722F7]">
+                  Terms of Service
+                </a>
+                {' '}and{' '}
+                <a href="/privacy" className="font-semibold text-black underline hover:text-[#6722F7]">
+                  Privacy Policy
+                </a>
+              </span>
             </label>
 
             <button

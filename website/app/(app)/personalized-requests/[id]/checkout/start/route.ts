@@ -21,7 +21,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     !personalizedRequest ||
     personalizedRequest.requester_id !== user.id ||
     personalizedRequest.status !== 'fulfilled' ||
-    personalizedRequest.completed_transfer_id ||
     !personalizedRequest.autograph ||
     (personalizedRequest.payment_due_at && new Date(personalizedRequest.payment_due_at).getTime() <= Date.now())
   ) {

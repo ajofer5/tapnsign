@@ -35,7 +35,7 @@ export default async function SavedPage({ searchParams }: SavedPageProps) {
             Your saved autographs
           </h1>
           <p className="mt-4 max-w-3xl text-lg leading-8 text-gray-600">
-            Revisit listings you want to watch closely, then jump back into a purchase or offer flow when you are ready.
+            Revisit autographs you want to watch closely and order official prints where available.
           </p>
         </div>
         <div className="rounded-lg bg-white px-5 py-3 text-sm font-semibold text-black shadow-sm">
@@ -71,7 +71,7 @@ export default async function SavedPage({ searchParams }: SavedPageProps) {
         <div className="web-panel mt-8 p-10 text-center">
           <h2 className="text-2xl font-black text-black">No saved autographs yet</h2>
           <p className="mt-3 text-base text-gray-600">
-            Save listings from the marketplace or listing pages and they will show up here.
+            Save autographs from the marketplace or autograph pages and they will show up here.
           </p>
         </div>
       )}

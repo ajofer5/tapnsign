@@ -1,7 +1,7 @@
 import Link from 'next/link';
-import { getListingModeLabel, getMyListings, formatMoney } from '../../../../lib/me';
+import { getMyListings } from '../../../../lib/me';
 import { requireWebSessionUser } from '../../../../lib/web-auth';
-import { removeListingAction, saveListingAction } from './actions';
+import { saveListingAction } from './actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,13 +29,13 @@ export default async function MyListingsPage({ searchParams }: MyListingsPagePro
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
-            Seller Workspace
+            Print Settings
           </p>
           <h1 className="mt-3 text-4xl font-black tracking-tight text-black">
-            My Listings
+            My Prints
           </h1>
           <p className="mt-4 max-w-2xl text-lg leading-8 text-gray-600">
-            Review every autograph you own, update its listing mode and price, or remove it from sale.
+            Choose which creator-owned autographs can be ordered as official physical prints.
           </p>
         </div>
         <div className="rounded-lg bg-white px-5 py-3 text-sm font-semibold text-black shadow-sm">
@@ -90,7 +90,7 @@ export default async function MyListingsPage({ searchParams }: MyListingsPagePro
                       )}
                     </div>
                     <div className="rounded-lg border border-gray-200 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">
-                      {listing.is_for_sale ? getListingModeLabel(listing.listing_mode) : 'Not Listed'}
+                      {listing.prints_enabled ? 'Prints Enabled' : 'Prints Disabled'}
                     </div>
                   </div>
 
@@ -99,7 +99,7 @@ export default async function MyListingsPage({ searchParams }: MyListingsPagePro
                       Current
                     </div>
                     <div className="text-3xl font-black text-black">
-                      {listing.is_for_sale ? formatMoney(listing.price_cents) : 'Not for Sale'}
+                      {listing.prints_enabled ? 'Public Prints On' : 'Public Prints Off'}
                     </div>
                     <div className="text-sm text-gray-500">
                       Certificate {listing.certificate_id}
@@ -107,78 +107,49 @@ export default async function MyListingsPage({ searchParams }: MyListingsPagePro
                   </div>
 
                   <form action={saveListingAction.bind(null, listing.id)} className="mt-7 space-y-5">
-                    <div className="grid gap-5 md:grid-cols-2">
-                      <label className="block">
-                        <div className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">
-                          Listing Mode
-                        </div>
-                        <select
-                          name="listing_mode"
-                          defaultValue={listing.listing_mode}
-                          className="mt-2 w-full rounded-lg border border-transparent bg-[#F7F7F8] px-4 py-4 text-sm font-medium text-black outline-none transition-colors focus:border-[#001B5C] focus:bg-white"
-                        >
-                          <option value="buy_now">Fixed Price</option>
-                          <option value="make_offer">Estimated Value</option>
-                        </select>
-                      </label>
+                    {listing.creator_id === user.id ? (
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <label className="flex items-start gap-3 rounded-lg bg-[#F7F7F8] px-4 py-4 text-sm text-gray-700">
+                          <input
+                            type="checkbox"
+                            name="prints_enabled"
+                            defaultChecked={listing.prints_enabled}
+                            className="mt-1 h-4 w-4 rounded border-gray-300 text-black focus:ring-black"
+                          />
+                          <span>Allow fans to buy official prints of this autograph.</span>
+                        </label>
 
-                      <label className="block">
-                        <div className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">
-                          Price / Value
-                        </div>
-                        <input
-                          type="text"
-                          name="price"
-                          defaultValue={typeof listing.price_cents === 'number' ? (listing.price_cents / 100).toFixed(2) : ''}
-                          placeholder="25.00"
-                          className="mt-2 w-full rounded-lg border border-transparent bg-[#F7F7F8] px-4 py-4 text-sm font-medium text-black outline-none transition-colors placeholder:text-gray-400 focus:border-[#001B5C] focus:bg-white"
-                        />
-                      </label>
-                    </div>
-
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <label className="flex items-start gap-3 rounded-lg bg-[#F7F7F8] px-4 py-4 text-sm text-gray-700">
-                        <input
-                          type="checkbox"
-                          name="auto_decline_below"
-                          defaultChecked={listing.auto_decline_below}
-                          className="mt-1 h-4 w-4 rounded border-gray-300 text-black focus:ring-black"
-                        />
-                        <span>Automatically decline offers below this estimated value.</span>
-                      </label>
-
-                      <label className="flex items-start gap-3 rounded-lg bg-[#F7F7F8] px-4 py-4 text-sm text-gray-700">
-                        <input
-                          type="checkbox"
-                          name="auto_accept_above"
-                          defaultChecked={listing.auto_accept_above}
-                          className="mt-1 h-4 w-4 rounded border-gray-300 text-black focus:ring-black"
-                        />
-                        <span>Automatically accept the first offer at or above this estimated value.</span>
-                      </label>
-                    </div>
+                        <label className="block rounded-lg bg-[#F7F7F8] px-4 py-4">
+                          <div className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">
+                            Print Limit
+                          </div>
+                          <input
+                            type="text"
+                            name="print_limit"
+                            defaultValue={typeof listing.print_limit === 'number' ? String(listing.print_limit) : ''}
+                            placeholder="Unlimited"
+                            className="mt-2 w-full rounded-lg border border-transparent bg-white px-4 py-3 text-sm font-medium text-black outline-none transition-colors placeholder:text-gray-400 focus:border-[#001B5C]"
+                          />
+                        </label>
+                      </div>
+                    ) : (
+                      <div className="rounded-lg bg-[#F7F7F8] px-4 py-4 text-sm leading-7 text-gray-700">
+                        Only the original creator can enable public print ordering for this autograph.
+                      </div>
+                    )}
 
                     <div className="flex flex-wrap gap-3">
                       <button
                         type="submit"
                         className="rounded-lg bg-[#001B5C] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#00144A]"
                       >
-                        {listing.is_for_sale ? 'Update Listing' : 'Create Listing'}
+                        Save Print Settings
                       </button>
-                      {listing.is_for_sale ? (
-                        <button
-                          type="submit"
-                          formAction={removeListingAction.bind(null, listing.id)}
-                          className="rounded-lg border border-black px-5 py-3 text-sm font-semibold text-black transition-colors hover:bg-black hover:text-white"
-                        >
-                          Remove Listing
-                        </button>
-                      ) : null}
                       <Link
                         href={`/autograph/${listing.id}`}
                         className="rounded-lg border border-gray-300 px-5 py-3 text-sm font-semibold text-gray-700 transition-colors hover:border-black hover:text-black"
                       >
-                        View Listing
+                        View Autograph
                       </Link>
                     </div>
                   </form>
