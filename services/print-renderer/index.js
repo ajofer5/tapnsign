@@ -416,9 +416,9 @@ function buildLayoutSvg({
 
   // Metadata text — Optima installed as system font via Dockerfile
   const metaLines = [
-    { text: nameLabel,                         fontSize: 68, opacity: 1.00, bold: true,  letterSpacing: 3 },
+    { text: nameLabel,                         fontSize: 66, opacity: 1.00, bold: true,  letterSpacing: 3 },
     { text: `Captured on ${date}`,             fontSize: 52, opacity: 0.75, bold: false, letterSpacing: 1 },
-    ...(sequenceNumber != null ? [{ text: `Card #${sequenceNumber}`, fontSize: 46, opacity: 0.82, bold: false, letterSpacing: 1 }] : []),
+    ...(sequenceNumber != null ? [{ text: `Moment #${sequenceNumber}`, fontSize: 46, opacity: 0.82, bold: false, letterSpacing: 1 }] : []),
     ...(seriesName ? [{ text: seriesName,      fontSize: 40, opacity: 0.64, bold: false, letterSpacing: 1 }] : []),
   ];
   const lineH = 76;
