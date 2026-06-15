@@ -1,14 +1,13 @@
 import Link from 'next/link';
-import Image from 'next/image';
 import { notFound } from 'next/navigation';
 import { WebListingCard } from '../../../components/web-listing-card';
+import { PublicNav } from '../../../components/public-nav';
 import { getWebsiteProfile } from '../../../lib/profile';
 import { getWebSessionUser } from '../../../lib/web-auth';
 import { getSavedAutographIds } from '../../../lib/watchlist';
 import {
   webRouteToProfile,
   webRoutes,
-  withNext,
 } from '../../../lib/routes';
 
 export default async function ProfilePage({
@@ -26,27 +25,7 @@ export default async function ProfilePage({
 
   return (
     <main className="min-h-screen bg-[#F2F2F4]">
-      <nav className="border-b border-gray-200 bg-white px-6 py-4">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-6">
-          <Link href={webRoutes.landing}>
-            <Image src="/ophinia-logo.png" alt="Ophinia" width={120} height={32} className="h-8 w-auto" />
-          </Link>
-          <div className="flex items-center gap-4">
-            <Link href={webRoutes.marketplace} className="text-sm text-gray-500 hover:text-black">
-              Marketplace
-            </Link>
-            {user ? (
-              <Link href={webRoutes.home} className="text-sm font-semibold text-gray-600 transition-colors hover:text-black">
-                My App
-              </Link>
-            ) : (
-              <Link href={withNext(webRoutes.login, webRouteToProfile(id))} className="text-sm font-semibold text-gray-600 transition-colors hover:text-black">
-                Sign In
-              </Link>
-            )}
-          </div>
-        </div>
-      </nav>
+      <PublicNav user={user} returnPath={webRouteToProfile(id)} />
 
       <div className="mx-auto max-w-6xl px-6 py-10">
         {/* Profile header */}

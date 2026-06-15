@@ -1,10 +1,10 @@
 import Link from 'next/link';
-import Image from 'next/image';
 import { WebListingCard } from '../../components/web-listing-card';
+import { PublicNav } from '../../components/public-nav';
 import { getMarketplaceListings } from '../../lib/marketplace';
 import { getWebSessionUser } from '../../lib/web-auth';
 import { getSavedAutographIds } from '../../lib/watchlist';
-import { webRoutes, withNext, withParams } from '../../lib/routes';
+import { webRoutes, withParams } from '../../lib/routes';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,29 +31,7 @@ export default async function MarketplacePage({
 
   return (
     <main className="min-h-screen bg-[#F2F2F4]">
-      <nav className="border-b border-gray-200 bg-white px-6 py-4">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-6">
-          <Link href={webRoutes.landing}>
-            <Image src="/ophinia-logo.png" alt="Ophinia" width={120} height={32} className="h-8 w-auto" />
-          </Link>
-          <div className="flex items-center gap-4">
-            {user ? (
-              <Link href={webRoutes.home} className="text-sm font-semibold text-gray-600 transition-colors hover:text-black">
-                My App
-              </Link>
-            ) : (
-              <>
-                <Link href={withNext(webRoutes.login, webRoutes.marketplace)} className="text-sm font-semibold text-gray-600 transition-colors hover:text-black">
-                  Sign In
-                </Link>
-                <Link href={withNext(webRoutes.signup, webRoutes.marketplace)} className="text-sm font-semibold text-gray-600 transition-colors hover:text-black">
-                  Create Account
-                </Link>
-              </>
-            )}
-          </div>
-        </div>
-      </nav>
+      <PublicNav user={user} returnPath={webRoutes.marketplace} />
 
       <div className="mx-auto max-w-6xl px-6 py-10">
         <section className="mb-8 flex flex-wrap items-end justify-between gap-4">
