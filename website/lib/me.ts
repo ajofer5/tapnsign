@@ -73,15 +73,6 @@ export type WebsiteOfferQueuePage = {
 export type WebsiteActivityEntry = {
   id: string;
   type:
-    | 'sold'
-    | 'purchased'
-    | 'offer_received'
-    | 'offer_sent'
-    | 'offer_on_hold'
-    | 'offer_accepted'
-    | 'offer_declined'
-    | 'offer_withdrawn'
-    | 'offer_expired'
     | 'personalized_request_received'
     | 'personalized_request_sent'
     | 'personalized_request_countered'
@@ -90,44 +81,52 @@ export type WebsiteActivityEntry = {
     | 'personalized_request_withdrawn'
     | 'personalized_request_expired'
     | 'personalized_request_fulfilled'
-    | 'personalized_request_completed';
+    | 'personalized_request_completed'
+    | 'print_ordered'
+    | 'daily_print_summary'
+    | 'verification_status'
+    | 'payout_status';
   autograph_id: string | null;
   creator_name: string;
   creator_sequence_number: number | null;
   series_name: string | null;
   amount_cents: number;
   date: string;
-  status?: 'pending' | 'accepted' | 'on_hold' | 'declined' | 'withdrawn' | 'expired';
-  offer_role?: 'owner' | 'buyer';
+  status?: string | null;
   expires_at?: string | null;
   payment_due_at?: string | null;
-  accepted_transfer_id?: string | null;
   personalized_request_id?: string | null;
   request_role?: 'creator' | 'requester';
   recipient_name?: string | null;
-  inscription_text?: string | null;
   completed_transfer_id?: string | null;
+  print_quantity?: number | null;
+  fulfillment_status?: string | null;
 };
+
+const HIDDEN_ACTIVITY_TYPES = new Set([
+  'sold', 'purchased',
+  'offer_received', 'offer_sent', 'offer_on_hold',
+  'offer_accepted', 'offer_declined', 'offer_withdrawn', 'offer_expired',
+]);
 
 type WebsiteActivityFeedRow = {
   feed_id: string;
-  event_type: WebsiteActivityEntry['type'];
+  event_type: string;
   autograph_id: string | null;
   creator_name: string;
   creator_sequence_number: number | null;
   series_name: string | null;
   amount_cents: number;
   event_at: string;
-  status?: WebsiteActivityEntry['status'] | null;
-  offer_role?: WebsiteActivityEntry['offer_role'] | null;
+  status?: string | null;
   expires_at?: string | null;
   payment_due_at?: string | null;
-  accepted_transfer_id?: string | null;
   personalized_request_id?: string | null;
   request_role?: WebsiteActivityEntry['request_role'] | null;
   recipient_name?: string | null;
-  inscription_text?: string | null;
   completed_transfer_id?: string | null;
+  print_quantity?: number | null;
+  fulfillment_status?: string | null;
 };
 
 function mapMyListingRow(row: any): WebsiteMyListing {
@@ -293,24 +292,25 @@ export async function getMyActivity(userId: string): Promise<WebsiteActivityEntr
     return [];
   }
 
-  return (data as WebsiteActivityFeedRow[]).map((row) => ({
-    id: row.feed_id,
-    type: row.event_type,
-    autograph_id: row.autograph_id,
-    creator_name: row.creator_name,
-    creator_sequence_number: row.creator_sequence_number ?? null,
-    series_name: row.series_name ?? null,
-    amount_cents: row.amount_cents,
-    date: row.event_at,
-    status: row.status ?? undefined,
-    offer_role: row.offer_role ?? undefined,
-    expires_at: row.expires_at ?? undefined,
-    payment_due_at: row.payment_due_at ?? undefined,
-    accepted_transfer_id: row.accepted_transfer_id ?? undefined,
-    personalized_request_id: row.personalized_request_id ?? undefined,
-    request_role: row.request_role ?? undefined,
-    recipient_name: row.recipient_name ?? undefined,
-    inscription_text: row.inscription_text ?? undefined,
-    completed_transfer_id: row.completed_transfer_id ?? undefined,
-  }));
+  return (data as WebsiteActivityFeedRow[])
+    .filter((row) => !HIDDEN_ACTIVITY_TYPES.has(row.event_type))
+    .map((row) => ({
+      id: row.feed_id,
+      type: row.event_type as WebsiteActivityEntry['type'],
+      autograph_id: row.autograph_id,
+      creator_name: row.creator_name,
+      creator_sequence_number: row.creator_sequence_number ?? null,
+      series_name: row.series_name ?? null,
+      amount_cents: row.amount_cents,
+      date: row.event_at,
+      status: row.status ?? undefined,
+      expires_at: row.expires_at ?? undefined,
+      payment_due_at: row.payment_due_at ?? undefined,
+      personalized_request_id: row.personalized_request_id ?? undefined,
+      request_role: row.request_role ?? undefined,
+      recipient_name: row.recipient_name ?? undefined,
+      completed_transfer_id: row.completed_transfer_id ?? undefined,
+      print_quantity: row.print_quantity ?? undefined,
+      fulfillment_status: row.fulfillment_status ?? undefined,
+    }));
 }
