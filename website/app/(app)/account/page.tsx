@@ -1,20 +1,12 @@
 import Link from 'next/link';
-import { updateBioAction, updateDisplayNameAction, updatePersonalizedSettingsAction, updateProfileAvatarAction, useVerifiedNameAction } from './actions';
+import { updateBioAction, updateDisplayNameAction, useVerifiedNameAction } from './actions';
+import { AvatarPicker } from '../../../components/avatar-picker';
 import { MAX_DISPLAY_NAME_LENGTH } from '../../../lib/display-name';
-import { PERSONALIZED_REQUEST_MIN_CENTS } from '../../../lib/personalized-policy';
 import { requireWebSessionUser } from '../../../lib/web-auth';
 import { createWebsiteAdminSupabaseClient } from '../../../lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
-function formatVerificationState(value?: string | null) {
-  if (!value || value === 'none') return 'Not Started';
-  if (value === 'pending') return 'Pending';
-  if (value === 'verified') return 'Verified';
-  if (value === 'failed') return 'Failed';
-  if (value === 'expired') return 'Expired';
-  return value;
-}
 
 export default async function AccountPage({
   searchParams,
@@ -36,9 +28,6 @@ export default async function AccountPage({
       profile_avatar_autograph_id,
       role,
       verified,
-      verification_status,
-      personalized_requests_enabled,
-      personalized_min_price_cents,
       created_at
     `)
     .eq('id', user.id)
@@ -139,8 +128,7 @@ export default async function AccountPage({
       {/* Account info rows */}
       <div className="mb-4 overflow-hidden rounded-[6px] border border-gray-200 bg-white">
         <AccountRow label="Email" value={user.email ?? '—'} />
-        <AccountRow label="Status" value={accountStatusLabel} />
-        <AccountRow label="Verification" value={formatVerificationState(profile?.verification_status)} isLast />
+        <AccountRow label="Status" value={accountStatusLabel} isLast />
       </div>
 
       {/* Display Name */}
@@ -165,51 +153,6 @@ export default async function AccountPage({
         </form>
       </div>
 
-      {/* Personalized Requests */}
-      <div className="mb-4 rounded-[6px] border border-gray-200 bg-white p-5">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500">Personalized Requests</p>
-        <p className="mt-3 text-sm leading-6 text-gray-600">
-          Let collectors request private custom prints directly from your profile.
-        </p>
-        {isVerified ? (
-          <form action={updatePersonalizedSettingsAction} className="mt-4 space-y-3">
-            <label className="flex items-center justify-between rounded-lg bg-[#F7F7F8] px-4 py-3 text-sm font-medium text-black">
-              <span>Enable personalized print requests</span>
-              <input
-                type="checkbox"
-                name="personalized_requests_enabled"
-                defaultChecked={!!(profile as any)?.personalized_requests_enabled}
-                className="h-5 w-5 accent-[#001B5C]"
-              />
-            </label>
-            <div className="flex items-center rounded-lg border border-gray-200 bg-[#F7F7F8] px-4 py-3 focus-within:border-[#001B5C] focus-within:bg-white">
-              <span className="mr-2 text-sm font-semibold text-gray-500">$</span>
-              <input
-                type="number"
-                name="personalized_min_price"
-                min={(PERSONALIZED_REQUEST_MIN_CENTS / 100).toFixed(2)}
-                step="0.01"
-                defaultValue={
-                  (profile as any)?.personalized_min_price_cents
-                    ? ((profile as any).personalized_min_price_cents / 100).toFixed(2)
-                    : (PERSONALIZED_REQUEST_MIN_CENTS / 100).toFixed(2)
-                }
-                className="w-full bg-transparent text-sm text-black outline-none placeholder:text-gray-400"
-              />
-            </div>
-            <button
-              type="submit"
-              className="w-full rounded-lg bg-[#001B5C] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#00144A]"
-            >
-              Save Settings
-            </button>
-          </form>
-        ) : (
-          <p className="mt-3 text-sm leading-6 text-gray-500">
-            Available once your Ophinia creator account is verified.
-          </p>
-        )}
-      </div>
 
       {/* Verified Name Badge */}
       {(profile as any)?.validated_name ? (
@@ -246,60 +189,15 @@ export default async function AccountPage({
       {/* Profile Image */}
       <div className="mb-4 rounded-[6px] border border-gray-200 bg-white p-5">
         <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500">Profile Image</p>
-        <p className="mt-3 text-sm leading-6 text-gray-600">
+        <p className="mt-3 mb-4 text-sm leading-6 text-gray-600">
           Choose a profile image from one of your autographs.
         </p>
-
-        {avatarOptions && avatarOptions.length > 0 ? (
-          <div className="mt-4 grid grid-cols-3 gap-3 sm:grid-cols-4">
-            {avatarOptions.map((option: any) => {
-              const isSelected = option.id === (profile as any)?.profile_avatar_autograph_id;
-              return (
-                <form key={option.id} action={updateProfileAvatarAction}>
-                  <input type="hidden" name="autograph_id" value={option.id} />
-                  <button
-                    type="submit"
-                    className={`w-full overflow-hidden rounded-[4px] border transition-colors ${
-                      isSelected ? 'border-[#001B5C]' : 'border-gray-200 hover:border-gray-400'
-                    }`}
-                  >
-                    {option.thumbnail_url ? (
-                      <img
-                        src={option.thumbnail_url}
-                        alt={profile?.display_name ?? displayName}
-                        className="aspect-[3/5] w-full object-cover"
-                      />
-                    ) : (
-                      <div className="flex aspect-[3/5] w-full items-center justify-center bg-[#1C1C1F] text-[9px] font-bold uppercase tracking-widest text-white/40">
-                        —
-                      </div>
-                    )}
-                  </button>
-                  {isSelected && (
-                    <div className="mt-1 text-center text-[10px] font-semibold uppercase tracking-wide text-[#001B5C]">
-                      Active
-                    </div>
-                  )}
-                </form>
-              );
-            })}
-          </div>
-        ) : (
-          <p className="mt-4 text-sm text-gray-500">
-            No autographs available yet to use as a profile image.
-          </p>
-        )}
-
-        {(profile as any)?.profile_avatar_autograph_id ? (
-          <form action={updateProfileAvatarAction} className="mt-4">
-            <button
-              type="submit"
-              className="w-full rounded-lg border border-gray-300 px-5 py-3 text-sm font-semibold text-gray-700 transition-colors hover:border-black hover:text-black"
-            >
-              Clear Profile Image
-            </button>
-          </form>
-        ) : null}
+        <AvatarPicker
+          options={(avatarOptions ?? []).map((o: any) => ({ id: o.id, thumbnail_url: o.thumbnail_url ?? null }))}
+          selectedId={(profile as any)?.profile_avatar_autograph_id ?? null}
+          displayName={displayName}
+          currentAvatarUrl={(profile as any)?.avatar_url ?? null}
+        />
       </div>
 
       {/* Creator Verification */}
