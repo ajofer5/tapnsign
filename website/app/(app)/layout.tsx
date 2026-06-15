@@ -28,9 +28,6 @@ export default async function WebAppLayout({ children }: { children: ReactNode }
           <div className="text-right">
             <div className="text-sm font-semibold text-black">{user?.display_name ?? 'Web Visitor'}</div>
             <div className="mt-1 flex items-center justify-end gap-3 text-xs font-medium text-gray-500">
-              <Link href={webRoutes.saved} prefetch={false} className="hover:text-black">Saved</Link>
-              <Link href={webRoutes.personalizedRequests} prefetch={false} className="hover:text-black">Requests</Link>
-              <Link href={webRoutes.myListings} prefetch={false} className="hover:text-black">Prints</Link>
               <form action={webRoutes.logout} method="post">
                 <button
                   type="submit"
