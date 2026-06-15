@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { updateBioAction, updateDisplayNameAction, updatePersonalizedSettingsAction, updateProfileAvatarAction, useVerifiedNameAction } from './actions';
-import { MAX_DISPLAY_NAME_LENGTH } from '../../../../lib/display-name';
+import { MAX_DISPLAY_NAME_LENGTH } from '../../../lib/display-name';
 import { PERSONALIZED_REQUEST_MIN_CENTS } from '../../../lib/personalized-policy';
 import { requireWebSessionUser } from '../../../lib/web-auth';
 import { createWebsiteAdminSupabaseClient } from '../../../lib/supabase';

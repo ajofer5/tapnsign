@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { MAX_DISPLAY_NAME_LENGTH, normalizeDisplayName } from '../../../../lib/display-name';
+import { MAX_DISPLAY_NAME_LENGTH, normalizeDisplayName } from '../../../lib/display-name';
 import { PERSONALIZED_REQUEST_MIN_CENTS } from '../../../lib/personalized-policy';
 import { createWebsiteAdminSupabaseClient } from '../../../lib/supabase';
 import { requireWebSessionUser } from '../../../lib/web-auth';
