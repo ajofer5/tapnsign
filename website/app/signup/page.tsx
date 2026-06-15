@@ -1,7 +1,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { createAccountAction } from './actions';
-import { MAX_DISPLAY_NAME_LENGTH } from '../../../lib/display-name';
+import { MAX_DISPLAY_NAME_LENGTH } from '../../lib/display-name';
 import { getWebSessionUser } from '../../lib/web-auth';
 import { sanitizeNextPath, webRoutes, withNext } from '../../lib/routes';
 

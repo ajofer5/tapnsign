@@ -2,7 +2,7 @@
 
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { MAX_DISPLAY_NAME_LENGTH, normalizeDisplayName } from '../../../lib/display-name';
+import { MAX_DISPLAY_NAME_LENGTH, normalizeDisplayName } from '../../lib/display-name';
 import { createWebsiteMutableServerSupabaseClient } from '../../lib/supabase';
 import { createWebSessionToken, getWebSessionCookieConfig, getWebSessionUserForProfile } from '../../lib/web-session';
 import { sanitizeNextPath, webRoutes, withParams } from '../../lib/routes';
