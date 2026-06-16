@@ -28,8 +28,8 @@ const INTERNAL_SECRET = process.env.INTERNAL_FUNCTION_SECRET ?? '';
 const SUPABASE_URL = process.env.SUPABASE_URL ?? '';
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
 const OUTPUT_BUCKET = 'print-layouts';
-const RENDERER_VERSION = 'print-template-v4';
-const PREVIEW_VERSION = 'preview-v3';
+const RENDERER_VERSION = 'print-template-v5';
+const PREVIEW_VERSION = 'preview-v4';
 const BUNNY_STORAGE_API_KEY = process.env.BUNNY_STORAGE_API_KEY ?? '';
 const BUNNY_STORAGE_ZONE_NAME = process.env.BUNNY_STORAGE_ZONE_NAME ?? '';
 const BUNNY_CDN_HOSTNAME = process.env.BUNNY_CDN_HOSTNAME ?? '';
@@ -438,7 +438,7 @@ function buildLayoutSvg({
   });
 
   // Bottom authenticity disclosure
-  const disclosureText = 'Digital authenticity powered by Ophinia.';
+  const disclosureText = 'Official Ophinia licensed print. Unauthorized reproduction is prohibited.';
   const disclosureFontSize = 32;
   const disclosureY = DISCLOSURE_AREA.y + 18;
   elements.push(`
