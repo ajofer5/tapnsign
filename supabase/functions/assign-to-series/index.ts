@@ -22,7 +22,7 @@ Deno.serve((req) =>
     // Verify the autograph belongs to this user and is active
     const { data: autograph } = await supabaseAdmin
       .from('autographs')
-      .select('id, creator_id, status, series_id')
+      .select('id, creator_id, status, series_id, print_layout_revision')
       .eq('id', autographId)
       .single();
 
@@ -60,6 +60,9 @@ Deno.serve((req) =>
       .update({
         series_id: seriesId,
         series_sequence_number: nextSequence,
+        print_layout_url: null,
+        print_preview_url: null,
+        print_layout_revision: (autograph.print_layout_revision ?? 1) + 1,
       })
       .eq('id', autographId)
       .eq('creator_id', user.id);

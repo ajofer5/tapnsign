@@ -508,11 +508,11 @@ app.post('/render', async (req, res) => {
 
   try {
     // Fetch autograph
-    const { data: autograph, error: autographError } = await supabase
-      .from('autographs')
-      .select('id, owner_id, creator_id, status, strokes_json, stroke_color, preview_frame_urls, creator_sequence_number, series_id, created_at, verify_badge_url')
-      .eq('id', autographId)
-      .maybeSingle();
+      const { data: autograph, error: autographError } = await supabase
+        .from('autographs')
+        .select('id, owner_id, creator_id, status, strokes_json, stroke_color, preview_frame_urls, creator_sequence_number, series_id, created_at, verify_badge_url, print_layout_revision')
+        .eq('id', autographId)
+        .maybeSingle();
 
     if (autographError || !autograph) {
       return res.status(404).json({
@@ -571,8 +571,11 @@ app.post('/render', async (req, res) => {
       }
     }
 
-    const layoutBunnyPath = `print_layouts/${RENDERER_VERSION}/${autographId}.png`;
-    const previewBunnyPath = `print_previews/${PREVIEW_VERSION}/${autographId}.jpg`;
+    const layoutRevision = Number.isInteger(autograph.print_layout_revision) && autograph.print_layout_revision > 0
+      ? autograph.print_layout_revision
+      : 1;
+    const layoutBunnyPath = `print_layouts/${RENDERER_VERSION}/${autographId}-r${layoutRevision}.png`;
+    const previewBunnyPath = `print_previews/${PREVIEW_VERSION}/${autographId}-r${layoutRevision}.jpg`;
     const cachedLayoutUrl = NORMALIZED_BUNNY_CDN_HOSTNAME ? `https://${NORMALIZED_BUNNY_CDN_HOSTNAME}/${layoutBunnyPath}` : '';
     const cachedPreviewUrl = NORMALIZED_BUNNY_CDN_HOSTNAME ? `https://${NORMALIZED_BUNNY_CDN_HOSTNAME}/${previewBunnyPath}` : '';
 

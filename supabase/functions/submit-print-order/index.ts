@@ -1,5 +1,6 @@
 import {
   assert,
+  assertUsersNotBlocked,
   getAutographForUpdate,
   getAutographDisplayLabel,
   getProfile,
@@ -21,8 +22,28 @@ const PRODIGI_API_URL = Deno.env.get('PRODIGI_SANDBOX') === 'true'
   : 'https://api.prodigi.com/v4.0/Orders';
 const PRODIGI_API_KEY = Deno.env.get('PRODIGI_API_KEY') ?? '';
 
-// Prodigi SKU for 5×7.5 photo print
-const SKU_5X7 = 'GLOBAL-PHO-5X7';
+// Prodigi SKU for 8×10 photo print
+const SKU_8X10 = 'GLOBAL-PHO-8X10';
+
+function isTrustedPrintLayoutUrl(value: string, autographId: string) {
+  const bunnyHostname = Deno.env.get('BUNNY_CDN_HOSTNAME') ?? '';
+  if (!bunnyHostname) return false;
+
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === 'https:' &&
+      url.hostname === bunnyHostname &&
+      url.pathname.startsWith('/print_layouts/') &&
+      (
+        url.pathname.endsWith(`/${autographId}.png`) ||
+        new RegExp(`/${autographId}-r\\d+\\.png$`).test(url.pathname)
+      )
+    );
+  } catch {
+    return false;
+  }
+}
 
 type ProdigiRecipient = {
   name: string;
@@ -58,7 +79,7 @@ async function submitProdigiOrder(params: {
     },
     body: JSON.stringify({
       merchantReference: params.merchantReference,
-      shippingMethod: 'Standard',
+      shippingMethod: 'Budget',
       recipient: params.recipient,
       items: params.items,
     }),
@@ -95,6 +116,9 @@ Deno.serve((req) =>
 
     const autographId = requireString(body.autograph_id, 'autograph_id');
     const paymentEventId = requireString(body.payment_event_id, 'payment_event_id');
+    const quantity = typeof body.quantity === 'number' && body.quantity >= 1 && body.quantity <= 5
+      ? Math.floor(body.quantity)
+      : 1;
 
     // Shipping details
     const shippingName = requireString(body.shipping_name, 'shipping_name');
@@ -104,9 +128,12 @@ Deno.serve((req) =>
     const shippingState = requireString(body.shipping_state, 'shipping_state');
     const shippingZip = requireString(body.shipping_zip, 'shipping_zip');
 
-    // image_url_8x12 is optional — if not provided, generate-print-layout is called automatically
-    const imageUrl8x12Provided = typeof body.image_url_8x12 === 'string' && body.image_url_8x12.trim().length > 0
-      ? body.image_url_8x12.trim()
+    // image_url is optional — if not provided, the Railway render worker is called automatically
+    const rawImageUrlProvided = typeof body.image_url === 'string' && body.image_url.trim().length > 0
+      ? body.image_url.trim()
+      : null;
+    const imageUrlProvided = rawImageUrlProvided && isTrustedPrintLayoutUrl(rawImageUrlProvided, autographId)
+      ? rawImageUrlProvided
       : null;
 
     const [autograph, profile] = await Promise.all([
@@ -115,8 +142,12 @@ Deno.serve((req) =>
     ]);
 
     assert(!profile.suspended_at, 403, 'Account is suspended.');
+    assert(profile.is_creator === true, 403, 'You must be 18 or older to order prints.');
     assert(autograph.status === 'active', 409, 'Autograph is not active.');
-    assert(autograph.owner_id === user.id, 403, 'You do not own this autograph.');
+    assert(autograph.visibility === 'public' || autograph.owner_id === user.id, 403, 'This autograph is not available for prints.');
+    assert(autograph.owner_id === user.id || autograph.prints_enabled === true, 409, 'Prints are not available for this autograph.');
+    await assertUsersNotBlocked(user.id, autograph.creator_id, 'You cannot purchase a print from this creator.');
+    await assertUsersNotBlocked(user.id, autograph.owner_id, 'You cannot purchase a print from this owner.');
 
     let paymentEvent: {
       id: string;
@@ -126,13 +157,14 @@ Deno.serve((req) =>
       status: string;
       amount_cents: number;
       stripe_payment_intent_id: string | null;
+      provider_metadata: Record<string, unknown> | null;
     } | null = null;
 
     // In sandbox mode, payment validation is bypassed for test orders
     if (!isSandbox) {
       const { data, error: paymentEventError } = await supabaseAdmin
         .from('payment_events')
-        .select('id, user_id, autograph_id, purpose, status, amount_cents, stripe_payment_intent_id')
+        .select('id, user_id, autograph_id, purpose, status, amount_cents, stripe_payment_intent_id, provider_metadata')
         .eq('id', paymentEventId)
         .single();
 
@@ -156,24 +188,14 @@ Deno.serve((req) =>
       );
     }
 
-    // Check for an existing print record by payment event (idempotency) OR by autograph+owner (retry)
-    const [{ data: printByPayment }, { data: printByOwner }] = await Promise.all([
-      supabaseAdmin
-        .from('autograph_prints')
-        .select('id, fulfillment_status, vendor_order_id')
-        .eq('payment_event_id', paymentEventId)
-        .limit(1)
-        .maybeSingle(),
-      supabaseAdmin
-        .from('autograph_prints')
-        .select('id, fulfillment_status, vendor_order_id')
-        .eq('autograph_id', autographId)
-        .eq('owner_id_at_print', user.id)
-        .limit(1)
-        .maybeSingle(),
-    ]);
-
-    const existingPrint = printByPayment ?? printByOwner ?? null;
+    // Check for an existing print record by payment event only (idempotency).
+    // Owners are allowed to order multiple prints — each gets a new sequence number.
+    const { data: existingPrint } = await supabaseAdmin
+      .from('autograph_prints')
+      .select('id, fulfillment_status, vendor_order_id')
+      .eq('payment_event_id', paymentEventId)
+      .limit(1)
+      .maybeSingle();
 
     // If already submitted to vendor, return success — idempotent
     if (existingPrint?.vendor_order_id) {
@@ -189,6 +211,7 @@ Deno.serve((req) =>
 
     const now = new Date().toISOString();
     let printId: string;
+    let additionalPrintIds: string[] = [];
 
     if (existingPrint) {
       // Reuse existing record — update with latest payment and shipping details
@@ -220,31 +243,38 @@ Deno.serve((req) =>
         .limit(1)
         .maybeSingle();
 
-      const nextSequence = (lastPrint?.print_sequence_number ?? 0) + 1;
+      const baseSequence = (lastPrint?.print_sequence_number ?? 0) + 1;
+      assert(
+        typeof autograph.print_limit !== 'number' || baseSequence + quantity - 1 <= autograph.print_limit,
+        409,
+        'This autograph has reached its print limit.'
+      );
 
-      const { data: newPrint, error: insertError } = await supabaseAdmin
+      const rows = Array.from({ length: quantity }, (_, i) => ({
+        autograph_id: autographId,
+        owner_id_at_print: user.id,
+        print_sequence_number: baseSequence + i,
+        status: 'created',
+        payment_intent_id: isSandbox ? null : paymentEvent!.stripe_payment_intent_id,
+        payment_event_id: isSandbox ? null : paymentEvent!.id,
+        payment_confirmed_at: now,
+        shipping_name: shippingName,
+        shipping_line1: shippingLine1,
+        shipping_line2: shippingLine2,
+        shipping_city: shippingCity,
+        shipping_state: shippingState,
+        shipping_zip: shippingZip,
+        fulfillment_status: 'payment_confirmed',
+      }));
+
+      const { data: newPrints, error: insertError } = await supabaseAdmin
         .from('autograph_prints')
-        .insert({
-          autograph_id: autographId,
-          owner_id_at_print: user.id,
-          print_sequence_number: nextSequence,
-          status: 'created',
-          payment_intent_id: isSandbox ? null : paymentEvent!.stripe_payment_intent_id,
-          payment_event_id: isSandbox ? null : paymentEvent!.id,
-          payment_confirmed_at: now,
-          shipping_name: shippingName,
-          shipping_line1: shippingLine1,
-          shipping_line2: shippingLine2,
-          shipping_city: shippingCity,
-          shipping_state: shippingState,
-          shipping_zip: shippingZip,
-          fulfillment_status: 'payment_confirmed',
-        })
-        .select('id')
-        .single();
+        .insert(rows)
+        .select('id');
 
-      if (insertError || !newPrint) throw new HttpError(500, 'Could not create print record.');
-      printId = newPrint.id;
+      if (insertError || !newPrints?.length) throw new HttpError(500, 'Could not create print record.');
+      printId = newPrints[0].id;
+      additionalPrintIds = newPrints.slice(1).map((p: { id: string }) => p.id);
     }
 
     // Mark payment event as captured (skipped in sandbox mode — no real payment event exists)
@@ -253,34 +283,34 @@ Deno.serve((req) =>
         .from('payment_events')
         .update({ status: 'captured' })
         .eq('id', paymentEventId);
+      // NOTE: owner ledger row is inserted below, after Prodigi confirms the order,
+      // so we never owe a payout for a print that was never actually submitted.
     }
 
-    // Generate print layout image via edge function if not already provided
-    let imageUrl8x12 = imageUrl8x12Provided;
-    if (!imageUrl8x12) {
+    // Generate print layout via the Railway print-renderer service
+    let imageUrl = imageUrlProvided;
+    if (!imageUrl) {
+      console.log('[submit-print-order] calling print-renderer for', autographId, printId);
+      const rendererUrl = Deno.env.get('PRINT_RENDERER_URL') ?? '';
       const internalSecret = Deno.env.get('INTERNAL_FUNCTION_SECRET') ?? '';
-      console.log('[submit-print-order] calling generate-print-layout for', autographId, printId);
-      const layoutRes = await supabaseAdmin.functions.invoke('generate-print-layout', {
-        body: { autograph_id: autographId, print_id: printId },
-        headers: { 'x-internal-secret': internalSecret },
+      assert(rendererUrl.length > 0, 500, 'PRINT_RENDERER_URL is not configured.');
+      const layoutResponse = await fetch(`${rendererUrl}/render`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-internal-secret': internalSecret,
+        },
+        body: JSON.stringify({ autograph_id: autographId, print_id: printId, internal_secret: internalSecret }),
       });
-      console.log('[submit-print-order] generate-print-layout data:', JSON.stringify(layoutRes.data), 'error:', layoutRes.error?.message);
-      if (layoutRes.error) {
-        let detail = layoutRes.error.message;
-        try {
-          const ctx = (layoutRes.error as any).context;
-          if (ctx && typeof ctx.json === 'function') {
-            const body = await ctx.json();
-            if (body?.error) detail = body.error;
-          }
-        } catch { /* ignore */ }
-        throw new HttpError(500, `Layout generation failed: ${detail}`);
+      const layoutText = await layoutResponse.text();
+      console.log('[submit-print-order] print-renderer status:', layoutResponse.status, 'body:', layoutText);
+      if (!layoutResponse.ok) {
+        throw new HttpError(500, `Layout generation failed: ${layoutResponse.status} — ${layoutText}`);
       }
-      if (layoutRes.data?.error) {
-        throw new HttpError(500, `Layout generation error: ${layoutRes.data.error}`);
-      }
-      imageUrl8x12 = layoutRes.data?.print_layout_url;
-      assert(typeof imageUrl8x12 === 'string' && imageUrl8x12.length > 0, 500, `Print layout URL missing. Response: ${JSON.stringify(layoutRes.data)}`);
+      let layoutData: any;
+      try { layoutData = JSON.parse(layoutText); } catch { layoutData = {}; }
+      imageUrl = layoutData?.print_layout_url;
+      assert(typeof imageUrl === 'string' && imageUrl.length > 0, 500, 'Print layout URL missing from print-renderer response.');
     }
 
     // Submit order to Prodigi
@@ -296,14 +326,15 @@ Deno.serve((req) =>
       },
     };
 
+    const allPrintIds = [printId, ...additionalPrintIds];
     const items: ProdigiItem[] = [
       {
-        merchantReference: `${printId}-5x7`,
-        sku: SKU_5X7,
-        copies: 1,
+        merchantReference: `${printId}-8x10`,
+        sku: SKU_8X10,
+        copies: allPrintIds.length,
         sizing: 'fillPrintArea',
         attributes: { finish: 'lustre' },
-        assets: [{ printArea: 'default', url: imageUrl8x12 }],
+        assets: [{ printArea: 'default', url: imageUrl }],
       },
     ];
 
@@ -319,7 +350,7 @@ Deno.serve((req) =>
       await supabaseAdmin
         .from('autograph_prints')
         .update({ fulfillment_status: 'failed' })
-        .eq('id', printId);
+        .in('id', allPrintIds);
 
       throw error;
     }
@@ -328,18 +359,50 @@ Deno.serve((req) =>
     await supabaseAdmin
       .from('autograph_prints')
       .update({
+        print_layout_url: imageUrl,
         vendor_order_id: vendorOrderId,
         vendor_submitted_at: new Date().toISOString(),
         fulfillment_status: 'submitted',
       })
-      .eq('id', printId);
+      .in('id', allPrintIds);
+
+    // Now that Prodigi has confirmed the order, record the owner payout in the ledger.
+    // Using royalty_type 'print_owner' (distinct from the trigger-inserted 'print' creator royalty)
+    // so both can coexist for the same print when creator_id === owner_id.
+    // TODO: when Stripe Connect onboarding is built, verify account.charges_enabled before
+    //       setting transfer_data on the PaymentIntent; until then owner_connect_scheduled
+    //       will always be false for accounts that haven't completed onboarding.
+    if (!isSandbox) {
+      const meta = paymentEvent?.provider_metadata ?? {};
+      const ownerConnectScheduled = meta.owner_connect_scheduled === true;
+      const ownerPayoutCents = typeof meta.owner_payout_cents === 'number' ? meta.owner_payout_cents : 0;
+      const ownerId = typeof meta.owner_id === 'string' ? meta.owner_id : null;
+
+      if (!ownerConnectScheduled && ownerPayoutCents > 0 && ownerId) {
+        const perPrintPayout = Math.round(ownerPayoutCents / allPrintIds.length);
+        await supabaseAdmin
+          .from('royalties_ledger')
+          .upsert(
+            allPrintIds.map((pid) => ({
+              creator_id: ownerId,
+              royalty_type: 'print_owner',
+              print_id: pid,
+              autograph_id: autographId,
+              print_royalty_cents_snapshot: perPrintPayout,
+              royalty_amount_cents: perPrintPayout,
+            })),
+            { onConflict: 'print_id,creator_id,royalty_type', ignoreDuplicates: true }
+          );
+      }
+    }
 
     // Notify the collector
     const label = await getAutographDisplayLabel(autographId);
+    const printWord = allPrintIds.length > 1 ? `${allPrintIds.length} prints` : 'print';
     await notifyUser(
       user.id,
       'Print Order Submitted',
-      `Your official print of ${label} is on its way! You'll receive a shipping confirmation from our print partner.`
+      `Your official ${printWord} of ${label} ${allPrintIds.length > 1 ? 'are' : 'is'} on the way! You'll receive a shipping confirmation from our print partner.`
     );
 
     return json({
@@ -347,6 +410,7 @@ Deno.serve((req) =>
         id: printId,
         vendor_order_id: vendorOrderId,
         fulfillment_status: 'submitted',
+        quantity: allPrintIds.length,
         reused: false,
       },
     });
