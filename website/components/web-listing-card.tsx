@@ -13,12 +13,12 @@ export function WebListingCard({
   listing,
   isSaved: _isSaved = false,
   savePath: _savePath = '/marketplace',
-  hideCreator = false,
+  showProfileButton = false,
 }: {
   listing: WebsiteListing;
   isSaved?: boolean;
   savePath?: string;
-  hideCreator?: boolean;
+  showProfileButton?: boolean;
 }) {
   const [playing, setPlaying] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
@@ -83,14 +83,6 @@ export function WebListingCard({
         <div className="border-t border-gray-200 p-3.5">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              {!hideCreator && (
-                <Link
-                  href={`/profile/${listing.creator_id}`}
-                  className="line-clamp-1 block text-sm font-black leading-5 text-black hover:text-[#001B5C]"
-                >
-                  {creatorName}
-                </Link>
-              )}
               <p className="line-clamp-1 text-xs leading-5 text-gray-500">
                 {listing.creator_sequence_number != null ? `#${listing.creator_sequence_number} · ` : ''}
                 {formatDate(listing.created_at)}
@@ -104,21 +96,31 @@ export function WebListingCard({
                 </p>
               ) : null}
             </div>
-            {listing.prints_enabled ? (
-              <button
-                onClick={() => setCheckoutOpen(true)}
-                className="shrink-0 rounded-[4px] bg-[#001B5C] px-2.5 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-[#00144A]"
-              >
-                Preview Print
-              </button>
-            ) : (
-              <Link
-                href={`/autograph/${listing.id}`}
-                className="shrink-0 rounded-[4px] border border-gray-200 px-2.5 py-1.5 text-[11px] font-semibold text-gray-600 transition-colors hover:border-gray-400"
-              >
-                View
-              </Link>
-            )}
+            <div className="flex shrink-0 items-center gap-1.5">
+              {showProfileButton && (
+                <Link
+                  href={`/profile/${listing.creator_id}`}
+                  className="rounded-[4px] border border-gray-200 px-2.5 py-1.5 text-[11px] font-semibold text-gray-600 transition-colors hover:border-gray-400"
+                >
+                  View Profile
+                </Link>
+              )}
+              {listing.prints_enabled ? (
+                <button
+                  onClick={() => setCheckoutOpen(true)}
+                  className="rounded-[4px] bg-[#001B5C] px-2.5 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-[#00144A]"
+                >
+                  Print
+                </button>
+              ) : (
+                <Link
+                  href={`/autograph/${listing.id}`}
+                  className="rounded-[4px] border border-gray-200 px-2.5 py-1.5 text-[11px] font-semibold text-gray-600 transition-colors hover:border-gray-400"
+                >
+                  View
+                </Link>
+              )}
+            </div>
           </div>
         </div>
       </article>

@@ -57,6 +57,7 @@ export default async function MarketplacePage({
                   listing={listing}
                   isSaved={savedIds.has(listing.id)}
                   savePath={webRoutes.marketplace}
+                  showProfileButton
                 />
               ))}
             </section>
