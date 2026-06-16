@@ -79,6 +79,7 @@ export default async function ProfilePage({
                   listing={listing}
                   isSaved={savedIds.has(listing.id)}
                   savePath={webRouteToProfile(id)}
+                  hideCreator
                 />
               ))}
             </div>

@@ -13,10 +13,12 @@ export function WebListingCard({
   listing,
   isSaved: _isSaved = false,
   savePath: _savePath = '/marketplace',
+  hideCreator = false,
 }: {
   listing: WebsiteListing;
   isSaved?: boolean;
   savePath?: string;
+  hideCreator?: boolean;
 }) {
   const [playing, setPlaying] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
@@ -81,12 +83,14 @@ export function WebListingCard({
         <div className="border-t border-gray-200 p-3.5">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <Link
-                href={`/profile/${listing.creator_id}`}
-                className="line-clamp-1 block text-sm font-black leading-5 text-black hover:text-[#001B5C]"
-              >
-                {creatorName}
-              </Link>
+              {!hideCreator && (
+                <Link
+                  href={`/profile/${listing.creator_id}`}
+                  className="line-clamp-1 block text-sm font-black leading-5 text-black hover:text-[#001B5C]"
+                >
+                  {creatorName}
+                </Link>
+              )}
               <p className="line-clamp-1 text-xs leading-5 text-gray-500">
                 {listing.creator_sequence_number != null ? `#${listing.creator_sequence_number} · ` : ''}
                 {formatDate(listing.created_at)}
