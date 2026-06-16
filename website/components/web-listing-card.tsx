@@ -81,9 +81,14 @@ export function WebListingCard({
         <div className="border-t border-gray-200 p-3.5">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <p className="line-clamp-1 text-sm font-black leading-5 text-black">
-                {listing.creator_sequence_number != null ? `#${listing.creator_sequence_number}` : ''}
-                {listing.creator_sequence_number != null ? ' · ' : ''}
+              <Link
+                href={`/profile/${listing.creator_id}`}
+                className="line-clamp-1 block text-sm font-black leading-5 text-black hover:text-[#001B5C]"
+              >
+                {creatorName}
+              </Link>
+              <p className="line-clamp-1 text-xs leading-5 text-gray-500">
+                {listing.creator_sequence_number != null ? `#${listing.creator_sequence_number} · ` : ''}
                 {formatDate(listing.created_at)}
               </p>
               {listing.series_name ? (
