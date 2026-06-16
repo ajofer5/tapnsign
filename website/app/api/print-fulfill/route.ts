@@ -19,7 +19,7 @@ function getProdigiUrl() {
 
 async function retrieveStripeCheckoutSession(sessionId: string) {
   const response = await fetch(
-    `https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(sessionId)}?expand[]=payment_intent`,
+    `https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(sessionId)}?expand[]=payment_intent&expand[]=payment_intent.latest_charge`,
     {
       headers: { Authorization: `Bearer ${getStripeSecretKey()}` },
       cache: 'no-store',
@@ -28,6 +28,89 @@ async function retrieveStripeCheckoutSession(sessionId: string) {
   const data = await response.json();
   if (!response.ok) throw new Error(data?.error?.message ?? 'Stripe session retrieval failed');
   return data;
+}
+
+function normalizeAddress(raw: any) {
+  if (!raw) return null;
+  const line1 = typeof raw.line1 === 'string' ? raw.line1.trim() : '';
+  const city = typeof raw.city === 'string' ? raw.city.trim() : '';
+  const state = typeof raw.state === 'string' ? raw.state.trim() : '';
+  const postalCode = typeof raw.postal_code === 'string'
+    ? raw.postal_code.trim()
+    : typeof raw.postalOrZipCode === 'string'
+      ? raw.postalOrZipCode.trim()
+      : '';
+  const country = typeof raw.country === 'string' ? raw.country.trim() : 'US';
+
+  if (!line1 || !city || !state || !postalCode) return null;
+
+  return {
+    line1,
+    line2: typeof raw.line2 === 'string' && raw.line2.trim() ? raw.line2.trim() : null,
+    city,
+    state,
+    postal_code: postalCode,
+    country: country || 'US',
+  };
+}
+
+function normalizeShippingCandidate(candidate: any) {
+  const address = normalizeAddress(candidate?.address ?? candidate);
+  const name = typeof candidate?.name === 'string' && candidate.name.trim()
+    ? candidate.name.trim()
+    : null;
+  if (!address) return null;
+  return { name, address };
+}
+
+function getSavedOrderShipping(order: any) {
+  const address = normalizeAddress({
+    line1: order.shipping_line1,
+    line2: order.shipping_line2,
+    city: order.shipping_city,
+    state: order.shipping_state,
+    postal_code: order.shipping_zip,
+    country: order.shipping_country,
+  });
+  const name = typeof order.shipping_name === 'string' && order.shipping_name.trim()
+    ? order.shipping_name.trim()
+    : null;
+  if (!address) return null;
+  return { name, address };
+}
+
+function getCheckoutShipping(session: any, order: any) {
+  const paymentIntent = typeof session.payment_intent === 'object' ? session.payment_intent : null;
+  const latestCharge = typeof paymentIntent?.latest_charge === 'object' ? paymentIntent.latest_charge : null;
+
+  const candidates = [
+    session.shipping_details,
+    session.shipping,
+    session.collected_information?.shipping_details,
+    session.collected_information?.shipping,
+    paymentIntent?.shipping,
+    latestCharge?.shipping,
+    session.customer_details,
+    latestCharge?.billing_details,
+    getSavedOrderShipping(order),
+  ];
+
+  for (const candidate of candidates) {
+    const normalized = normalizeShippingCandidate(candidate);
+    if (normalized) {
+      const fallbackName =
+        normalized.name ||
+        (typeof session.customer_details?.name === 'string' ? session.customer_details.name.trim() : '') ||
+        (typeof latestCharge?.billing_details?.name === 'string' ? latestCharge.billing_details.name.trim() : '') ||
+        (typeof order.shipping_name === 'string' ? order.shipping_name.trim() : '');
+
+      if (fallbackName) {
+        return { name: fallbackName, address: normalized.address };
+      }
+    }
+  }
+
+  return null;
 }
 
 async function getPrintLayoutUrl(autographId: string): Promise<string> {
@@ -156,14 +239,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Session mismatch' }, { status: 403 });
     }
 
-    // Extract shipping from Stripe session
-    // Field name changed in Stripe API 2022-11-15: older accounts return `shipping`, newer return `shipping_details`
-    const shippingDetails = session.shipping_details ?? session.shipping;
-    const shipping = shippingDetails?.address;
-    const shippingName = shippingDetails?.name ?? order.shipping_name ?? '';
-    if (!shipping || !shippingName) {
+    const checkoutShipping = getCheckoutShipping(session, order);
+    if (!checkoutShipping) {
+      console.error('[print-fulfill] shipping missing', {
+        session_id: sessionId,
+        order_id: orderId,
+        has_shipping_details: !!session.shipping_details,
+        has_shipping: !!session.shipping,
+        has_collected_information: !!session.collected_information,
+        has_customer_details_address: !!session.customer_details?.address,
+        has_payment_intent_shipping: typeof session.payment_intent === 'object' && !!session.payment_intent?.shipping,
+        has_latest_charge_shipping:
+          typeof session.payment_intent === 'object' &&
+          typeof session.payment_intent?.latest_charge === 'object' &&
+          !!session.payment_intent.latest_charge?.shipping,
+      });
       return NextResponse.json({ error: 'Shipping address missing' }, { status: 409 });
     }
+    const shipping = checkoutShipping.address;
+    const shippingName = checkoutShipping.name;
 
     const paymentIntentId = typeof session.payment_intent === 'string'
       ? session.payment_intent
