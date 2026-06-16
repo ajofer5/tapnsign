@@ -280,7 +280,7 @@ export async function getMyOfferQueue(
 }
 
 export async function getMyActivity(userId: string): Promise<WebsiteActivityEntry[]> {
-  const supabase = await createWebsiteServerSupabaseClient();
+  const supabase = createWebsiteAdminSupabaseClient();
   const { data, error } = await supabase.rpc('get_activity_feed', {
     p_user_id: userId,
     p_limit: 100,

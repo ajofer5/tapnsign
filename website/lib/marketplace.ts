@@ -29,9 +29,48 @@ export async function getMarketplaceListings(
     throw new Error(error.message);
   }
 
-  const listings = (rows ?? [])
+  const listings: WebsiteListing[] = (rows ?? [])
     .map(mapWebsiteListingRow)
     .filter((listing: WebsiteListing) => DIGITAL_TRADING_ENABLED || listing.prints_enabled);
+
+  const rendererUrl = process.env.PRINT_RENDERER_URL ?? '';
+  const internalSecret = process.env.INTERNAL_FUNCTION_SECRET ?? '';
+  const needsPreview = listings.filter((listing) => listing.prints_enabled && !listing.print_preview_url);
+  if (rendererUrl && needsPreview.length > 0) {
+    await Promise.allSettled(
+      needsPreview.map(async (listing) => {
+        try {
+          const response = await fetch(`${rendererUrl}/render`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-internal-secret': internalSecret,
+            },
+            body: JSON.stringify({ autograph_id: listing.id, internal_secret: internalSecret }),
+          });
+          if (!response.ok) return;
+          const data = await response.json();
+          const layoutUrl = typeof data?.print_layout_url === 'string' ? data.print_layout_url : null;
+          const previewUrl = typeof data?.print_preview_url === 'string' ? data.print_preview_url : null;
+          if (layoutUrl) listing.print_layout_url = layoutUrl;
+          if (previewUrl) listing.print_preview_url = previewUrl;
+          if (layoutUrl || previewUrl) {
+            supabase
+              .from('autographs')
+              .update({
+                ...(layoutUrl ? { print_layout_url: layoutUrl } : {}),
+                ...(previewUrl ? { print_preview_url: previewUrl } : {}),
+              })
+              .eq('id', listing.id)
+              .then(() => {});
+          }
+        } catch {
+          // Non-fatal; the card can fall back to the existing thumbnail.
+        }
+      })
+    );
+  }
+
   const last = listings[listings.length - 1];
 
   return {
