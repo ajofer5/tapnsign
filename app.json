@@ -4,7 +4,7 @@
     "slug": "autograph-app-v2",
     "version": "1.0.0",
     "orientation": "default",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/icon-square-ios.png",
     "scheme": "tapnsign",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -14,9 +14,11 @@
       "infoPlist": {
         "NSCameraUsageDescription": "Allow this app to use your camera to capture autograph videos.",
         "NSMicrophoneUsageDescription": "Allow this app to record audio with autograph videos.",
-        "NSPhotoLibraryAddUsageDescription": "Allow this app to save autograph videos to your library."
+        "NSPhotoLibraryAddUsageDescription": "Allow this app to save autograph videos to your library.",
+        "ITSAppUsesNonExemptEncryption": false
       },
-      "bundleIdentifier": "com.tapnsign.app"
+      "bundleIdentifier": "com.tapnsign.app",
+      "appleTeamId": "84343HMCYD"
     },
     "android": {
       "permissions": [
@@ -35,8 +37,8 @@
       ],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/icon.png",
-        "monochromeImage": "./assets/images/icon.png"
+        "foregroundImage": "./assets/images/icon-square-ios.png",
+        "monochromeImage": "./assets/images/icon-square-ios.png"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
@@ -44,14 +46,14 @@
     },
     "web": {
       "output": "single-page",
-      "favicon": "./assets/images/icon.png"
+      "favicon": "./assets/images/icon-square-ios.png"
     },
     "plugins": [
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-icon.png",
+          "image": "./assets/images/Ophinia_name_no tm_white.png",
           "imageWidth": 200,
           "resizeMode": "contain",
           "backgroundColor": "#ffffff",
@@ -92,7 +94,7 @@
     ],
     "experiments": {
       "typedRoutes": true,
-      "reactCompiler": true
+      "reactCompiler": false
     },
     "extra": {
       "router": {},

@@ -6,6 +6,7 @@ import { Link, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
   Alert,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -36,6 +37,7 @@ export default function SignupScreen() {
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [passwordVisible, setPasswordVisible] = useState(false);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [appleLoading, setAppleLoading] = useState(false);
@@ -94,7 +96,7 @@ export default function SignupScreen() {
       return;
     }
     if (!ageConfirmed) {
-      Alert.alert('Error', 'Please confirm that you are 13 or older and agree to the Terms of Service.');
+      Alert.alert('Error', 'Please confirm that you are 13 or older and agree to the Terms of Service and Privacy Policy.');
       return;
     }
 
@@ -121,11 +123,10 @@ export default function SignupScreen() {
         : 'Account creation failed. Please try again.';
       Alert.alert('Sign Up Failed', message);
     } else {
-      Alert.alert(
-        'Account Created',
-        'Welcome to Ophinia!',
-        [{ text: 'OK', onPress: () => router.replace('/') }]
-      );
+      router.replace({
+        pathname: '/confirm-email',
+        params: { email: email.trim() },
+      });
     }
   };
 
@@ -167,7 +168,11 @@ export default function SignupScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-      <Text style={styles.title}>Ophinia</Text>
+      <Image
+        source={require('../assets/images/Ophinia_name_no tm_white.png')}
+        style={styles.logo}
+        resizeMode="contain"
+      />
 
       <TextInput
         style={styles.input}
@@ -188,14 +193,26 @@ export default function SignupScreen() {
         onChangeText={setEmail}
       />
 
-      <TextInput
-        style={styles.input}
-        placeholder="Password (min 6 characters)"
-        placeholderTextColor="#999"
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-      />
+      <View style={styles.passwordInputWrap}>
+        <TextInput
+          style={styles.passwordInput}
+          placeholder="Password (min 6 characters)"
+          placeholderTextColor="#999"
+          secureTextEntry={!passwordVisible}
+          value={password}
+          onChangeText={setPassword}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        <Pressable
+          style={styles.passwordToggle}
+          onPress={() => setPasswordVisible((visible) => !visible)}
+          accessibilityRole="button"
+          accessibilityLabel={passwordVisible ? 'Hide password' : 'Show password'}
+        >
+          <Text style={styles.passwordToggleText}>{passwordVisible ? 'Hide' : 'Show'}</Text>
+        </Pressable>
+      </View>
 
       {/* Date of birth */}
       <Text style={styles.dobLabel}>Date of Birth</Text>
@@ -237,6 +254,8 @@ export default function SignupScreen() {
         <Text style={styles.checkboxLabel}>
           I confirm I am 13 or older and agree to the{' '}
           <Text style={styles.checkboxLink}>Terms of Service</Text>
+          {' '}and{' '}
+          <Text style={styles.checkboxLink}>Privacy Policy</Text>
         </Text>
       </Pressable>
 
@@ -279,7 +298,7 @@ export default function SignupScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: BrandColors.background,
+    backgroundColor: '#fff',
   },
   scrollContent: {
     flexGrow: 1,
@@ -288,11 +307,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
     paddingVertical: 48,
   },
-  title: {
-    fontSize: 80,
-    lineHeight: 104,
-    fontFamily: BrandFonts.primary,
-    color: '#111',
+  logo: {
+    width: '70%',
+    height: 80,
     marginBottom: 40,
   },
   input: {
@@ -304,6 +321,35 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginBottom: 14,
     color: '#333',
+    borderWidth: 1,
+    borderColor: '#555',
+  },
+  passwordInputWrap: {
+    width: '100%',
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    marginBottom: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#555',
+  },
+  passwordInput: {
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
+    color: '#333',
+  },
+  passwordToggle: {
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+  },
+  passwordToggleText: {
+    color: BrandColors.primary,
+    fontSize: 14,
+    fontWeight: '700',
+    fontFamily: BrandFonts.primary,
   },
   button: {
     width: '100%',

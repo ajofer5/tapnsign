@@ -12,6 +12,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  View,
 } from 'react-native';
 import * as AppleAuthentication from 'expo-apple-authentication';
 
@@ -19,6 +20,7 @@ export default function LoginScreen() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [passwordVisible, setPasswordVisible] = useState(false);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [appleLoading, setAppleLoading] = useState(false);
@@ -50,10 +52,16 @@ export default function LoginScreen() {
     setLoading(false);
 
     if (error) {
+      if (error.message?.toLowerCase().includes('email not confirmed')) {
+        router.push({
+          pathname: '/confirm-email',
+          params: { email: email.trim() },
+        });
+        return;
+      }
+
       const message = error.message?.toLowerCase().includes('invalid login credentials')
         ? 'Incorrect email or password. Please try again.'
-        : error.message?.toLowerCase().includes('email not confirmed')
-        ? 'Please check your email and confirm your account before signing in.'
         : 'Sign in failed. Please try again.';
       Alert.alert('Login Failed', message);
     } else {
@@ -94,7 +102,7 @@ export default function LoginScreen() {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <Image source={require('../assets/images/Ophinia_name.png')} style={styles.logo} resizeMode="contain" />
+      <Image source={require('../assets/images/Ophinia_name_no tm_white.png')} style={styles.logo} resizeMode="contain" />
 
       <TextInput
         style={styles.input}
@@ -106,14 +114,28 @@ export default function LoginScreen() {
         onChangeText={setEmail}
       />
 
-      <TextInput
-        style={styles.input}
-        placeholder="Password"
-        placeholderTextColor="#999"
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-      />
+      <View style={styles.passwordInputWrap}>
+        <TextInput
+          style={styles.passwordInput}
+          placeholder="Password"
+          placeholderTextColor="#999"
+          secureTextEntry={!passwordVisible}
+          value={password}
+          onChangeText={setPassword}
+          autoCapitalize="none"
+          autoCorrect={false}
+          returnKeyType="go"
+          onSubmitEditing={handleLogin}
+        />
+        <Pressable
+          style={styles.passwordToggle}
+          onPress={() => setPasswordVisible((visible) => !visible)}
+          accessibilityRole="button"
+          accessibilityLabel={passwordVisible ? 'Hide password' : 'Show password'}
+        >
+          <Text style={styles.passwordToggleText}>{passwordVisible ? 'Hide' : 'Show'}</Text>
+        </Pressable>
+      </View>
 
       <Pressable style={styles.button} onPress={handleLogin} disabled={loading}>
         <Text style={styles.buttonText}>{loading ? 'Signing in…' : 'Sign In'}</Text>
@@ -153,7 +175,7 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: BrandColors.background,
+    backgroundColor: '#fff',
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 32,
@@ -166,12 +188,41 @@ const styles = StyleSheet.create({
   input: {
     width: '100%',
     backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#ddd',
     borderRadius: 10,
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 16,
     marginBottom: 14,
     color: '#333',
+  },
+  passwordInputWrap: {
+    width: '100%',
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 10,
+    marginBottom: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  passwordInput: {
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
+    color: '#333',
+  },
+  passwordToggle: {
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+  },
+  passwordToggleText: {
+    color: BrandColors.primary,
+    fontSize: 14,
+    fontWeight: '700',
+    fontFamily: BrandFonts.primary,
   },
   button: {
     width: '100%',
