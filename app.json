@@ -45,7 +45,7 @@
       "package": "com.tapnsign.app"
     },
     "web": {
-      "output": "single-page",
+      "output": "static",
       "favicon": "./assets/images/icon-square-ios.png"
     },
     "plugins": [
@@ -83,6 +83,7 @@
           "enableGooglePay": false
         }
       ],
+      "./plugins/withModularHeaders",
       "expo-apple-authentication",
       "@react-native-community/datetimepicker",
       [

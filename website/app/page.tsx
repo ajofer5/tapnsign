@@ -51,55 +51,35 @@ export default function HomePage() {
 
       <section className="bg-white px-6 py-20">
         <div className="mx-auto max-w-4xl">
-          <div className="mb-3 text-center text-[1.75rem] font-bold uppercase tracking-widest text-[#001B5C]">
-            Creators
-          </div>
           <h2 className="mb-4 text-center text-3xl font-black md:text-4xl">
-            Your name. Your image. Your terms.
+            Capture and share the moment in under 15 seconds.
           </h2>
           <p className="mx-auto mb-12 max-w-2xl text-center text-lg text-gray-500">
-            Ophinia gives creators direct control over verified autograph capture, official prints, and certificate-backed presentation.
+            Create authenticated memorabilia, grow fan engagement, and earn from every print sold.
           </p>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <BulletCard text="Identity verified through Stripe Identity so fans know it is really you." />
-            <BulletCard text="Capture a personalized video autograph in seconds." />
-            <BulletCard text="Enable official print ordering for autographs you want to share publicly." />
-            <BulletCard text="Every autograph stays tied to a permanent certificate record." />
+            <SquareCard text="Identity verification through Stripe Identity." />
+            <SquareCard text="Capture a personalized autograph in seconds." />
+            <SquareCard text="Securely store the digital rights to your moments." />
+            <SquareCard text="Certificate of authenticity tied to every moment." />
           </div>
         </div>
       </section>
 
       <section className="bg-white px-6 py-20">
         <div className="mx-auto max-w-4xl">
-          <div className="mb-3 text-center text-[1.75rem] font-bold uppercase tracking-widest text-[#001B5C]">
-            Collectors
-          </div>
           <h2 className="mb-4 text-center text-3xl font-black md:text-4xl">
-            Browse. Collect. Display.
+            Purchase authenticated memorabilia.
           </h2>
           <p className="mx-auto mb-12 max-w-2xl text-center text-lg text-gray-500">
-            Browse authenticated autographs, inspect the certificate, and order official prints for the pieces you want on the wall.
+            Every 8x10 memorabilia print includes a signing storyboard, signature panel, capture date, and QR code linked to its certificate of authenticity.
           </p>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <BulletCard text="Order official prints from authenticated creator autographs." />
-            <BulletCard text="Every autograph includes a Certificate of Authenticity with QR verification." />
-            <BulletCard text="Save, share, and revisit autographs from the marketplace." />
-            <BulletCard text="Order official prints to display the pieces you love." />
+            <SquareCard text="Order official prints directly from your favorite creators." />
+            <SquareCard text="Save your favorite creators to keep up with new releases." />
+            <SquareCard text="Save your favorite moments to keep up with promotional discounts." />
+            <SquareCard text="Share moments with friends and family." />
           </div>
-        </div>
-      </section>
-
-      <section className="bg-[#001B5C] px-6 py-20 text-white">
-        <div className="mx-auto max-w-3xl text-center">
-          <div className="mb-3 text-sm font-bold uppercase tracking-widest text-[#F1C168]">
-            Official Prints
-          </div>
-          <h2 className="mb-6 text-3xl font-black md:text-4xl">
-            Bring the autograph into the room.
-          </h2>
-          <p className="mx-auto max-w-xl text-lg text-[#D9E2FF]">
-            Official prints give collectors a physical format without losing the certificate-driven provenance.
-          </p>
         </div>
       </section>
 
@@ -149,10 +129,10 @@ export default function HomePage() {
 }
 
 
-function BulletCard({ text }: { text: string }) {
+function SquareCard({ text }: { text: string }) {
   return (
     <div className="flex items-start gap-3 rounded-xl border border-[#E1E5EF] bg-white p-4">
-      <span className="text-lg font-black leading-snug text-[#6722F7]">✦</span>
+      <span className="mt-0.5 h-3 w-3 shrink-0 bg-[#6722F7]" />
       <p className="leading-snug text-gray-700">{text}</p>
     </div>
   );
