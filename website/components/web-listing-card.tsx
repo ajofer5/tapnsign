@@ -110,7 +110,7 @@ export function WebListingCard({
                   onClick={() => setCheckoutOpen(true)}
                   className="rounded-[4px] bg-[#001B5C] px-2.5 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-[#00144A]"
                 >
-                  Print
+                  Print Moment
                 </button>
               ) : (
                 <Link
