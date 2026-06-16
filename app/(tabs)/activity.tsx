@@ -1,14 +1,13 @@
 import { BrandColors, BrandFonts } from '@/constants/theme';
 import { AutographPlayer } from '@/components/autograph-player';
 import { NameWithSequence } from '@/components/public-video-card';
-import { callEdgeFunction } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
 import { openAuthenticatedWebPath } from '@/lib/web-handoff';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Image, Linking, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
 type ActivityEntry = {
   id: string;
@@ -30,14 +29,18 @@ type ActivityEntry = {
     | 'personalized_request_withdrawn'
     | 'personalized_request_expired'
     | 'personalized_request_fulfilled'
-    | 'personalized_request_completed';
+    | 'personalized_request_completed'
+    | 'print_ordered'
+    | 'daily_print_summary'
+    | 'verification_status'
+    | 'payout_status';
   autographId: string | null;
   creatorName: string;
   creatorSequenceNumber?: number | null;
   seriesName?: string | null;
   amountCents: number;
   date: string;
-  status?: 'pending' | 'accepted' | 'on_hold' | 'declined' | 'withdrawn' | 'expired' | 'countered' | 'fulfilled' | 'completed';
+  status?: string | null;
   offerId?: string | null;
   offerRole?: 'owner' | 'buyer';
   expiresAt?: string | null;
@@ -49,6 +52,9 @@ type ActivityEntry = {
   inscriptionText?: string | null;
   completedTransferId?: string | null;
   isActionable?: boolean;
+  printQuantity?: number | null;
+  fulfillmentStatus?: string | null;
+  vendorOrderId?: string | null;
 };
 
 type ActivityCursor = {
@@ -65,7 +71,7 @@ type ActivityFeedRow = {
   series_name: string | null;
   amount_cents: number;
   event_at: string;
-  status: ActivityEntry['status'] | null;
+  status: string | null;
   offer_id: string | null;
   offer_role: ActivityEntry['offerRole'] | null;
   expires_at: string | null;
@@ -77,6 +83,9 @@ type ActivityFeedRow = {
   inscription_text: string | null;
   completed_transfer_id: string | null;
   is_actionable: boolean;
+  print_quantity: number | null;
+  fulfillment_status: string | null;
+  vendor_order_id: string | null;
 };
 
 type Point = { x: number; y: number; t: number };
@@ -140,7 +149,70 @@ const EVENT_CONFIG: Record<ActivityEntry['type'], { label: string }> = {
   personalized_request_expired: { label: 'Personalized Request Expired' },
   personalized_request_fulfilled: { label: 'Personalized Request Ready' },
   personalized_request_completed: { label: 'Personalized Request Complete' },
+  print_ordered: { label: 'Print Ordered' },
+  daily_print_summary: { label: 'Print Activity' },
+  verification_status: { label: 'Verification' },
+  payout_status: { label: 'Payouts' },
 };
+
+function formatActivityDay(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'on that date';
+
+  const now = new Date();
+  const localDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const diffDays = Math.round((today.getTime() - localDate.getTime()) / 86_400_000);
+
+  if (diffDays === 0) return 'today';
+  if (diffDays === 1) return 'yesterday';
+  return `on ${date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}`;
+}
+
+function formatPrintStatus(status?: string | null) {
+  switch (status) {
+    case 'payment_confirmed':
+      return 'Payment confirmed.';
+    case 'submitted':
+      return 'Submitted to print partner.';
+    case 'shipped':
+      return 'Shipped.';
+    case 'delivered':
+      return 'Delivered.';
+    case 'failed':
+      return 'Fulfillment needs attention.';
+    case 'pending':
+      return 'Pending.';
+    default:
+      return 'Print order received.';
+  }
+}
+
+function formatVerificationStatus(status?: string | null) {
+  switch (status) {
+    case 'verified':
+      return 'Your account verification is complete.';
+    case 'pending':
+      return 'Your account verification is pending.';
+    case 'failed':
+      return 'Your account verification needs attention.';
+    case 'expired':
+      return 'Your verification session expired.';
+    default:
+      return 'Verification is not complete yet.';
+  }
+}
+
+function formatPayoutStatus(status?: string | null) {
+  switch (status) {
+    case 'connected':
+      return 'Your payout account is connected.';
+    case 'in_progress':
+      return 'Your payout setup is in progress.';
+    default:
+      return 'Connect payouts to receive print earnings.';
+  }
+}
 
 function activityViewedKey(userId: string) {
   return `activity_last_viewed_${userId}`;
@@ -161,7 +233,6 @@ export default function ActivityScreen() {
   const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null);
   const [previewItem, setPreviewItem] = useState<PreviewAutograph | null>(null);
   const { user } = useAuth();
-  const appUrl = process.env.EXPO_PUBLIC_APP_URL ?? 'https://tapnsign.app';
   const router = useRouter();
   const lastLoadedAtRef = useRef<number | null>(null);
   const mapFeedRow = useCallback((row: ActivityFeedRow): ActivityEntry => ({
@@ -185,6 +256,9 @@ export default function ActivityScreen() {
     inscriptionText: row.inscription_text ?? undefined,
     completedTransferId: row.completed_transfer_id ?? undefined,
     isActionable: row.is_actionable,
+    printQuantity: row.print_quantity ?? undefined,
+    fulfillmentStatus: row.fulfillment_status ?? undefined,
+    vendorOrderId: row.vendor_order_id ?? undefined,
   }), []);
 
   const fetchActivityPage = useCallback(async (pageCursor: ActivityCursor | null) => {
@@ -203,8 +277,13 @@ export default function ActivityScreen() {
       throw error;
     }
 
+    const HIDDEN_TYPES = new Set([
+      'sold', 'purchased',
+      'offer_received', 'offer_sent', 'offer_on_hold',
+      'offer_accepted', 'offer_declined', 'offer_withdrawn', 'offer_expired',
+    ]);
     const rows = (data as ActivityFeedRow[] | null) ?? [];
-    const items = rows.map(mapFeedRow);
+    const items = rows.map(mapFeedRow).filter((i) => !HIDDEN_TYPES.has(i.type));
     const last = items[items.length - 1];
 
     return {
@@ -251,25 +330,8 @@ export default function ActivityScreen() {
   }, [fetchActivityPage, user]);
 
   const handleOfferAction = async (entry: ActivityEntry, action: 'accept' | 'decline' | 'withdraw') => {
-    if (!entry.offerId) return;
-    setActioningId(entry.id);
-    try {
-      if (action === 'withdraw') {
-        await callEdgeFunction('withdraw-autograph-offer', {
-          offer_id: entry.offerId,
-        });
-      } else {
-        await callEdgeFunction('respond-autograph-offer', {
-          offer_id: entry.offerId,
-          action,
-        });
-      }
-      await loadEntries({ force: true });
-    } catch {
-      Alert.alert('Offer Error', 'Could not update offer. Please try again.');
-    } finally {
-      setActioningId(null);
-    }
+    void entry;
+    void action;
   };
 
   const handleOpenPersonalizedRequests = () => {
@@ -284,19 +346,6 @@ export default function ActivityScreen() {
       Alert.alert('Continue on Web', 'Personalized request payment has been moved to Ophinia on the web.');
     } catch {
       Alert.alert('Checkout Error', 'Could not open personalized checkout. Please try again.');
-    } finally {
-      setActioningId(null);
-    }
-  };
-
-  const handleCompleteOfferPurchase = async (entry: ActivityEntry) => {
-    if (!entry.offerId) return;
-    setActioningId(entry.id);
-    try {
-      await openAuthenticatedWebPath(`/app/offers/${entry.offerId}/checkout`);
-      Alert.alert('Continue on Web', 'Accepted-offer payment has been moved to Ophinia on the web.');
-    } catch {
-      Alert.alert('Purchase Error', 'Could not open the web checkout. Please try again.');
     } finally {
       setActioningId(null);
     }
@@ -408,10 +457,11 @@ export default function ActivityScreen() {
         onEndReachedThreshold={0.4}
         renderItem={({ item }) => {
           const config = EVENT_CONFIG[item.type];
+          const showAutographLine = item.type !== 'verification_status' && item.type !== 'payout_status';
           const canPreviewBeforePurchase =
-            item.type === 'offer_accepted' &&
-            item.offerRole === 'buyer' &&
-            !item.acceptedTransferId;
+            item.type === 'personalized_request_fulfilled' &&
+            item.requestRole === 'requester' &&
+            !item.completedTransferId;
           return (
             <View style={styles.row}>
               <Pressable
@@ -420,10 +470,12 @@ export default function ActivityScreen() {
                 disabled={!canPreviewBeforePurchase || previewLoadingId === item.id}
               >
                 <Text style={styles.label}>{config.label}</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', marginTop: 2, marginLeft: 10 }}>
-                  <NameWithSequence name={item.creatorName} sequenceNumber={item.creatorSequenceNumber} style={styles.celebrityInner} />
-                  {item.seriesName ? <Text style={styles.celebrityInner}>{` · ${item.seriesName}`}</Text> : null}
-                </View>
+                {showAutographLine ? (
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', marginTop: 2, marginLeft: 10 }}>
+                    <NameWithSequence name={item.creatorName} sequenceNumber={item.creatorSequenceNumber} style={styles.celebrityInner} />
+                    {item.seriesName ? <Text style={styles.celebrityInner}>{` · ${item.seriesName}`}</Text> : null}
+                  </View>
+                ) : null}
                 {item.type === 'offer_received' && item.expiresAt ? (
                   <Text style={styles.offerMeta}>Expires {formatDeadline(item.expiresAt)}</Text>
                 ) : null}
@@ -476,51 +528,31 @@ export default function ActivityScreen() {
                 {item.type === 'personalized_request_completed' && item.recipientName ? (
                   <Text style={styles.offerMeta}>Completed for {item.recipientName}.</Text>
                 ) : null}
+                {item.type === 'print_ordered' ? (
+                  <Text style={styles.offerMeta}>
+                    {`${item.printQuantity && item.printQuantity > 1 ? `${item.printQuantity} prints` : '1 print'} · ${formatPrintStatus(item.fulfillmentStatus)}`}
+                  </Text>
+                ) : null}
+                {item.type === 'daily_print_summary' ? (
+                  <Text style={styles.offerMeta}>
+                    {`Printed ${item.printQuantity ?? 0} ${(item.printQuantity ?? 0) === 1 ? 'time' : 'times'} ${formatActivityDay(item.date)}.`}
+                  </Text>
+                ) : null}
+                {item.type === 'verification_status' ? (
+                  <Text style={styles.offerMeta}>{formatVerificationStatus(item.status)}</Text>
+                ) : null}
+                {item.type === 'payout_status' ? (
+                  <Text style={styles.offerMeta}>{formatPayoutStatus(item.status)}</Text>
+                ) : null}
                 {canPreviewBeforePurchase ? (
                   <Text style={styles.offerPreviewHint}>
-                    {previewLoadingId === item.id ? 'Loading video…' : 'Tap to review video before paying'}
+                    {previewLoadingId === item.id ? 'Loading…' : 'Tap to review autograph'}
                   </Text>
                 ) : null}
               </Pressable>
               <View style={styles.rowRight}>
-                <Text style={styles.amount}>{formatPrice(item.amountCents)}</Text>
+                {item.amountCents > 0 ? <Text style={styles.amount}>{formatPrice(item.amountCents)}</Text> : null}
                 <Text style={styles.date}>{formatDate(item.date)}</Text>
-                {item.type === 'offer_received' && (
-                  <View style={styles.actionRow}>
-                    <Pressable
-                      style={[styles.offerActionButton, actioningId === item.id && styles.offerActionButtonDisabled]}
-                      onPress={() => handleOfferAction(item, 'accept')}
-                      disabled={actioningId === item.id}
-                    >
-                      <Text style={styles.offerActionPrimaryText}>{actioningId === item.id ? '...' : 'Accept'}</Text>
-                    </Pressable>
-                    <Pressable
-                      style={[styles.offerActionButton, styles.offerActionSecondaryButton, actioningId === item.id && styles.offerActionButtonDisabled]}
-                      onPress={() => handleOfferAction(item, 'decline')}
-                      disabled={actioningId === item.id}
-                    >
-                      <Text style={styles.offerActionSecondaryText}>Decline</Text>
-                    </Pressable>
-                  </View>
-                )}
-                {(item.type === 'offer_sent' || (item.type === 'offer_on_hold' && item.offerRole === 'buyer')) && (
-                  <Pressable
-                    style={[styles.offerActionButton, styles.offerActionSecondaryButton, styles.singleActionButton, actioningId === item.id && styles.offerActionButtonDisabled]}
-                    onPress={() => handleOfferAction(item, 'withdraw')}
-                    disabled={actioningId === item.id}
-                  >
-                    <Text style={styles.offerActionSecondaryText}>{actioningId === item.id ? '...' : 'Withdraw'}</Text>
-                  </Pressable>
-                )}
-                {item.type === 'offer_accepted' && item.offerRole === 'buyer' && !item.acceptedTransferId && (
-                  <Pressable
-                    style={[styles.offerActionButton, styles.singleActionButton, actioningId === item.id && styles.offerActionButtonDisabled]}
-                    onPress={() => handleCompleteOfferPurchase(item)}
-                    disabled={actioningId === item.id}
-                  >
-                    <Text style={styles.offerActionPrimaryText}>{actioningId === item.id ? '...' : 'Complete Purchase'}</Text>
-                  </Pressable>
-                )}
                 {(item.type === 'personalized_request_received' ||
                   item.type === 'personalized_request_countered' ||
                   item.type === 'personalized_request_accepted' ||
@@ -584,9 +616,6 @@ export default function ActivityScreen() {
                     <NameWithSequence name={previewItem.creatorName} sequenceNumber={previewItem.creatorSequenceNumber} style={styles.modalMetaTextInner} />
                     <Text style={styles.modalMetaTextInner}>{` · ${formatDate(previewItem.createdAt)}`}</Text>
                   </View>
-                  <Pressable style={styles.certificateLink} onPress={() => Linking.openURL(`${appUrl}/verify/${previewItem.certificateId}`)}>
-                    <Image source={require('../../assets/images/Ophinia_O.png')} style={styles.certificateLogo} resizeMode="contain" />
-                  </Pressable>
                 </View>
               </View>
             </>

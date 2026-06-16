@@ -1,5 +1,5 @@
 import { mapWebsiteListingRow } from './listings';
-import { createWebsiteAdminSupabaseClient } from './supabase';
+import { createWebsiteAdminSupabaseClient, createWebsiteServerSupabaseClient } from './supabase';
 
 export type WebsiteOwnedListingsCursor = {
   beforeCreatedAt: string;
@@ -186,7 +186,7 @@ export async function getMyListings(
   limit = 24,
   cursor?: WebsiteOwnedListingsCursor | null,
 ): Promise<WebsiteOwnedListingsPage> {
-  const supabase = createWebsiteAdminSupabaseClient();
+  const supabase = await createWebsiteServerSupabaseClient();
   const pageLimit = Math.max(1, Math.min(limit, 100));
   const { data: rows, error } = await supabase.rpc('get_owned_listing_feed', {
     p_owner_id: userId,
@@ -280,7 +280,7 @@ export async function getMyOfferQueue(
 }
 
 export async function getMyActivity(userId: string): Promise<WebsiteActivityEntry[]> {
-  const supabase = createWebsiteAdminSupabaseClient();
+  const supabase = await createWebsiteServerSupabaseClient();
   const { data, error } = await supabase.rpc('get_activity_feed', {
     p_user_id: userId,
     p_limit: 100,
