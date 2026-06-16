@@ -25,8 +25,8 @@ export default function HomePage() {
       <section className="bg-white px-6 pb-12 pt-14">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-start pt-10 text-center md:pt-14">
           <img src="/ophinia-logo.png" alt="Ophinia" className="mb-8 w-[27rem] md:w-[36rem]" />
-          <h1 className="text-3xl font-semibold leading-none tracking-tight text-[#111111] md:text-5xl">
-            Capture the Moment.™
+          <h1 className="text-2xl font-semibold leading-none tracking-tight text-[#111111] md:text-4xl">
+            Capture the moment.
           </h1>
           <p className="mt-8 max-w-xl text-lg leading-relaxed text-gray-600 md:text-xl">
             Seamlessly create and share memorabilia prints with fans in real time.
