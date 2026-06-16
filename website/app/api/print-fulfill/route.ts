@@ -157,8 +157,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Extract shipping from Stripe session
-    const shipping = session.shipping_details?.address;
-    const shippingName = session.shipping_details?.name ?? order.shipping_name ?? '';
+    // Field name changed in Stripe API 2022-11-15: older accounts return `shipping`, newer return `shipping_details`
+    const shippingDetails = session.shipping_details ?? session.shipping;
+    const shipping = shippingDetails?.address;
+    const shippingName = shippingDetails?.name ?? order.shipping_name ?? '';
     if (!shipping || !shippingName) {
       return NextResponse.json({ error: 'Shipping address missing' }, { status: 409 });
     }
