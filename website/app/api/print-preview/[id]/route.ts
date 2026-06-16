@@ -3,10 +3,10 @@ import { createWebsiteAdminSupabaseClient } from '../../../../lib/supabase';
 
 export const runtime = 'nodejs';
 
-async function fetchPrintLayoutUrl(autographId: string): Promise<string | null> {
+async function fetchPrintUrls(autographId: string): Promise<{ layoutUrl: string | null; previewUrl: string | null }> {
   const rendererUrl = process.env.PRINT_RENDERER_URL ?? '';
   const internalSecret = process.env.INTERNAL_FUNCTION_SECRET ?? '';
-  if (!rendererUrl) return null;
+  if (!rendererUrl) return { layoutUrl: null, previewUrl: null };
 
   try {
     const response = await fetch(`${rendererUrl}/render`, {
@@ -17,11 +17,14 @@ async function fetchPrintLayoutUrl(autographId: string): Promise<string | null> 
       },
       body: JSON.stringify({ autograph_id: autographId, internal_secret: internalSecret }),
     });
-    if (!response.ok) return null;
+    if (!response.ok) return { layoutUrl: null, previewUrl: null };
     const data = await response.json();
-    return typeof data?.print_layout_url === 'string' ? data.print_layout_url : null;
+    return {
+      layoutUrl: typeof data?.print_layout_url === 'string' ? data.print_layout_url : null,
+      previewUrl: typeof data?.print_preview_url === 'string' ? data.print_preview_url : null,
+    };
   } catch {
-    return null;
+    return { layoutUrl: null, previewUrl: null };
   }
 }
 
@@ -40,6 +43,7 @@ export async function GET(
       print_limit,
       thumbnail_url,
       print_layout_url,
+      print_preview_url,
       creator_id,
       creator:creator_id ( display_name ),
       print_count:autograph_prints ( count )
@@ -63,13 +67,21 @@ export async function GET(
 
   const creatorName = (data.creator as any)?.display_name ?? 'Creator';
 
-  // Use cached print_layout_url if available; otherwise call renderer and cache it
-  let previewUrl: string | null = (data as any).print_layout_url ?? null;
+  let layoutUrl: string | null = (data as any).print_layout_url ?? null;
+  let previewUrl: string | null = (data as any).print_preview_url ?? null;
   if (!previewUrl) {
-    previewUrl = await fetchPrintLayoutUrl(id);
-    if (previewUrl) {
-      // Cache for future profile page loads (fire-and-forget)
-      supabase.from('autographs').update({ print_layout_url: previewUrl }).eq('id', id).then(() => {});
+    const urls = await fetchPrintUrls(id);
+    layoutUrl = layoutUrl ?? urls.layoutUrl;
+    previewUrl = urls.previewUrl ?? urls.layoutUrl;
+    if (layoutUrl || previewUrl) {
+      supabase
+        .from('autographs')
+        .update({
+          ...(layoutUrl ? { print_layout_url: layoutUrl } : {}),
+          ...(previewUrl ? { print_preview_url: previewUrl } : {}),
+        })
+        .eq('id', id)
+        .then(() => {});
     }
   }
 
@@ -78,6 +90,8 @@ export async function GET(
     creator_name: creatorName,
     creator_id: data.creator_id,
     thumbnail_url: previewUrl ?? data.thumbnail_url,
+    print_layout_url: layoutUrl,
+    print_preview_url: previewUrl,
     prints_enabled: data.prints_enabled,
     item_cents: parseInt(process.env.PRINT_PRICE_CENTS ?? '1500', 10),
     original_price_cents: parseInt(process.env.PRINT_ORIGINAL_PRICE_CENTS ?? '1500', 10),

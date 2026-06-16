@@ -21,7 +21,7 @@ export function WebListingCard({
   const [playing, setPlaying] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const creatorName = listing.creator?.display_name ?? 'Creator';
-  const cardImageUrl = listing.print_layout_url ?? listing.thumbnail_url;
+  const cardImageUrl = listing.print_preview_url ?? listing.thumbnail_url;
 
   return (
     <>

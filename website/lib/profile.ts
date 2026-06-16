@@ -36,14 +36,14 @@ export async function getWebsiteProfile(id: string): Promise<WebsiteProfile | nu
     .map(mapWebsiteListingRow)
     .filter((listing) => listing.prints_enabled);
 
-  // Prefetch print_layout_url for any listings that don't have it cached yet.
+  // Prefetch print preview/layout URLs for listings that don't have the display preview cached yet.
   // Renderer caches by autograph_id so these calls are fast after mint time.
   const rendererUrl = process.env.PRINT_RENDERER_URL ?? '';
   const internalSecret = process.env.INTERNAL_FUNCTION_SECRET ?? '';
-  const needsLayout = activeListings.filter((l) => !l.print_layout_url);
-  if (rendererUrl && needsLayout.length > 0) {
+  const needsPreview = activeListings.filter((l) => !l.print_preview_url);
+  if (rendererUrl && needsPreview.length > 0) {
     await Promise.allSettled(
-      needsLayout.map(async (listing) => {
+      needsPreview.map(async (listing) => {
         try {
           const resp = await fetch(`${rendererUrl}/render`, {
             method: 'POST',
@@ -52,10 +52,23 @@ export async function getWebsiteProfile(id: string): Promise<WebsiteProfile | nu
           });
           if (!resp.ok) return;
           const data = await resp.json();
-          const url = typeof data?.print_layout_url === 'string' ? data.print_layout_url : null;
-          if (url) {
-            listing.print_layout_url = url;
-            supabase.from('autographs').update({ print_layout_url: url }).eq('id', listing.id).then(() => {});
+          const layoutUrl = typeof data?.print_layout_url === 'string' ? data.print_layout_url : null;
+          const previewUrl = typeof data?.print_preview_url === 'string' ? data.print_preview_url : null;
+          if (layoutUrl) {
+            listing.print_layout_url = layoutUrl;
+          }
+          if (previewUrl) {
+            listing.print_preview_url = previewUrl;
+          }
+          if (layoutUrl || previewUrl) {
+            supabase
+              .from('autographs')
+              .update({
+                ...(layoutUrl ? { print_layout_url: layoutUrl } : {}),
+                ...(previewUrl ? { print_preview_url: previewUrl } : {}),
+              })
+              .eq('id', listing.id)
+              .then(() => {});
           }
         } catch { /* non-fatal */ }
       })
