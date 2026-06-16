@@ -1,5 +1,4 @@
 import Link from 'next/link';
-import { ReactNode } from 'react';
 import { webRoutes } from '../lib/routes';
 
 export default function HomePage() {
@@ -25,16 +24,12 @@ export default function HomePage() {
 
       <section className="min-h-screen bg-white px-6 pb-16 pt-14">
         <div className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-6xl flex-col items-center justify-start pt-10 text-center md:pt-14">
-          <img src="/ophinia-logo.png" alt="Ophinia" className="mb-8 w-[36rem] md:w-[48rem]" />
-          <div className="mb-4 inline-flex items-center rounded-full border border-[#D8DDE8] bg-white px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.22em] text-[#001B5C]">
-            Verified Digital Autographs
-          </div>
-          <h1 className="text-4xl font-semibold leading-none tracking-tight text-[#111111] md:text-6xl">
-            Collectors win.<br />
-            Creators win.
+          <img src="/ophinia-logo.png" alt="Ophinia" className="mb-8 w-[27rem] md:w-[36rem]" />
+          <h1 className="text-3xl font-semibold leading-none tracking-tight text-[#111111] md:text-5xl">
+            Capture the Moment.™
           </h1>
           <p className="mt-8 max-w-xl text-lg leading-relaxed text-gray-600 md:text-xl">
-            A marketplace for authenticated creator autographs, collectible ownership, and official prints.
+            Seamlessly create and share memorabilia prints with fans in real time.
           </p>
           <div className="mt-12 flex flex-wrap items-center justify-center gap-3">
             <Link
@@ -53,25 +48,6 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="bg-white px-6 py-12">
-        <div className="mx-auto grid max-w-5xl grid-cols-1 gap-6 md:grid-cols-3">
-          <FeatureCard
-            icon={<img src="/ophinia-badge.png" alt="Ophinia Verified" className="h-10 w-10 rounded-xl object-cover" />}
-            title="Verified Creators"
-            desc="Identity-verified creators sign autographs that fans can trust."
-          />
-          <FeatureCard
-            icon="◌"
-            title="Recorded Ownership"
-            desc="Every autograph includes a Certificate of Authenticity and persistent ownership history."
-          />
-          <FeatureCard
-            icon="▣"
-            title="Official Prints"
-            desc="Own the digital autograph, then order an official numbered print when you want to display it."
-          />
-        </div>
-      </section>
 
       <section className="bg-white px-6 py-20">
         <div className="mx-auto max-w-4xl">
@@ -172,15 +148,6 @@ export default function HomePage() {
   );
 }
 
-function FeatureCard({ icon, title, desc }: { icon: ReactNode; title: string; desc: string }) {
-  return (
-    <div className="rounded-[1.5rem] border border-[#D8DDE8] bg-white p-7 shadow-sm">
-      <div className="mb-4 text-2xl font-black text-[#001B5C]">{icon}</div>
-      <h3 className="mb-2 text-lg font-bold">{title}</h3>
-      <p className="text-sm leading-relaxed text-gray-500">{desc}</p>
-    </div>
-  );
-}
 
 function BulletCard({ text }: { text: string }) {
   return (
