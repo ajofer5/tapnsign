@@ -18,8 +18,8 @@ export default async function WebAppLayout({ children }: { children: ReactNode }
               <Image src="/ophinia-logo.png" alt="Ophinia" width={120} height={32} className="h-8 w-auto" />
             </Link>
             <div className="hidden items-center gap-5 text-sm font-medium text-gray-600 md:flex">
-              <Link href={`/profile/${user.id}`} prefetch={false} className="hover:text-black">Profile</Link>
               <Link href={webRoutes.marketplace} prefetch={false} className="hover:text-black">Marketplace</Link>
+              <Link href={`/profile/${user.id}`} prefetch={false} className="hover:text-black">Profile</Link>
               <Link href={webRoutes.collection} prefetch={false} className="hover:text-black">Collection</Link>
               <Link href={webRoutes.activity} prefetch={false} className="hover:text-black">Activity</Link>
               <Link href={webRoutes.account} prefetch={false} className="hover:text-black">Account</Link>

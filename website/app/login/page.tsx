@@ -4,6 +4,7 @@ import { signInWithPasswordAction } from './actions';
 import { getWebSessionUser } from '../../lib/web-auth';
 import { GoogleSignInButton } from '../../components/google-sign-in-button';
 import { AppleSignInButton } from '../../components/apple-sign-in-button';
+import { PasswordInput } from '../../components/password-input';
 import { sanitizeNextPath, webRoutes, withNext } from '../../lib/routes';
 
 export default async function LoginPage({
@@ -87,13 +88,10 @@ export default async function LoginPage({
             autoComplete="email"
             required
           />
-          <input
-            type="password"
+          <PasswordInput
             name="password"
             placeholder="Password"
-            className="w-full rounded-lg border border-gray-200 bg-white px-4 py-4 text-base text-black outline-none transition-colors placeholder:text-[#999] focus:border-[#001B5C]"
             autoComplete="current-password"
-            required
           />
 
           <button

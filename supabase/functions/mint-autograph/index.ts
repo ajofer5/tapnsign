@@ -21,7 +21,7 @@ type Stroke = { id: string; points: StrokePoint[] };
 const STORAGE_BUCKET = 'autograph-videos';
 const BADGE_BUCKET = 'print-layouts';
 
-// Badge canvas: 260×270px — QR centered top, "tapnsign.com" text below
+// Badge canvas: 260×270px — QR centered top, "Ophinia.com" text below
 const BADGE_W = 260;
 const BADGE_QR_SIZE = 220;
 const BADGE_QR_X = (BADGE_W - BADGE_QR_SIZE) / 2; // 20
@@ -72,7 +72,7 @@ async function generateVerifyBadge(certificateId: string, autographId: string, u
   return supabaseAdmin.storage.from(BADGE_BUCKET).getPublicUrl(badgePath).data.publicUrl;
 }
 
-async function uploadToBunnyStorage(buffer: ArrayBuffer, path: string): Promise<string> {
+async function uploadToBunnyStorage(buffer: ArrayBuffer, path: string, contentType = 'application/octet-stream'): Promise<string> {
   const apiKey = Deno.env.get('BUNNY_STORAGE_API_KEY');
   const zoneName = Deno.env.get('BUNNY_STORAGE_ZONE_NAME');
   const cdnHostname = Deno.env.get('BUNNY_CDN_HOSTNAME');
@@ -82,7 +82,7 @@ async function uploadToBunnyStorage(buffer: ArrayBuffer, path: string): Promise<
 
   const resp = await fetch(`https://${endpoint}/${zoneName}/${path}`, {
     method: 'PUT',
-    headers: { 'AccessKey': apiKey, 'Content-Type': 'application/octet-stream' },
+    headers: { 'AccessKey': apiKey, 'Content-Type': contentType },
     body: buffer,
   });
 
@@ -267,10 +267,10 @@ Deno.serve((req) =>
 
     // Upload to Bunny CDN using the already-downloaded bytes (no second download needed)
     const bunnyVideoUrl = videoAsset && videoPath
-      ? await uploadToBunnyStorage(videoAsset.buffer, videoPath)
+      ? await uploadToBunnyStorage(videoAsset.buffer, videoPath, videoAsset.mimeType)
       : null;
     const bunnyThumbnailUrl = thumbnailAsset && thumbnailPath
-      ? await uploadToBunnyStorage(thumbnailAsset.buffer, thumbnailPath)
+      ? await uploadToBunnyStorage(thumbnailAsset.buffer, thumbnailPath, thumbnailAsset.mimeType)
       : null;
     const previewFramePublicUrls = previewFramePaths.map((path) => getStoragePublicUrl(path));
     const fallbackThumbnailUrl = previewFramePublicUrls[previewFramePublicUrls.length - 1] ?? null;
@@ -466,35 +466,112 @@ Deno.serve((req) =>
 
       await notifyUser(
         personalizedRequest.requester_id,
-        'Personalized Autograph Ready',
-        `Your personalized autograph for ${personalizedRequest.recipient_name} is ready. Complete payment within 24 hours.`
+        'Personalized Print Ready',
+        `Your personalized print for ${personalizedRequest.recipient_name} is ready. Complete payment within 24 hours.`
       );
 
       if (personalizedRequest.authorization_payment_event_id) {
+        // Fetch payout metadata before capture so we can write the ledger fallback on success.
+        const { data: paymentEventMeta } = await supabaseAdmin
+          .from('payment_events')
+          .select('provider_metadata')
+          .eq('id', personalizedRequest.authorization_payment_event_id)
+          .single();
+
         try {
           await captureAuthorizedPaymentEvent(personalizedRequest.authorization_payment_event_id);
-          const { error: finalizeError } = await supabaseAdmin.rpc(
-            'rpc_finalize_personalized_request_purchase',
-            {
-              p_request_id: personalizedRequest.id,
-              p_payment_event_id: personalizedRequest.authorization_payment_event_id,
-              p_buyer_id: personalizedRequest.requester_id,
-            },
-          );
+          const completedAt = new Date().toISOString();
+          const { error: completeError } = await supabaseAdmin
+            .from('personalized_autograph_requests')
+            .update({
+              status: 'completed',
+              completed_at: completedAt,
+              payment_event_id: personalizedRequest.authorization_payment_event_id,
+              updated_at: completedAt,
+            })
+            .eq('id', personalizedRequest.id)
+            .eq('status', 'fulfilled');
 
-          if (finalizeError) {
-            throw new Error(finalizeError.message);
+          if (completeError) {
+            throw new Error(completeError.message);
+          }
+
+          await supabaseAdmin
+            .from('buyer_commitments')
+            .update({
+              status: 'charged',
+              charged_at: completedAt,
+              updated_at: completedAt,
+            })
+            .eq('id', personalizedRequest.buyer_commitment_id)
+            .eq('status', 'committed');
+
+          await supabaseAdmin
+            .from('payment_events')
+            .update({
+              autograph_id: autograph.id,
+              updated_at: completedAt,
+            })
+            .eq('id', personalizedRequest.authorization_payment_event_id);
+
+          // If no Stripe Connect transfer was scheduled at intent-creation time,
+          // record the creator payout in the ledger for later batch payout.
+          // personalized_request_id provides the payment trace needed for dispute/refund exclusion
+          // and the unique(personalized_request_id, creator_id) constraint makes this idempotent on retry.
+          // TODO: when Connect onboarding is built, verify account.charges_enabled
+          //       before setting transfer_data on the PaymentIntent.
+          const meta = (paymentEventMeta?.provider_metadata ?? {}) as Record<string, unknown>;
+          const creatorConnectScheduled = meta.creator_connect_scheduled === true;
+          const creatorPayoutCents = typeof meta.creator_payout_cents === 'number' ? meta.creator_payout_cents : 0;
+          if (!creatorConnectScheduled && creatorPayoutCents > 0) {
+            await supabaseAdmin
+              .from('royalties_ledger')
+              .upsert({
+                creator_id: user.id,
+                royalty_type: 'personalized_request',
+                personalized_request_id: personalizedRequest.id,
+                autograph_id: autograph.id,
+                print_royalty_cents_snapshot: creatorPayoutCents,
+                royalty_amount_cents: creatorPayoutCents,
+              }, { onConflict: 'personalized_request_id,creator_id', ignoreDuplicates: true });
           }
 
           await notifyUser(
             personalizedRequest.requester_id,
-            'Personalized Autograph Delivered',
-            `Your personalized autograph for ${personalizedRequest.recipient_name} has been completed and added to your collection.`
+            'Personalized Print Completed',
+            `Your personalized print for ${personalizedRequest.recipient_name} has been completed.`
           );
         } catch (error) {
           console.warn('personalized authorization capture fallback:', error);
         }
       }
+    }
+
+    // Fire-and-forget: pre-generate print layout on Bunny after mint.
+    // Non-blocking — Railway failure does not affect mint success.
+    // Runs only after verify_badge_url is saved (required by the renderer).
+    const railwayUrl = Deno.env.get('PRINT_RENDERER_URL');
+    if (railwayUrl) {
+      (async () => {
+        try {
+          const resp = await fetch(`${railwayUrl}/render`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-internal-secret': Deno.env.get('INTERNAL_FUNCTION_SECRET') ?? '',
+            },
+            body: JSON.stringify({ autograph_id: autograph.id }),
+          });
+          if (resp.ok) {
+            const result = await resp.json() as { print_layout_url?: string; cached?: boolean };
+            console.log(`[mint-autograph] print layout pre-generated: ${result.print_layout_url} (cached=${result.cached})`);
+          } else {
+            console.warn(`[mint-autograph] print layout pre-generation failed: HTTP ${resp.status}`);
+          }
+        } catch (err) {
+          console.warn(`[mint-autograph] print layout pre-generation error: ${(err as Error).message}`);
+        }
+      })();
     }
 
     return json({

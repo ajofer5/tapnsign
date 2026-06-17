@@ -9,6 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -25,6 +26,7 @@ export default function LoginScreen() {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [appleLoading, setAppleLoading] = useState(false);
   const [appleAvailable, setAppleAvailable] = useState(false);
+  const [logoFailed, setLogoFailed] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -102,56 +104,72 @@ export default function LoginScreen() {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <Image source={require('../assets/images/Ophinia_name_no tm_white.png')} style={styles.logo} resizeMode="contain" />
-
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        placeholderTextColor="#999"
-        autoCapitalize="none"
-        keyboardType="email-address"
-        value={email}
-        onChangeText={setEmail}
-      />
-
-      <View style={styles.passwordInputWrap}>
-        <TextInput
-          style={styles.passwordInput}
-          placeholder="Password"
-          placeholderTextColor="#999"
-          secureTextEntry={!passwordVisible}
-          value={password}
-          onChangeText={setPassword}
-          autoCapitalize="none"
-          autoCorrect={false}
-          returnKeyType="go"
-          onSubmitEditing={handleLogin}
-        />
-        <Pressable
-          style={styles.passwordToggle}
-          onPress={() => setPasswordVisible((visible) => !visible)}
-          accessibilityRole="button"
-          accessibilityLabel={passwordVisible ? 'Hide password' : 'Show password'}
-        >
-          <Text style={styles.passwordToggleText}>{passwordVisible ? 'Hide' : 'Show'}</Text>
-        </Pressable>
-      </View>
-
-      <Pressable style={styles.button} onPress={handleLogin} disabled={loading}>
-        <Text style={styles.buttonText}>{loading ? 'Signing in…' : 'Sign In'}</Text>
-      </Pressable>
-
-      <Text style={styles.socialDivider}>or continue with</Text>
-
-      <Pressable
-        style={[styles.socialButton, (googleLoading || loading || appleLoading) && styles.socialButtonDisabled]}
-        onPress={handleGoogleLogin}
-        disabled={googleLoading || loading || appleLoading}
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.socialButtonText}>{googleLoading ? 'Connecting Google…' : 'Continue with Google'}</Text>
-      </Pressable>
+        <View style={styles.logoWrap}>
+          {!logoFailed ? (
+            <Image
+              source={require('../assets/images/Ophinia_name_white.png')}
+              style={styles.logo}
+              resizeMode="contain"
+              onError={() => setLogoFailed(true)}
+            />
+          ) : (
+            <Text style={styles.logoFallback}>Ophinia</Text>
+          )}
+        </View>
 
-      {Platform.OS === 'ios' && appleAvailable ? (
+        <TextInput
+          style={styles.input}
+          placeholder="Email"
+          placeholderTextColor="#999"
+          autoCapitalize="none"
+          keyboardType="email-address"
+          value={email}
+          onChangeText={setEmail}
+        />
+
+        <View style={styles.passwordInputWrap}>
+          <TextInput
+            style={styles.passwordInput}
+            placeholder="Password"
+            placeholderTextColor="#999"
+            secureTextEntry={!passwordVisible}
+            value={password}
+            onChangeText={setPassword}
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="go"
+            onSubmitEditing={handleLogin}
+          />
+          <Pressable
+            style={styles.passwordToggle}
+            onPress={() => setPasswordVisible((visible) => !visible)}
+            accessibilityRole="button"
+            accessibilityLabel={passwordVisible ? 'Hide password' : 'Show password'}
+          >
+            <Text style={styles.passwordToggleText}>{passwordVisible ? 'Hide' : 'Show'}</Text>
+          </Pressable>
+        </View>
+
+        <Pressable style={styles.button} onPress={handleLogin} disabled={loading}>
+          <Text style={styles.buttonText}>{loading ? 'Signing in…' : 'Sign In'}</Text>
+        </Pressable>
+
+        <Text style={styles.socialDivider}>or continue with</Text>
+
+        <Pressable
+          style={[styles.socialButton, (googleLoading || loading || appleLoading) && styles.socialButtonDisabled]}
+          onPress={handleGoogleLogin}
+          disabled={googleLoading || loading || appleLoading}
+        >
+          <Text style={styles.socialButtonText}>{googleLoading ? 'Connecting Google…' : 'Continue with Google'}</Text>
+        </Pressable>
+
+        {Platform.OS === 'ios' && appleAvailable ? (
         <Pressable
           style={[styles.socialButton, styles.appleButton, (appleLoading || loading || googleLoading) && styles.socialButtonDisabled]}
           onPress={handleAppleLogin}
@@ -159,15 +177,16 @@ export default function LoginScreen() {
         >
           <Text style={styles.appleButtonText}>{appleLoading ? 'Connecting Apple…' : 'Continue with Apple'}</Text>
         </Pressable>
-      ) : null}
+        ) : null}
 
-      <Text style={styles.socialHint}>
-        If you already have an Ophinia account, use your current sign-in method first, then connect Google or Apple from Account.
-      </Text>
+        <Text style={styles.socialHint}>
+          If you already have an Ophinia account, use your current sign-in method first, then connect Google or Apple from Account.
+        </Text>
 
-      <Link href="/signup" style={styles.linkText}>
-        Don&apos;t have an account? Sign up
-      </Link>
+        <Link href="/signup" style={styles.linkText}>
+          Don&apos;t have an account? Sign up
+        </Link>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
@@ -176,14 +195,31 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
-    justifyContent: 'center',
-    alignItems: 'center',
     paddingHorizontal: 32,
   },
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+    paddingTop: 88,
+    paddingBottom: 36,
+  },
   logo: {
-    width: 260,
-    height: 110,
-    marginBottom: 40,
+    width: 220,
+    height: 64,
+  },
+  logoWrap: {
+    width: 220,
+    height: 64,
+    marginBottom: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logoFallback: {
+    color: BrandColors.primary,
+    fontFamily: BrandFonts.primary,
+    fontSize: 34,
+    fontWeight: '800',
   },
   input: {
     width: '100%',
