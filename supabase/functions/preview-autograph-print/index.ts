@@ -1,8 +1,8 @@
 import { assert, assertUsersNotBlocked, getAutographForUpdate, getProfile, handleRequest, HttpError, json, parseJson, requireString, requireUser, supabaseAdmin } from '../_shared/utils.ts';
 
-const PRINT_PRICE_CENTS = 1500;
+const PRINT_PRICE_CENTS = 1000;
 const PRINT_ORIGINAL_PRICE_CENTS = PRINT_PRICE_CENTS;
-const SHIPPING_CENTS = 499;
+const SHIPPING_CENTS = 699;
 
 async function getPrintLayoutUrl(autographId: string) {
   const rendererUrl = Deno.env.get('PRINT_RENDERER_URL') ?? '';

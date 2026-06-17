@@ -16,8 +16,8 @@ import {
   supabaseAdmin,
 } from '../_shared/utils.ts';
 
-const RETAIL_PRINT_CENTS = 1500;
-const FLAT_SHIPPING_CENTS = 499;
+const RETAIL_PRINT_CENTS = 1000;
+const FLAT_SHIPPING_CENTS = 699;
 // Fixed payout to the autograph owner per print sold
 const OWNER_PRINT_PAYOUT_CENTS = 250;
 

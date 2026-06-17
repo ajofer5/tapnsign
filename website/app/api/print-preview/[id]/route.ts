@@ -3,9 +3,9 @@ import { createWebsiteAdminSupabaseClient } from '../../../../lib/supabase';
 
 export const runtime = 'nodejs';
 
-const PRINT_PRICE_CENTS = 1500;
+const PRINT_PRICE_CENTS = 1000;
 const PRINT_ORIGINAL_PRICE_CENTS = PRINT_PRICE_CENTS;
-const SHIPPING_CENTS = 499;
+const SHIPPING_CENTS = 699;
 
 async function fetchPrintUrls(autographId: string): Promise<{ layoutUrl: string | null; previewUrl: string | null }> {
   const rendererUrl = process.env.PRINT_RENDERER_URL ?? '';

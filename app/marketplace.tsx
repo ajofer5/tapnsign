@@ -2,7 +2,7 @@ import { AutographPlayer } from '@/components/autograph-player';
 import { AutographPrintModal } from '@/components/autograph-print-modal';
 import { CardMetadataBlock } from '@/components/card-metadata-block';
 import { CertificateSheet } from '@/components/certificate-sheet';
-import { NameWithSequence, formatPublicVideoDate, formatPublicVideoPrice } from '@/components/public-video-card';
+import { formatPublicVideoDate } from '@/components/public-video-card';
 import { PublicVideoThumbnail } from '@/components/public-video-thumbnail';
 import { BrandColors, BrandFonts } from '@/constants/theme';
 import { callEdgeFunction } from '@/lib/api';
@@ -89,6 +89,7 @@ type PrintPreview = {
     created_at: string;
   } | null;
   item_cents: number | null;
+  original_price_cents: number | null;
   shipping_cents: number | null;
 };
 
@@ -116,22 +117,6 @@ const defaultFilters: MarketplaceFilters = {
 };
 
 type MarketplaceSort = 'newest' | 'oldest';
-
-function getListingPriceLabel(item: Pick<ListingItem, 'listingMode'>) {
-  return item.listingMode === 'buy_now' ? 'Fixed Price' : 'Estimated Value';
-}
-
-function canBuyNow(item: Pick<ListingItem, 'saleState' | 'listingMode'>) {
-  return item.saleState === 'fixed' && item.listingMode === 'buy_now';
-}
-
-function canMakeOffer(item: Pick<ListingItem, 'saleState' | 'listingMode'>) {
-  return item.saleState === 'fixed' && item.listingMode === 'make_offer';
-}
-
-function getPreviewPriceText(item: Pick<ListingItem, 'offerLockedUntil' | 'priceCents'>) {
-  return item.offerLockedUntil ? 'Sale Pending' : formatPublicVideoPrice(item.priceCents);
-}
 
 function canBuyPrint(item: Pick<ListingItem, 'printsEnabled' | 'printLimit' | 'printCount'>) {
   return item.printsEnabled && (item.printLimit == null || item.printCount < item.printLimit);
@@ -172,12 +157,9 @@ export default function MarketplaceScreen() {
   const [printStep, setPrintStep] = useState<'preview' | 'processing'>('preview');
   const [addressSheetVisible, setAddressSheetVisible] = useState(false);
   const [printSessionKey, setPrintSessionKey] = useState('');
+  const [printQuantity, setPrintQuantity] = useState(1);
   const [certItem, setCertItem] = useState<ListingItem | null>(null);
-  const [offerItem, setOfferItem] = useState<ListingItem | null>(null);
-  const [offerInput, setOfferInput] = useState('');
-  const [offerSubmitting, setOfferSubmitting] = useState(false);
   const [keyboardOffset, setKeyboardOffset] = useState(0);
-  const offerSlideAnim = useRef(new Animated.Value(0)).current;
   const { user } = useAuth();
   const router = useRouter();
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
@@ -235,8 +217,8 @@ export default function MarketplaceScreen() {
       includeAncillary ? supabase.from('blocked_users').select('blocked_user_id').eq('blocker_id', user.id) : Promise.resolve({ data: null, error: null } as any),
     ]);
 
-    const rows = browseRes.data ?? [];
-    const items = rows.map(mapRow);
+    const rows: any[] = browseRes.data ?? [];
+    const items = rows.map(mapRow).filter((item) => item.printsEnabled);
     const last = items[items.length - 1];
 
     return {
@@ -341,38 +323,21 @@ export default function MarketplaceScreen() {
     } catch {}
   };
 
-  const openOfferSheet = (item: ListingItem) => {
-    setOfferItem(item);
-    setOfferInput('');
-    offerSlideAnim.setValue(0);
-    Animated.timing(offerSlideAnim, { toValue: 1, duration: 280, useNativeDriver: true }).start();
-  };
-
-  const closeOfferSheet = () => {
-    if (offerSubmitting) return;
-    Animated.timing(offerSlideAnim, { toValue: 0, duration: 220, useNativeDriver: true }).start(() => {
-      setOfferItem(null);
-      setOfferInput('');
-    });
-  };
-
   const handleReport = async (reason: string) => {
     if (!reportItem || !user) return;
     setReportSubmitting(true);
     try {
-      const { error } = await supabase.from('reports').insert({
+      await callEdgeFunction('submit-report', {
         autograph_id: reportItem.id,
-        reporter_id: user.id,
         reason,
       });
       setReportItem(null);
-      if (error?.code === '23505') {
-        Alert.alert('Already Reported', 'You have already reported this autograph.');
-      } else if (error) {
-        Alert.alert('Error', 'Could not submit report. Please try again.');
-      } else {
-        Alert.alert('Report Submitted', 'Thank you. Our team will review this content.');
-      }
+      Alert.alert('Report Submitted', 'Thank you. Our team will review this content.');
+    } catch (error) {
+      Alert.alert(
+        'Report',
+        error instanceof Error ? error.message : 'Could not submit report. Please try again.'
+      );
     } finally {
       setReportSubmitting(false);
     }
@@ -408,7 +373,7 @@ export default function MarketplaceScreen() {
         setListings((prev) => prev.filter((item) => item.ownerId !== targetUserId && item.creatorId !== targetUserId));
         setPreviewItem(null);
         setContextMenuVisible(false);
-        Alert.alert('User Blocked', `${label} has been blocked. Their listings are now hidden.`);
+        Alert.alert('User Blocked', `${label} has been blocked. Their public prints are now hidden.`);
       } else {
         const { error } = await supabase
           .from('blocked_users')
@@ -422,7 +387,7 @@ export default function MarketplaceScreen() {
           return next;
         });
         setContextMenuVisible(false);
-        Alert.alert('User Unblocked', `${label} has been unblocked. Refresh the marketplace to see their listings again.`);
+        Alert.alert('User Unblocked', `${label} has been unblocked. Refresh the marketplace to see their public prints again.`);
       }
     } catch {
       Alert.alert('Block Failed', `Could not ${shouldBlock ? 'block' : 'unblock'} this user. Please try again.`);
@@ -434,80 +399,6 @@ export default function MarketplaceScreen() {
     if (!digits) return '';
     const cents = Number.parseInt(digits, 10);
     return (cents / 100).toFixed(2);
-  };
-
-  const handleOfferChange = (text: string) => setOfferInput(formatCentsInput(text));
-
-  const handleCreateOffer = async () => {
-    if (!offerItem) return;
-    if (!user) {
-      Alert.alert('Sign in required', 'Please sign in to make an offer.');
-      return;
-    }
-    const amount = Number.parseFloat(offerInput);
-
-    if (Number.isNaN(amount) || amount <= 0) {
-      Alert.alert('Invalid amount', 'Please enter a valid offer amount greater than $0.');
-      return;
-    }
-
-    setOfferSubmitting(true);
-    try {
-      // Disclosure required before collecting payment details.
-      const confirmed = await new Promise<boolean>((resolve) => {
-        Alert.alert(
-          'Offer Authorization',
-          `Submitting an offer places a temporary authorization hold of $${amount.toFixed(2)} on your card. Your card is only charged if the seller accepts. Payment is processed by Stripe, Ophinia's authorized payment partner.`,
-          [
-            { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
-            { text: 'Continue', onPress: () => resolve(true) },
-          ]
-        );
-      });
-      if (!confirmed) return;
-
-      const paymentData = await callEdgeFunction<{
-        client_secret: string;
-        payment_intent_id: string;
-        payment_event_id: string;
-      }>('create-offer-commitment-payment-intent', {
-        autograph_id: offerItem.id,
-        amount_cents: Math.round(amount * 100),
-      });
-
-      const { error: initError } = await initPaymentSheet({
-        paymentIntentClientSecret: paymentData.client_secret,
-        merchantDisplayName: 'Ophinia',
-      });
-
-      if (initError) {
-        Alert.alert('Authorization Error', 'Could not start payment authorization. Please try again.');
-        return;
-      }
-
-      const { error: paymentError } = await presentPaymentSheet();
-      if (paymentError) {
-        if (paymentError.code !== 'Canceled') {
-          Alert.alert('Authorization Failed', 'Could not confirm your offer authorization. Please try again.');
-        }
-        return;
-      }
-
-      await callEdgeFunction('create-autograph-offer', {
-        autograph_id: offerItem.id,
-        amount_cents: Math.round(amount * 100),
-        payment_event_id: paymentData.payment_event_id,
-      });
-      closeOfferSheet();
-      Alert.alert('Offer Sent', 'Your offer was sent and the authorization hold is now in place.');
-    } catch (error) {
-      Alert.alert(
-        'Offer Failed',
-        error instanceof Error ? error.message : 'Could not create your offer. Please try again.',
-      );
-    } finally {
-      setOfferSubmitting(false);
-    }
   };
 
   const openPrintPreview = async (item: ListingItem) => {
@@ -540,6 +431,7 @@ export default function MarketplaceScreen() {
     setPrintPreview(null);
     setPrintStep('preview');
     setAddressSheetVisible(false);
+    setPrintQuantity(1);
   };
 
   const handleProceedToPrintPayment = () => {
@@ -561,7 +453,7 @@ export default function MarketplaceScreen() {
         payment_intent_id: string;
         payment_event_id: string;
         amount_cents: number;
-      }>('create-print-payment-intent', { autograph_id: printItem.id, idempotency_key: printSessionKey });
+      }>('create-print-payment-intent', { autograph_id: printItem.id, idempotency_key: `${printSessionKey}-qty${printQuantity}`, quantity: printQuantity });
 
       const { error: initError } = await initPaymentSheet({
         paymentIntentClientSecret: paymentData.client_secret,
@@ -589,6 +481,7 @@ export default function MarketplaceScreen() {
         autograph_id: printItem.id,
         payment_event_id: paymentData.payment_event_id,
         image_url: printPreview.print_layout_url ?? null,
+        quantity: printQuantity,
         shipping_name: addressDetails.name ?? '',
         shipping_line1: a?.line1 ?? '',
         shipping_line2: a?.line2 || null,
@@ -611,7 +504,7 @@ export default function MarketplaceScreen() {
   };
 
   const activeListings = useMemo(() => {
-    let items = listings;
+    let items = listings.filter((l) => canBuyPrint(l));
     if (filters.savedOnly) items = items.filter((l) => watchedIds.has(l.id));
     if (filters.creator.trim()) {
       const q = filters.creator.trim().toLowerCase();
@@ -653,41 +546,37 @@ const feedListings = useMemo(() => activeListings, [activeListings]);
           strokeColor={item.strokeColor}
           shellStyle={styles.marketplaceThumbnail}
         />
-        {canBuyPrint(item) && (
-          <View style={styles.cardOverlayBar}>
-            <Text style={styles.cardOverlayPrice} numberOfLines={1}>
-              Official Print
-            </Text>
-            <Pressable
-              style={[styles.cardOverlayButton, (purchasingId === item.id || loadingPrintPreview) && { opacity: 0.6 }]}
-              onPress={(e) => { e.stopPropagation(); void openPrintPreview(item); }}
-              disabled={purchasingId === item.id || loadingPrintPreview}
-            >
-              {purchasingId === item.id
-                ? <ActivityIndicator size="small" color="#fff" />
-                : <Text style={styles.cardOverlayButtonText}>Buy Print</Text>}
-            </Pressable>
-          </View>
-        )}
       </View>
         <View style={styles.marketplaceCardBody}>
-          <NameWithSequence
-            name={item.creator.display_name}
-            sequenceNumber={item.creatorSequenceNumber}
-            style={styles.marketplaceCardName}
-          />
-          <CardMetadataBlock
-            compact
-            sequenceNumber={item.creatorSequenceNumber}
-            capturedAt={item.createdAt}
-            printCount={item.printCount}
-            seriesName={item.seriesName}
-            seriesEdition={
-              item.seriesSequenceNumber != null && item.seriesMaxSize != null
-                ? `${item.seriesSequenceNumber} of ${item.seriesMaxSize}`
-                : null
-            }
-          />
+          <View style={styles.marketplaceCardBodyBottom}>
+            <View style={styles.marketplaceCardMetaColumn}>
+              <CardMetadataBlock
+                compact
+                sequenceNumber={item.creatorSequenceNumber}
+                capturedAt={item.createdAt}
+                printCount={item.printCount}
+                seriesName={item.seriesName}
+                seriesEdition={
+                  item.seriesSequenceNumber != null && item.seriesMaxSize != null
+                    ? `${item.seriesSequenceNumber} of ${item.seriesMaxSize}`
+                    : null
+                }
+              />
+            </View>
+          </View>
+            {canBuyPrint(item) && (
+              <View style={styles.marketplaceCardActionRow}>
+                <Pressable
+                  style={[styles.cardBuyButton, (purchasingId === item.id || loadingPrintPreview) && { opacity: 0.6 }]}
+                  onPress={(e) => { e.stopPropagation(); void openPrintPreview(item); }}
+                  disabled={purchasingId === item.id || loadingPrintPreview}
+                >
+                  {purchasingId === item.id
+                    ? <ActivityIndicator size="small" color="#fff" />
+                    : <Text style={styles.cardBuyButtonText}>Print Preview</Text>}
+                </Pressable>
+              </View>
+            )}
         </View>
     </Pressable>
   );
@@ -712,7 +601,7 @@ const feedListings = useMemo(() => activeListings, [activeListings]);
   return (
     <View style={styles.container}>
       <View style={styles.filterHeaderRow}>
-        <Text style={styles.filterResultCount}>{activeListings.length} listing{activeListings.length !== 1 ? 's' : ''}</Text>
+        <Text style={styles.filterResultCount}>{activeListings.length} print{activeListings.length !== 1 ? 's' : ''}</Text>
         <Pressable
           style={styles.filterLink}
           onPress={() => { setDraftFilters(filters); setDraftSort(sort); setFilterVisible(true); }}
@@ -744,7 +633,7 @@ const feedListings = useMemo(() => activeListings, [activeListings]);
             </View>
           ) : !isFiltered && hasMore ? (
             <View style={styles.loadMoreFooter}>
-              <Text style={styles.loadMoreHint}>Scroll for more listings</Text>
+              <Text style={styles.loadMoreHint}>Scroll for more prints</Text>
             </View>
           ) : null
         }
@@ -769,13 +658,9 @@ const feedListings = useMemo(() => activeListings, [activeListings]);
             </Pressable>
             {previewItem && (
               <View style={styles.modalMeta}>
-                <Pressable onPress={() => { closePreview(); router.push(`/profile/${previewItem.creatorId}`); }}>
-                  <View style={styles.modalMetaLinkRow}>
-                    <NameWithSequence name={previewItem.creator.display_name} sequenceNumber={previewItem.creatorSequenceNumber} style={styles.modalCelebrity} />
-                    {previewItem.seriesName ? <Text style={styles.modalCelebrity}>{` · ${previewItem.seriesName}`}</Text> : null}
-                  </View>
+                <Pressable style={styles.viewProfileButton} onPress={() => { closePreview(); router.push(`/profile/${previewItem.creatorId}`); }}>
+                  <Text style={styles.viewProfileButtonText}>View Creator Profile</Text>
                 </Pressable>
-                <Text style={styles.modalPrice}>{canBuyPrint(previewItem) ? 'Official Print Available' : 'View Only'}</Text>
               </View>
             )}
           </View>
@@ -797,20 +682,14 @@ const feedListings = useMemo(() => activeListings, [activeListings]);
 
           {previewItem && (
             <View style={styles.modalMetadataBlock}>
-              <View style={styles.modalNameRow}>
-                <NameWithSequence name={previewItem.creator.display_name} sequenceNumber={previewItem.creatorSequenceNumber} style={styles.modalNameText} />
-                {previewItem.creator.name_verified && (
-                  <Image source={require('../assets/images/Ophinia_badge_navy background.png')} style={styles.nameBadge} resizeMode="contain" />
-                )}
-              </View>
-              <Text style={styles.modalMetaLine}>
+              <Text style={[styles.modalMetaLine, styles.modalMetaCentered]}>
                 {[
+                  previewItem.creatorSequenceNumber != null ? `#${previewItem.creatorSequenceNumber}` : null,
                   formatCardDate(previewItem.createdAt),
-                  previewItem.printCount != null ? `Print #${previewItem.printCount + 1}` : null,
                 ].filter(Boolean).join(' · ')}
               </Text>
               {previewItem.seriesName || (previewItem.seriesSequenceNumber != null && previewItem.seriesMaxSize != null) ? (
-                <Text style={styles.modalMetaLine} numberOfLines={1}>
+                <Text style={[styles.modalMetaLine, styles.modalMetaCentered]} numberOfLines={1}>
                   {[
                     previewItem.seriesName,
                     previewItem.seriesSequenceNumber != null && previewItem.seriesMaxSize != null
@@ -819,10 +698,17 @@ const feedListings = useMemo(() => activeListings, [activeListings]);
                   ].filter(Boolean).join(' · ')}
                 </Text>
               ) : null}
-              <Text style={styles.modalMetaLine}>{`Listed by ${previewItem.ownerName || previewItem.creator.display_name}`}</Text>
               <View style={styles.modalUtilityRow}>
                 <Pressable style={styles.modalUtilityButton} onPress={() => { void shareAutograph(previewItem); }}>
                   <Text style={styles.modalUtilityButtonText}>Share</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.modalUtilityButton, { marginLeft: 30 }]}
+                  onPress={() => toggleWatch(previewItem)}
+                >
+                  <Text style={styles.modalUtilityButtonText}>
+                    {watchedIds.has(previewItem.id) ? 'Saved' : 'Save'}
+                  </Text>
                 </Pressable>
               </View>
             </View>
@@ -838,7 +724,7 @@ const feedListings = useMemo(() => activeListings, [activeListings]);
               >
                 {purchasingId === previewItem.id
                   ? <ActivityIndicator size="small" color="#fff" />
-                  : <Text style={styles.modalActionButtonText}>Buy Print</Text>}
+                  : <Text style={styles.modalActionButtonText}>Print Preview</Text>}
               </Pressable>
             </View>
           )}
@@ -872,7 +758,7 @@ const feedListings = useMemo(() => activeListings, [activeListings]);
                     style={styles.contextMenuItem}
                     onPress={() => { setContextMenuVisible(false); void openPrintPreview(previewItem); }}
                   >
-                    <Text style={styles.contextMenuItemText}>Buy Print</Text>
+                    <Text style={styles.contextMenuItemText}>Print Preview</Text>
                   </Pressable>
                 )}
 
@@ -897,7 +783,7 @@ const feedListings = useMemo(() => activeListings, [activeListings]);
                     style={styles.contextMenuItem}
                     onPress={() => { const id = previewItem.ownerId; setContextMenuVisible(false); closePreview(); router.push(`/profile/${id}`); }}
                   >
-                    <Text style={styles.contextMenuItemText}>Seller Profile</Text>
+                    <Text style={styles.contextMenuItemText}>Owner Profile</Text>
                   </Pressable>
                 )}
 
@@ -913,7 +799,7 @@ const feedListings = useMemo(() => activeListings, [activeListings]);
                     }}
                   >
                     <Text style={[styles.contextMenuItemText, { color: '#FF3B30' }]}>
-                      {blockedUserIds.has(previewItem.ownerId) ? 'Unblock Seller' : 'Block Seller'}
+                      {blockedUserIds.has(previewItem.ownerId) ? 'Unblock Owner' : 'Block Owner'}
                     </Text>
                   </Pressable>
                 )}
@@ -936,7 +822,7 @@ const feedListings = useMemo(() => activeListings, [activeListings]);
                 {[
                   { reason: 'impersonation', label: 'Impersonation' },
                   { reason: 'offensive_content', label: 'Offensive Content' },
-                  { reason: 'fraudulent_listing', label: 'Fraudulent Listing' },
+                  { reason: 'fraudulent_listing', label: 'Fraud or Scam' },
                   { reason: 'copyright_issue', label: 'Copyright / IP Issue' },
                 ].map(({ reason, label }) => (
                   <Pressable
@@ -965,7 +851,7 @@ const feedListings = useMemo(() => activeListings, [activeListings]);
                 ? `${certItem.seriesName} — #${certItem.seriesSequenceNumber} of ${certItem.seriesMaxSize}`
                 : null}
               certificateId={certItem.certificateId}
-              primaryActionLabel="Seller Profile"
+              primaryActionLabel="Owner Profile"
               onPrimaryAction={() => {
                 setCertItem(null);
                 router.push(`/profile/${certItem.ownerId}`);
@@ -974,54 +860,6 @@ const feedListings = useMemo(() => activeListings, [activeListings]);
             />
           )}
 
-          {/* Offer sheet — animated View inside modal avoids iOS modal-stacking issues */}
-          {offerItem && (
-            <Pressable style={styles.offerBackdrop} onPress={closeOfferSheet} />
-          )}
-          {offerItem && (
-            <Animated.View
-              style={[
-                styles.offerKeyboardView,
-                { bottom: keyboardOffset },
-                { transform: [{ translateY: offerSlideAnim.interpolate({ inputRange: [0, 1], outputRange: [600, 0] }) }] },
-              ]}
-            >
-              <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-                <View style={styles.offerSheet} onStartShouldSetResponder={() => true}>
-                  <Text style={styles.offerTitle}>Make Offer</Text>
-                  <Text style={styles.offerSubtitle}>
-                    {offerItem.creator.display_name}
-                    {offerItem.priceCents ? ` · ${getListingPriceLabel(offerItem)} ${formatPublicVideoPrice(offerItem.priceCents)}` : ''}
-                    {' · '}Expires in 24 hours if not accepted
-                  </Text>
-                  <TextInput
-                    style={styles.offerInput}
-                    placeholder="Offer amount in USD"
-                    placeholderTextColor="#999"
-                    keyboardType="decimal-pad"
-                    returnKeyType="done"
-                    value={offerInput}
-                    onChangeText={handleOfferChange}
-                    editable={!offerSubmitting}
-                  />
-                  <Pressable
-                    style={[styles.offerButton, offerSubmitting && { opacity: 0.6 }]}
-                    onPress={handleCreateOffer}
-                    disabled={offerSubmitting}
-                  >
-                    <Text style={styles.offerButtonText}>{offerSubmitting ? 'Sending…' : 'Send Offer'}</Text>
-                  </Pressable>
-                  <Pressable
-                    style={styles.offerCancelButton}
-                    onPress={closeOfferSheet}
-                    disabled={offerSubmitting}
-                  >
-                    <Text style={styles.offerCancelText}>Cancel</Text>
-                  </Pressable>
-                </View>
-              </KeyboardAvoidingView>
-            </Animated.View>
-          )}
 
         </View>
       </Modal>
@@ -1039,6 +877,11 @@ const feedListings = useMemo(() => activeListings, [activeListings]);
         addressSheetVisible={addressSheetVisible}
         creatingPrint={creatingPrint}
         loadingPrintPreview={loadingPrintPreview}
+        quantity={printQuantity}
+        unitPriceCents={printPreview?.item_cents ?? 1000}
+        originalPriceCents={printPreview?.original_price_cents ?? 1000}
+        shippingCents={printPreview?.shipping_cents ?? 699}
+        onQuantityChange={setPrintQuantity}
         onClose={closePrintPreview}
         onProceedToPayment={handleProceedToPrintPayment}
         onAddressSubmit={handlePrintAddressSubmit}
@@ -1069,25 +912,6 @@ const feedListings = useMemo(() => activeListings, [activeListings]);
           >
             <Text style={styles.filterTitle}>Filter</Text>
 
-            <Text style={styles.filterSectionLabel}>Type</Text>
-            <View style={styles.filterCheckGroup}>
-              {([
-                { key: 'savedOnly', label: 'Saved only' },
-                { key: 'printsAvailable', label: 'Prints Available' },
-              ] as { key: 'savedOnly' | 'printsAvailable'; label: string }[]).map(({ key, label }) => (
-                <Pressable
-                  key={key}
-                  style={styles.filterCheckRow}
-                  onPress={() => setDraftFilters((prev) => ({ ...prev, [key]: !prev[key] }))}
-                >
-                  <View style={[styles.filterCheckbox, draftFilters[key] && styles.filterCheckboxChecked]}>
-                    {draftFilters[key] && <Text style={styles.filterCheckTick}>✓</Text>}
-                  </View>
-                  <Text style={styles.filterCheckLabel}>{label}</Text>
-                </Pressable>
-              ))}
-            </View>
-
             <Text style={styles.filterSectionLabel}>Creator</Text>
             <TextInput
               style={styles.filterInput}
@@ -1108,11 +932,9 @@ const feedListings = useMemo(() => activeListings, [activeListings]);
               autoCorrect={false}
             />
 
-            <Text style={styles.filterSectionLabel}>Creator Filters</Text>
             <View style={styles.filterCheckGroup}>
               {[
-                { key: 'acceptsPersonalizedRequests' as const, label: 'Accepts Personalized Requests' },
-                { key: 'verifiedUser' as const, label: 'Verified User' },
+                { key: 'savedOnly' as const, label: 'Saved' },
               ].map(({ key, label }) => (
                 <Pressable
                   key={key}
@@ -1276,6 +1098,9 @@ const styles = StyleSheet.create({
   },
   marketplaceThumbnailWrap: {
     position: 'relative',
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderBottomWidth: 0,
   },
   cardOverlayBar: {
     position: 'absolute',
@@ -1310,10 +1135,9 @@ const styles = StyleSheet.create({
     fontFamily: BrandFonts.primary,
   },
   marketplaceCard: {
-    borderRadius: 0,
+    borderBottomLeftRadius: 10,
+    borderBottomRightRadius: 10,
     backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#e9dcc1',
     shadowColor: '#000',
     shadowOpacity: 0.06,
     shadowRadius: 10,
@@ -1331,6 +1155,39 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingTop: 7,
     paddingBottom: 8,
+    minHeight: 72,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderBottomLeftRadius: 10,
+    borderBottomRightRadius: 10,
+  },
+  marketplaceCardBodyBottom: {
+    marginTop: 2,
+  },
+  marketplaceCardMetaColumn: {
+    minWidth: 0,
+  },
+  marketplaceCardActionRow: {
+    marginTop: 7,
+    width: '100%',
+  },
+  cardBuyButton: {
+    backgroundColor: BrandColors.primary,
+    borderRadius: 999,
+    width: '100%',
+    minHeight: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  cardBuyButtonText: {
+    color: '#fff',
+    fontSize: 13,
+    lineHeight: 15,
+    fontWeight: '700',
+    fontFamily: BrandFonts.primary,
+    textAlign: 'center',
   },
   marketplaceCardName: {
     fontSize: 13,
@@ -1347,11 +1204,6 @@ const styles = StyleSheet.create({
   },
   marketplaceCreatorColumn: {
     flex: 1,
-  },
-  marketplaceListedByColumn: {
-    alignItems: 'flex-end',
-    flexShrink: 0,
-    maxWidth: '42%',
   },
   marketplaceNameLink: {
     flex: 1,
@@ -1461,27 +1313,6 @@ const styles = StyleSheet.create({
     fontFamily: BrandFonts.primary,
     flex: 1,
   },
-  marketplaceListedBy: {
-    fontSize: 13,
-    lineHeight: 18,
-    color: '#666',
-    fontFamily: BrandFonts.primary,
-  },
-  marketplaceListedByInline: {
-    fontSize: 12,
-    lineHeight: 14,
-    color: '#666',
-    fontFamily: BrandFonts.primary,
-    textAlign: 'right',
-  },
-  marketplaceListedByLabel: {
-    fontSize: 11,
-    lineHeight: 14,
-    color: '#888',
-    fontFamily: BrandFonts.primary,
-    textAlign: 'right',
-    flexShrink: 0,
-  },
   watchButton: {
     paddingVertical: 8,
     paddingHorizontal: 12,
@@ -1515,6 +1346,21 @@ const styles = StyleSheet.create({
   modalMeta: {
     flex: 1,
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+  viewProfileButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
+    marginRight: 44,
+  },
+  viewProfileButtonText: {
+    color: '#fff',
+    fontFamily: BrandFonts.primary,
+    fontSize: 13,
+    fontWeight: '600',
   },
   modalMetaLinkRow: {
     flexDirection: 'row',
@@ -1527,6 +1373,10 @@ const styles = StyleSheet.create({
     fontFamily: BrandFonts.primary,
     fontSize: 19,
     fontWeight: '600',
+  },
+  modalMetaCentered: {
+    textAlign: 'center',
+    width: '100%',
   },
   modalNameRow: {
     flexDirection: 'row',
@@ -1570,7 +1420,9 @@ const styles = StyleSheet.create({
   },
   modalUtilityRow: {
     width: '100%',
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     marginTop: 8,
   },
   modalUtilityButton: {

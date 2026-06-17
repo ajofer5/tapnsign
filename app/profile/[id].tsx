@@ -1,27 +1,29 @@
 import { AutographPlayer } from '@/components/autograph-player';
+import { AutographPrintModal } from '@/components/autograph-print-modal';
 import { CardMetadataBlock } from '@/components/card-metadata-block';
 import { CertificateSheet } from '@/components/certificate-sheet';
 import { ProfileAvatar } from '@/components/profile-avatar';
-import { NameWithSequence, formatPublicVideoDate, formatPublicVideoPrice } from '@/components/public-video-card';
+import { formatPublicVideoDate, formatPublicVideoPrice } from '@/components/public-video-card';
 import { PublicVideoThumbnail } from '@/components/public-video-thumbnail';
 import { BrandColors, BrandFonts } from '@/constants/theme';
-import { fetchAutographTemplateIds } from '@/lib/autograph-template';
+import { getAccountStatusLabel } from '@/lib/account-status';
 import { useAuth } from '@/lib/auth-context';
 import { callEdgeFunction } from '@/lib/api';
 import { logInterestEvent } from '@/lib/interest';
 import { buildAutographUrl } from '@/lib/public-links';
 import { supabase } from '@/lib/supabase';
-import { openAuthenticatedWebPath } from '@/lib/web-handoff';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useStripe } from '@stripe/stripe-react-native';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Image,
+  InputAccessoryView,
+  KeyboardAvoidingView,
   Linking,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   Share,
@@ -31,8 +33,13 @@ import {
   View,
 } from 'react-native';
 
+const PROFILE_LISTINGS_PAGE_SIZE = 24;
+const PERSONALIZED_REQUEST_ACCESSORY_ID = 'personalized-request-keyboard-actions';
+
 type Point = { x: number; y: number; t: number };
 type Stroke = { id: string; points: Point[] };
+
+const PERSONALIZED_REQUEST_MIN_CENTS = 2000;
 
 type Listing = {
   id: string;
@@ -63,6 +70,8 @@ type Listing = {
   owner_name?: string | null;
   offer_locked_until?: string | null;
   print_count?: number;
+  prints_enabled?: boolean;
+  print_limit?: number | null;
 };
 
 type Stats = {
@@ -97,27 +106,15 @@ type ProfileData = {
   first_verified_at?: string | null;
   creator_since?: string | null;
   is_creator: boolean;
-  instagram_handle?: string | null;
-  instagram_status?: 'none' | 'connected' | 'verified';
-  instagram_verified_at?: string | null;
   personalized_requests_enabled?: boolean;
   personalized_min_price_cents?: number | null;
+  personalized_requests_at_capacity?: boolean;
   stats: Stats;
   public_videos?: Listing[];
   active_listings?: Listing[];
 };
 
 
-function formatDetailDate(value?: string | null) {
-  if (!value) return '—';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString([], {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
-}
 
 function formatNumericDate(value?: string | null) {
   if (!value) return '—';
@@ -131,23 +128,6 @@ function formatNumericDate(value?: string | null) {
 }
 
 
-function formatInstagramStatus(value?: ProfileData['instagram_status'], handle?: string | null) {
-  if (value === 'connected' || value === 'verified') return 'Connected';
-  return handle ? 'Connected' : 'Not Linked';
-}
-
-function getListingPriceLabel(listing: Pick<Listing, 'listing_mode'>) {
-  return listing.listing_mode === 'buy_now' ? 'Fixed Price' : 'Estimated Value';
-}
-
-function canBuyNow(listing: Pick<Listing, 'sale_state' | 'listing_mode' | 'offer_locked_until'>) {
-  return listing.sale_state === 'fixed' && listing.listing_mode === 'buy_now' && !listing.offer_locked_until;
-}
-
-function canMakeOffer(listing: Pick<Listing, 'sale_state' | 'listing_mode' | 'offer_locked_until'>) {
-  return listing.sale_state === 'fixed' && listing.listing_mode === 'make_offer' && !listing.offer_locked_until;
-}
-
 export default function ProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuth();
@@ -159,21 +139,32 @@ export default function ProfileScreen() {
   const [previewItem, setPreviewItem] = useState<Listing | null>(null);
   const [contextMenuVisible, setContextMenuVisible] = useState(false);
   const [profileMenuVisible, setProfileMenuVisible] = useState(false);
+  const [reportProfileVisible, setReportProfileVisible] = useState(false);
   const [certItem, setCertItem] = useState<Listing | null>(null);
-  const [offerItem, setOfferItem] = useState<Listing | null>(null);
   const [detailsVisible, setDetailsVisible] = useState(false);
-  const [offerInput, setOfferInput] = useState('');
-  const [offerSubmitting, setOfferSubmitting] = useState(false);
   const [personalizedVisible, setPersonalizedVisible] = useState(false);
   const [personalizedRecipient, setPersonalizedRecipient] = useState('');
   const [personalizedInscription, setPersonalizedInscription] = useState('');
   const [personalizedNote, setPersonalizedNote] = useState('');
-  const [personalizedAmount, setPersonalizedAmount] = useState('');
   const [personalizedSubmitting, setPersonalizedSubmitting] = useState(false);
+  const personalizedSubmitStartedRef = useRef(false);
   const [reportItem, setReportItem] = useState<Listing | null>(null);
   const [reportSubmitting, setReportSubmitting] = useState(false);
   const [isBlockedProfile, setIsBlockedProfile] = useState(false);
   const [blockingProfile, setBlockingProfile] = useState(false);
+  const [savedCreator, setSavedCreator] = useState(false);
+  const [savingCreator, setSavingCreator] = useState(false);
+  const [creatorSavedNoticeVisible, setCreatorSavedNoticeVisible] = useState(false);
+  const creatorSavedNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [visibleListingsCount, setVisibleListingsCount] = useState(PROFILE_LISTINGS_PAGE_SIZE);
+  const [printItem, setPrintItem] = useState<Listing | null>(null);
+  const [printPreview, setPrintPreview] = useState<{ next_print_sequence_number: number; print_layout_url?: string | null; print_preview_url?: string | null; item_cents?: number | null; original_price_cents?: number | null; shipping_cents?: number | null } | null>(null);
+  const [loadingPrintPreview, setLoadingPrintPreview] = useState(false);
+  const [creatingPrint, setCreatingPrint] = useState(false);
+  const [printStep, setPrintStep] = useState<'preview' | 'processing'>('preview');
+  const [addressSheetVisible, setAddressSheetVisible] = useState(false);
+  const [printSessionKey, setPrintSessionKey] = useState('');
+  const [printQuantity, setPrintQuantity] = useState(1);
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
 
   const isOwnProfile = user?.id === id;
@@ -198,23 +189,66 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleReport = async (reason: string) => {
-    if (!reportItem || !user) return;
+  const submitReport = async ({
+    reason,
+    autographId,
+    reportedUserId,
+  }: {
+    reason: string;
+    autographId?: string | null;
+    reportedUserId?: string | null;
+  }) => {
+    if (!user) return;
     setReportSubmitting(true);
     try {
-      const { error } = await supabase.from('reports').insert({
-        autograph_id: reportItem.id,
-        reporter_id: user.id,
+      await callEdgeFunction('submit-report', {
+        autograph_id: autographId ?? null,
+        reported_user_id: reportedUserId ?? null,
         reason,
       });
       setReportItem(null);
-      if (error?.code === '23505') {
-        Alert.alert('Already Reported', 'You have already reported this autograph.');
-      } else if (error) {
-        Alert.alert('Error', 'Could not submit report. Please try again.');
-      } else {
-        Alert.alert('Report Submitted', 'Thank you. Our team will review this content.');
+      setReportProfileVisible(false);
+      Alert.alert('Report Submitted', 'Thank you. Our team will review this content.');
+    } catch (error) {
+      Alert.alert(
+        'Report',
+        error instanceof Error ? error.message : 'Could not submit report. Please try again.'
+      );
+    } finally {
+      setReportSubmitting(false);
+    }
+  };
+
+  const handleReport = async (reason: string) => {
+    if (!reportItem) return;
+    await submitReport({ reason, autographId: reportItem.id, reportedUserId: reportItem.creator_id ?? id });
+  };
+
+  const handleReportAndBlock = async (reason: string) => {
+    if (!user) return;
+    setReportSubmitting(true);
+    try {
+      await callEdgeFunction('submit-report', {
+        reported_user_id: id ?? null,
+        reason,
+      });
+      if (!isBlockedProfile) {
+        const { error } = await supabase.from('blocked_users').insert({
+          blocker_id: user.id,
+          blocked_user_id: id,
+        });
+        if (error && error.code !== '23505') throw error;
+        setIsBlockedProfile(true);
+        setPreviewItem(null);
+        setContextMenuVisible(false);
       }
+      setReportProfileVisible(false);
+      Alert.alert('Reported & Blocked', `${profile?.display_name ?? 'This user'} has been reported and blocked.`);
+    } catch (error) {
+      Alert.alert(
+        'Error',
+        error instanceof Error ? error.message : 'Could not complete this action. Please try again.'
+      );
     } finally {
       setReportSubmitting(false);
     }
@@ -229,137 +263,122 @@ export default function ProfileScreen() {
     } catch {}
   };
 
-  const formatCentsInput = (raw: string) => {
-    const digits = raw.replace(/\D/g, '');
-    if (!digits) return '';
-    const cents = Number.parseInt(digits, 10);
-    return (cents / 100).toFixed(2);
+  const canBuyPrint = (item: Listing) =>
+    !!item.prints_enabled && (item.print_limit == null || (item.print_count ?? 0) < item.print_limit);
+
+  const openPrintPreview = async (item: Listing) => {
+    setPreviewItem(null);
+    setPrintItem(item);
+    setPrintPreview(null);
+    setLoadingPrintPreview(true);
+    setPrintSessionKey(`${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    try {
+      const preview = await callEdgeFunction<{ next_print_sequence_number: number; print_layout_url?: string | null; print_preview_url?: string | null }>(
+        'preview-autograph-print',
+        { autograph_id: item.id }
+      );
+      setPrintPreview(preview);
+    } catch (error) {
+      setPrintItem(null);
+      Alert.alert('Print Autograph', error instanceof Error ? error.message : 'Could not load the print preview. Please try again.');
+    } finally {
+      setLoadingPrintPreview(false);
+    }
   };
 
-  const handleOfferChange = (text: string) => setOfferInput(formatCentsInput(text));
-  const handlePersonalizedAmountChange = (text: string) => setPersonalizedAmount(formatCentsInput(text));
+  const closePrintPreview = () => {
+    if (creatingPrint) return;
+    setPrintItem(null);
+    setPrintPreview(null);
+    setPrintStep('preview');
+    setAddressSheetVisible(false);
+    setPrintQuantity(1);
+  };
 
-  const handleCreateOffer = async () => {
-    if (!offerItem) return;
-    if (!user) {
-      Alert.alert('Sign in required', 'Please sign in to make an offer.');
-      return;
-    }
-    const amount = Number.parseFloat(offerInput);
+  const handleProceedToPrintPayment = () => {
+    if (!printPreview) return;
+    setAddressSheetVisible(true);
+  };
 
-    if (Number.isNaN(amount) || amount <= 0) {
-      Alert.alert('Invalid amount', 'Please enter a valid offer amount greater than $0.');
-      return;
-    }
-
-    setOfferSubmitting(true);
+  const handlePrintAddressSubmit = async (addressDetails: import('@stripe/stripe-react-native').AddressDetails) => {
+    setAddressSheetVisible(false);
+    if (!printItem || !printPreview) return;
+    const a = addressDetails.address;
+    const addr = {
+      name: addressDetails.name ?? '',
+      line1: a?.line1 ?? '',
+      line2: a?.line2 ?? '',
+      city: a?.city ?? '',
+      state: a?.state ?? '',
+      zip: a?.postalCode ?? '',
+    };
+    setCreatingPrint(true);
+    setPrintStep('processing');
     try {
-      // Disclosure required before collecting payment details.
-      const confirmed = await new Promise<boolean>((resolve) => {
-        Alert.alert(
-          'Offer Authorization',
-          `Submitting an offer places a temporary authorization hold of $${amount.toFixed(2)} on your card. Your card is only charged if the seller accepts. Payment is processed by Stripe, Ophinia's authorized payment partner.`,
-          [
-            { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
-            { text: 'Continue', onPress: () => resolve(true) },
-          ]
-        );
-      });
-      if (!confirmed) return;
-
       const paymentData = await callEdgeFunction<{
         client_secret: string;
         payment_intent_id: string;
         payment_event_id: string;
-      }>('create-offer-commitment-payment-intent', {
-        autograph_id: offerItem.id,
-        amount_cents: Math.round(amount * 100),
-      });
+        amount_cents: number;
+      }>('create-print-payment-intent', { autograph_id: printItem.id, idempotency_key: `${printSessionKey}-qty${printQuantity}`, quantity: printQuantity });
 
       const { error: initError } = await initPaymentSheet({
         paymentIntentClientSecret: paymentData.client_secret,
         merchantDisplayName: 'Ophinia',
       });
-
       if (initError) {
-        Alert.alert('Authorization Error', 'Could not start payment authorization. Please try again.');
+        Alert.alert('Payment Error', 'Could not start payment. Please try again.');
+        setPrintStep('preview');
+        setCreatingPrint(false);
         return;
       }
 
       const { error: paymentError } = await presentPaymentSheet();
       if (paymentError) {
         if (paymentError.code !== 'Canceled') {
-          Alert.alert('Authorization Failed', 'Could not confirm your offer authorization. Please try again.');
+          Alert.alert('Payment Failed', 'Could not complete payment. Please try again.');
         }
+        setPrintStep('preview');
+        setCreatingPrint(false);
         return;
       }
 
-      await callEdgeFunction('create-autograph-offer', {
-        autograph_id: offerItem.id,
-        amount_cents: Math.round(amount * 100),
+      await callEdgeFunction('submit-print-order', {
+        autograph_id: printItem.id,
         payment_event_id: paymentData.payment_event_id,
+        image_url: printPreview.print_layout_url ?? null,
+        quantity: printQuantity,
+        shipping_name: addr.name,
+        shipping_line1: addr.line1,
+        shipping_line2: addr.line2 || null,
+        shipping_city: addr.city,
+        shipping_state: addr.state,
+        shipping_zip: addr.zip,
       });
-      setOfferItem(null);
-      setOfferInput('');
-      Alert.alert('Offer Sent', 'Your offer was sent and the authorization hold is now in place.');
+
+      Alert.alert('Print Order Placed!', "Your official print is on its way. You'll receive a shipping confirmation from our print partner.");
+      closePrintPreview();
     } catch (error) {
-      Alert.alert(
-        'Offer Failed',
-        error instanceof Error ? error.message : 'Could not create your offer. Please try again.'
-      );
+      Alert.alert('Print Order Failed', error instanceof Error ? error.message : 'Could not place your print order. Please try again.');
+      setPrintStep('preview');
     } finally {
-      setOfferSubmitting(false);
+      setCreatingPrint(false);
     }
   };
 
-  const handleBuyNow = async (item: Listing) => {
-    if (!user) {
-      Alert.alert('Sign in required', 'Please sign in to purchase autographs.');
-      return;
-    }
-    try {
-      setPreviewItem(null);
-      await openAuthenticatedWebPath(`/app/checkout/${item.id}`);
-      Alert.alert('Continue on Web', 'Checkout has been moved to Ophinia on the web.');
-    } catch {
-      Alert.alert('Error', 'Could not open the web checkout. Please try again.');
-    }
-  };
-
-  const handleOpenPersonalizedRequest = () => {
-    if (!profile) return;
-    const minPrice = profile.personalized_min_price_cents
-      ? (profile.personalized_min_price_cents / 100).toFixed(2)
-      : '10.00';
-    setPersonalizedRecipient('');
-    setPersonalizedInscription('');
-    setPersonalizedNote('');
-    setPersonalizedAmount(minPrice);
-    setPersonalizedVisible(true);
-  };
 
   const handleCreatePersonalizedRequest = async () => {
     if (!profile) return;
     if (!user) {
-      Alert.alert('Sign in required', 'Please sign in to request a personalized autograph.');
+      Alert.alert('Sign in required', 'Please sign in to request a personalized print.');
       return;
     }
 
-    const amount = Number.parseFloat(personalizedAmount);
-    const minAmount = (profile.personalized_min_price_cents ?? 0) / 100;
+    const amountCents = Math.max(profile.personalized_min_price_cents ?? 0, PERSONALIZED_REQUEST_MIN_CENTS);
+    const amount = amountCents / 100;
 
     if (!personalizedRecipient.trim()) {
-      Alert.alert('Recipient Required', 'Please enter the recipient name for this personalized autograph.');
-      return;
-    }
-
-    if (Number.isNaN(amount) || amount <= 0) {
-      Alert.alert('Invalid Amount', 'Please enter a valid offer amount greater than $0.');
-      return;
-    }
-
-    if (profile.personalized_min_price_cents && amount < minAmount) {
-      Alert.alert('Minimum Price', `This creator requires at least $${minAmount.toFixed(2)} for personalized requests.`);
+      Alert.alert('Recipient Required', 'Please enter the recipient name for this personalized print.');
       return;
     }
 
@@ -368,8 +387,8 @@ export default function ProfileScreen() {
       // Disclosure required before collecting payment details.
       const confirmed = await new Promise<boolean>((resolve) => {
         Alert.alert(
-          'Personalized Autograph Request',
-          `You are commissioning a personalized autograph from ${profile.display_name} for $${amount.toFixed(2)}. A temporary authorization hold will be placed on your card now. You are only charged when the creator completes and delivers the autograph. Payment is processed by Stripe, Ophinia's authorized payment partner.`,
+          'Personalized Print Request',
+          `You are commissioning a personalized physical print from ${profile.display_name} for $${amount.toFixed(2)}. A temporary authorization hold will be placed on your card now. You are only charged when the creator completes the personalized print. Payment is processed by Stripe, Ophinia's authorized payment partner.`,
           [
             { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
             { text: 'Continue', onPress: () => resolve(true) },
@@ -387,7 +406,7 @@ export default function ProfileScreen() {
         recipient_name: personalizedRecipient.trim(),
         inscription_text: personalizedInscription.trim() || null,
         requester_note: personalizedNote.trim() || null,
-        amount_cents: Math.round(amount * 100),
+        amount_cents: amountCents,
       });
 
       const { error: initError } = await initPaymentSheet({
@@ -413,13 +432,13 @@ export default function ProfileScreen() {
         recipient_name: personalizedRecipient.trim(),
         inscription_text: personalizedInscription.trim() || null,
         requester_note: personalizedNote.trim() || null,
-        amount_cents: Math.round(amount * 100),
+        amount_cents: amountCents,
         payment_event_id: paymentData.payment_event_id,
       });
       setPersonalizedVisible(false);
       Alert.alert(
         'Request Sent',
-        'Your personalized autograph request has been sent and your payment authorization is in place. You can track updates in Personalized Requests from your account.'
+        'Your personalized print request has been sent and your payment authorization is in place. You can track updates in Personalized Requests from your account.'
       );
     } catch (error) {
       Alert.alert(
@@ -429,6 +448,14 @@ export default function ProfileScreen() {
     } finally {
       setPersonalizedSubmitting(false);
     }
+  };
+
+  const handlePersonalizedSubmitPress = () => {
+    if (personalizedSubmitting || personalizedSubmitStartedRef.current) return;
+    personalizedSubmitStartedRef.current = true;
+    void handleCreatePersonalizedRequest().finally(() => {
+      personalizedSubmitStartedRef.current = false;
+    });
   };
 
   const handleToggleBlockedProfile = async (shouldBlock: boolean) => {
@@ -444,7 +471,7 @@ export default function ProfileScreen() {
         setIsBlockedProfile(true);
         setPreviewItem(null);
         setContextMenuVisible(false);
-        Alert.alert('User Blocked', `${profile?.display_name ?? 'This user'} has been blocked. Their listings are now hidden.`);
+        Alert.alert('User Blocked', `${profile?.display_name ?? 'This user'} has been blocked. Their public prints are now hidden.`);
       } else {
         const { error } = await supabase
           .from('blocked_users')
@@ -462,39 +489,98 @@ export default function ProfileScreen() {
     }
   };
 
+  const handleToggleSavedCreator = async () => {
+    if (!user || !id || isOwnProfile || savingCreator) return;
+    const next = !savedCreator;
+    setSavingCreator(true);
+    try {
+      if (next) {
+        const { error } = await supabase
+          .from('saved_creators')
+          .insert({ user_id: user.id, creator_id: id });
+        if (error && error.code !== '23505') throw error;
+        setSavedCreator(true);
+        if (creatorSavedNoticeTimerRef.current) {
+          clearTimeout(creatorSavedNoticeTimerRef.current);
+        }
+        setCreatorSavedNoticeVisible(true);
+        creatorSavedNoticeTimerRef.current = setTimeout(() => {
+          setCreatorSavedNoticeVisible(false);
+          creatorSavedNoticeTimerRef.current = null;
+        }, 1800);
+      } else {
+        const { error } = await supabase
+          .from('saved_creators')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('creator_id', id);
+        if (error) throw error;
+        setSavedCreator(false);
+        setCreatorSavedNoticeVisible(false);
+      }
+    } catch (error) {
+      console.log('Saved creator toggle error:', error);
+      const message =
+        typeof error === 'object' && error !== null && 'message' in error && typeof error.message === 'string'
+          ? error.message
+          : `Could not ${next ? 'save' : 'unsave'} this creator. Please try again.`;
+      Alert.alert('Saved Creators', message);
+    } finally {
+      setSavingCreator(false);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (creatorSavedNoticeTimerRef.current) {
+        clearTimeout(creatorSavedNoticeTimerRef.current);
+      }
+    };
+  }, []);
+
   useEffect(() => {
     if (!id) return;
     setLoading(true);
+    setVisibleListingsCount(PROFILE_LISTINGS_PAGE_SIZE);
     supabase.rpc('get_profile_page', { p_user_id: id })
       .then(async ({ data, error }) => {
         setLoading(false);
         if (error || !data) { setNotFound(true); return; }
         const profileData = data as ProfileData;
-        const listingIds = [
-          ...(profileData.public_videos ?? []).map((item) => item.id),
-          ...(profileData.active_listings ?? []).map((item) => item.id),
-        ];
-        const templateIds = await fetchAutographTemplateIds(listingIds);
-        profileData.public_videos = (profileData.public_videos ?? []).map((item) => ({
-          ...item,
-          template_id: templateIds[item.id] ?? item.template_id ?? 'classic',
-        }));
-        profileData.active_listings = (profileData.active_listings ?? []).map((item) => ({
-          ...item,
-          template_id: templateIds[item.id] ?? item.template_id ?? 'classic',
-        }));
+        if (profileData.personalized_requests_enabled) {
+          const { count } = await supabase
+            .from('personalized_autograph_requests')
+            .select('id', { count: 'exact', head: true })
+            .eq('creator_id', id)
+            .in('status', ['pending', 'countered', 'accepted', 'fulfilled']);
+
+          if ((count ?? 0) >= 15) {
+            profileData.personalized_requests_enabled = false;
+            profileData.personalized_requests_at_capacity = true;
+          }
+        }
 
         if (user?.id && user.id !== id) {
-          const { data: blockedRow } = await supabase
-            .from('blocked_users')
-            .select('blocked_user_id')
-            .eq('blocker_id', user.id)
-            .eq('blocked_user_id', id)
-            .maybeSingle();
+          const [{ data: blockedRow }, { data: savedRow }] = await Promise.all([
+            supabase
+              .from('blocked_users')
+              .select('blocked_user_id')
+              .eq('blocker_id', user.id)
+              .eq('blocked_user_id', id)
+              .maybeSingle(),
+            supabase
+              .from('saved_creators')
+              .select('creator_id')
+              .eq('user_id', user.id)
+              .eq('creator_id', id)
+              .maybeSingle(),
+          ]);
           setIsBlockedProfile(!!blockedRow);
+          setSavedCreator(!!savedRow);
           void logInterestEvent('view_profile', { creatorId: id });
         } else {
           setIsBlockedProfile(false);
+          setSavedCreator(false);
         }
 
         setProfile(profileData);
@@ -518,43 +604,39 @@ export default function ProfileScreen() {
   }
 
   const s = profile.stats;
-  const publicVideos = profile.public_videos ?? profile.active_listings ?? [];
-  const hasCreatedAutographs = s.autographs_signed > 0;
-  const profileStatusLabel = hasCreatedAutographs ? 'Creator / Collector' : 'Collector';
-  const verificationLabel = profile.verified
-    ? 'Identity Verified'
-    : profile.verification_status === 'pending'
-    ? 'Verification Pending'
-    : 'Unverified';
+  const publicVideos = (profile.public_videos ?? profile.active_listings ?? []).filter(canBuyPrint);
+  const visiblePublicVideos = publicVideos.slice(0, visibleListingsCount);
+  const hasMoreVisibleListings = visiblePublicVideos.length < publicVideos.length;
+  const profileStatusLabel = getAccountStatusLabel(profile);
 
   return (
+    <View style={{ flex: 1 }}>
     <ScrollView contentContainerStyle={styles.container}>
 
       {/* Header */}
       <View style={styles.header}>
         <Pressable style={styles.headerTapArea} onPress={() => setDetailsVisible(true)}>
-          <ProfileAvatar
-            name={profile.display_name}
-            uri={profile.avatar_url}
-            videoUrl={profile.avatar_autograph?.video_url}
-            strokes={profile.avatar_autograph?.strokes_json ?? []}
-            captureWidth={profile.avatar_autograph?.capture_width ?? 1}
-            captureHeight={profile.avatar_autograph?.capture_height ?? 1}
-            strokeColor={profile.avatar_autograph?.stroke_color}
-            size={72}
-          />
+          <View style={styles.avatarColumn}>
+            <ProfileAvatar
+              name={profile.display_name}
+              uri={profile.avatar_url}
+              videoUrl={profile.avatar_autograph?.video_url}
+              strokes={profile.avatar_autograph?.strokes_json ?? []}
+              captureWidth={profile.avatar_autograph?.capture_width ?? 1}
+              captureHeight={profile.avatar_autograph?.capture_height ?? 1}
+              strokeColor={profile.avatar_autograph?.stroke_color}
+              size={72}
+            />
+            {profile.verified && (
+              <View style={styles.verifiedBadge}>
+                <Text style={styles.verifiedBadgeText}>✓ Verified</Text>
+              </View>
+            )}
+          </View>
           <View style={styles.headerInfo}>
             <View style={styles.nameRow}>
               <Text style={[styles.displayName, { flex: 1 }]}>{profile.display_name}</Text>
-              {profile.verified && (
-                <View style={styles.verifiedBadge}>
-                  <Text style={styles.verifiedBadgeText}>✓ Verified</Text>
-                </View>
-              )}
             </View>
-            {profile.verified ? (
-              <Text style={styles.memberSince}>✓ Verified by Ophinia</Text>
-            ) : null}
             {profile.bio ? (
               <Text style={styles.profileBio}>{profile.bio}</Text>
             ) : null}
@@ -566,53 +648,28 @@ export default function ProfileScreen() {
           </Pressable>
         )}
         {!isOwnProfile && (
-          <Pressable onPress={() => setProfileMenuVisible(true)} hitSlop={10} style={{ paddingHorizontal: 4 }}>
-            <FontAwesome name="ellipsis-v" size={20} color="#777" />
-          </Pressable>
+          <View style={styles.profileHeaderActions}>
+            <Pressable onPress={() => setProfileMenuVisible(true)} hitSlop={10} style={styles.profileReportAction}>
+              <FontAwesome name="exclamation-circle" size={20} color="#777" />
+            </Pressable>
+            <Pressable onPress={handleToggleSavedCreator} hitSlop={10} style={styles.profileSaveAction} disabled={savingCreator}>
+              <FontAwesome name={savedCreator ? 'bookmark' : 'bookmark-o'} size={20} color={savedCreator ? BrandColors.primary : '#777'} />
+            </Pressable>
+          </View>
         )}
       </View>
 
-      {profileMenuVisible && (
-        <Pressable style={styles.contextOverlay} onPress={() => setProfileMenuVisible(false)}>
-          <View style={styles.contextMenu} onStartShouldSetResponder={() => true}>
-            <Text style={styles.contextMenuTitle}>{profile?.display_name ?? 'User'}</Text>
-            <Pressable
-              style={styles.contextMenuItem}
-              onPress={() => { setProfileMenuVisible(false); void handleToggleBlockedProfile(!isBlockedProfile); }}
-              disabled={blockingProfile}
-            >
-              <Text style={[styles.contextMenuItemText, { color: '#FF3B30' }]}>
-                {blockingProfile ? 'Updating…' : isBlockedProfile ? 'Unblock User' : 'Block User'}
-              </Text>
-            </Pressable>
-            <Pressable style={styles.contextMenuItem} onPress={() => setProfileMenuVisible(false)}>
-              <Text style={[styles.contextMenuItemText, { color: '#888' }]}>Cancel</Text>
-            </Pressable>
-          </View>
-        </Pressable>
-      )}
 
-      {!isOwnProfile && !isBlockedProfile && profile.personalized_requests_enabled ? (
-        <Pressable style={styles.personalizedCard} onPress={handleOpenPersonalizedRequest}>
-          <Text style={styles.personalizedEyebrow}>Personalized Autograph</Text>
-          <Text style={styles.personalizedTitle}>Request a custom Ophinia autograph</Text>
-          <Text style={styles.personalizedBody}>
-            Personalized requests start at {formatPublicVideoPrice(profile.personalized_min_price_cents ?? 1000)}.
-          </Text>
-        </Pressable>
-      ) : null}
-
-      <Text style={styles.sectionTitle}>Listings</Text>
       {isBlockedProfile ? (
         <View style={styles.blockedStateCard}>
-          <Text style={styles.blockedStateTitle}>Listings Hidden</Text>
+          <Text style={styles.blockedStateTitle}>Prints Hidden</Text>
           <Text style={styles.blockedStateText}>
-            You have blocked this user. Their listings and interactions are hidden until you unblock them.
+            You have blocked this user. Their public prints and interactions are hidden until you unblock them.
           </Text>
         </View>
       ) : publicVideos.length > 0 ? (
         <View style={styles.listingsGrid}>
-          {publicVideos.reduce<Listing[][]>((rows, item, i) => {
+          {visiblePublicVideos.reduce<Listing[][]>((rows, item, i) => {
             if (i % 2 === 0) rows.push([item]);
             else rows[rows.length - 1].push(item);
             return rows;
@@ -639,56 +696,52 @@ export default function ProfileScreen() {
                         <Text style={styles.thumbnailFallbackText}>Ophinia</Text>
                       </View>
                     )}
-                    {listing.sale_state === 'fixed' && (
-                      <View style={styles.cardOverlayBar}>
-                        <Text style={styles.cardOverlayPrice} numberOfLines={1}>
-                          {listing.offer_locked_until ? 'Sale Pending' : formatPublicVideoPrice(listing.price_cents)}
-                        </Text>
-                        {!listing.offer_locked_until && !isOwnProfile && canBuyNow(listing) ? (
-                          <Pressable
-                            style={styles.cardOverlayButton}
-                            onPress={(e) => { e.stopPropagation(); handleBuyNow(listing); }}
-                          >
-                            <Text style={styles.cardOverlayButtonText}>Buy</Text>
-                          </Pressable>
-                        ) : !listing.offer_locked_until && !isOwnProfile && canMakeOffer(listing) ? (
-                          <Pressable
-                            style={styles.cardOverlayButton}
-                            onPress={(e) => { e.stopPropagation(); setOfferItem(listing); setOfferInput(''); }}
-                          >
-                            <Text style={styles.cardOverlayButtonText}>Offer</Text>
-                          </Pressable>
-                        ) : null}
-                      </View>
-                    )}
                   </View>
                   <View style={styles.profileListingBody}>
-                    <NameWithSequence
-                      name={listing.creator_name}
-                      sequenceNumber={listing.creator_sequence_number}
-                      style={styles.profileListingName}
-                    />
-                    <CardMetadataBlock
-                      compact
-                      sequenceNumber={listing.creator_sequence_number}
-                      capturedAt={listing.created_at}
-                      printCount={listing.print_count ?? null}
-                      seriesName={listing.series_name}
-                      seriesEdition={
-                        listing.series_sequence_number != null && listing.series_max_size != null
-                          ? `${listing.series_sequence_number} of ${listing.series_max_size}`
-                          : null
-                      }
-                    />
+                    <View style={styles.profileListingBodyBottom}>
+                      <View style={styles.profileListingMetaColumn}>
+                        <CardMetadataBlock
+                          compact
+                          sequenceNumber={listing.creator_sequence_number}
+                          capturedAt={listing.created_at}
+                          printCount={listing.print_count ?? null}
+                          seriesName={listing.series_name}
+                          seriesEdition={
+                            listing.series_sequence_number != null && listing.series_max_size != null
+                              ? `${listing.series_sequence_number} of ${listing.series_max_size}`
+                              : null
+                          }
+                        />
+                      </View>
+                    </View>
+                      {canBuyPrint(listing) && (
+                        <View style={styles.profileListingActionRow}>
+                          <Pressable
+                            style={[styles.profileCardBuyButton, loadingPrintPreview && { opacity: 0.6 }]}
+                            onPress={(e) => { e.stopPropagation(); void openPrintPreview(listing); }}
+                            disabled={loadingPrintPreview}
+                          >
+                            <Text style={styles.profileCardBuyButtonText}>Print Preview</Text>
+                          </Pressable>
+                        </View>
+                      )}
                   </View>
                 </Pressable>
               ))}
               {row.length === 1 ? <View style={styles.profileListingCardPlaceholder} /> : null}
             </View>
           ))}
+          {hasMoreVisibleListings ? (
+            <Pressable
+              style={styles.loadMoreListingsButton}
+              onPress={() => setVisibleListingsCount((count) => count + PROFILE_LISTINGS_PAGE_SIZE)}
+            >
+              <Text style={styles.loadMoreListingsButtonText}>Load More Prints</Text>
+            </Pressable>
+          ) : null}
         </View>
       ) : (
-        <Text style={styles.emptyStateText}>No current listings</Text>
+        <Text style={styles.emptyStateText}>No public prints</Text>
       )}
 
       <Modal
@@ -715,34 +768,9 @@ export default function ProfileScreen() {
                 <Text style={styles.detailsTitle}>Profile Details</Text>
               </View>
             </View>
-            <View style={styles.verificationCard}>
-              <Text style={styles.verificationCardTitle}>Verification</Text>
-              {[
-                { label: 'Creator Identity', detail: verificationLabel },
-                ...(profile.first_verified_at ? [{ label: 'Verified On', detail: formatDetailDate(profile.first_verified_at) }] : []),
-              ].map((item, index, arr) => (
-                <View key={item.label} style={[styles.verificationRow, index < arr.length - 1 && styles.verificationRowBorder]}>
-                  {profile.role === 'verified' || profile.verified ? <Text style={styles.verificationCheck}>✓</Text> : null}
-                  <View style={styles.verificationCopy}>
-                    <Text style={styles.verificationLabel}>{item.label}</Text>
-                    <Text style={styles.verificationDetail}>{item.detail}</Text>
-                  </View>
-                </View>
-              ))}
-            </View>
             <View style={styles.detailsRow}>
-              <Text style={styles.detailsLabel}>Ophinia Status</Text>
+              <Text style={styles.detailsLabel}>User Status</Text>
               <Text style={styles.detailsValue}>{profileStatusLabel}</Text>
-            </View>
-            <View style={styles.detailsRow}>
-              <Text style={styles.detailsLabel}>Instagram</Text>
-              <Text style={styles.detailsValue}>
-                {profile.instagram_handle ? `@${profile.instagram_handle}` : '—'}
-              </Text>
-            </View>
-            <View style={styles.detailsRow}>
-              <Text style={styles.detailsLabel}>Instagram Status</Text>
-              <Text style={styles.detailsValue}>{formatInstagramStatus(profile.instagram_status, profile.instagram_handle)}</Text>
             </View>
             <View style={styles.detailsRow}>
               <Text style={styles.detailsLabel}>Creator Since</Text>
@@ -755,10 +783,6 @@ export default function ProfileScreen() {
             <View style={styles.detailsRow}>
               <Text style={styles.detailsLabel}>Total Series Created</Text>
               <Text style={styles.detailsValue}>{s.unique_series_signed.toLocaleString()}</Text>
-            </View>
-            <View style={styles.detailsRow}>
-              <Text style={styles.detailsLabel}>Total Gold Autographs</Text>
-              <Text style={styles.detailsValue}>{s.gold_signed.toLocaleString()}</Text>
             </View>
             <View style={styles.detailsRow}>
               <Text style={styles.detailsLabel}>Member Since</Text>
@@ -800,70 +824,33 @@ export default function ProfileScreen() {
                 onLongPress={() => setContextMenuVisible(true)}
               />
               <View style={styles.modalMetadataBlock}>
-                <View style={styles.modalHeaderRow}>
-                  <View style={styles.modalHeaderMetaLeft}>
-                    <Text style={styles.modalHeaderMetaText}>{formatNumericDate(previewItem.created_at)}</Text>
-                  </View>
-                  <View style={styles.modalNameRow}>
-                    <NameWithSequence name={previewItem.creator_name} sequenceNumber={previewItem.creator_sequence_number} style={styles.modalMetaTextInner} />
-                    {previewItem.creator_name_verified && (
-                      <Image source={require('../../assets/images/Ophinia_badge_navy background.png')} style={styles.nameBadge} resizeMode="contain" />
-                    )}
-                  </View>
-                  <Pressable style={styles.certificateLink} onPress={() => setCertItem(previewItem)}>
-                    <Image source={require('../../assets/images/Ophinia_O.png')} style={styles.certificateLogo} resizeMode="contain" />
-                  </Pressable>
-                </View>
-                <View style={styles.modalInfoRow}>
-                  <View style={styles.modalInfoLeft}>
-                    {previewItem.print_count != null ? (
-                      <Text style={styles.modalInfoText}>{`Print #${previewItem.print_count + 1}`}</Text>
-                    ) : null}
-                  </View>
-                  <View style={styles.modalInfoCenter}>
-                    {previewItem.series_name || (previewItem.series_sequence_number != null && previewItem.series_max_size != null) ? (
-                      <Text style={styles.modalSeriesText} numberOfLines={1}>
-                        {previewItem.series_name ?? ''}
-                        {previewItem.series_name && previewItem.series_sequence_number != null && previewItem.series_max_size != null ? ' · ' : ''}
-                        {previewItem.series_sequence_number != null && previewItem.series_max_size != null
-                          ? `${previewItem.series_sequence_number} of ${previewItem.series_max_size}`
-                          : ''}
-                      </Text>
-                    ) : null}
-                  </View>
-                </View>
-                <View style={styles.modalInfoRow}>
-                  <View style={styles.modalInfoLeft}>
-                    <Text style={styles.modalInfoText}>{`Listed by ${isOwnProfile ? 'You' : (previewItem.owner_name ?? previewItem.creator_name)}`}</Text>
-                  </View>
-                  <View style={styles.modalInfoCenter} />
-                </View>
+                <Text style={[styles.modalMetaLine, styles.modalMetaCentered]}>
+                  {[
+                    previewItem.creator_sequence_number != null ? `#${previewItem.creator_sequence_number}` : null,
+                    formatNumericDate(previewItem.created_at),
+                  ].filter(Boolean).join(' · ')}
+                </Text>
+                {previewItem.series_name || (previewItem.series_sequence_number != null && previewItem.series_max_size != null) ? (
+                  <Text style={[styles.modalMetaLine, styles.modalMetaCentered]} numberOfLines={1}>
+                    {[
+                      previewItem.series_name,
+                      previewItem.series_sequence_number != null && previewItem.series_max_size != null
+                        ? `${previewItem.series_sequence_number} of ${previewItem.series_max_size}`
+                        : null,
+                    ].filter(Boolean).join(' · ')}
+                  </Text>
+                ) : null}
                 <View style={styles.modalUtilityRow}>
                   <Pressable style={styles.modalUtilityButton} onPress={() => { void handleShare(previewItem); }}>
                     <Text style={styles.modalUtilityButtonText}>Share</Text>
                   </Pressable>
+                  {canBuyPrint(previewItem) && (
+                    <Pressable style={styles.modalUtilityButton} onPress={() => { void openPrintPreview(previewItem); }}>
+                      <Text style={styles.modalUtilityButtonText}>Order Print</Text>
+                    </Pressable>
+                  )}
                 </View>
               </View>
-              {!isOwnProfile && (
-                <View style={styles.modalActionBar}>
-                  <Text style={styles.modalActionPrice}>
-                    {previewItem.offer_locked_until
-                      ? 'Sale Pending'
-                      : previewItem.sale_state === 'fixed'
-                        ? formatPublicVideoPrice(previewItem.price_cents)
-                        : null}
-                  </Text>
-                  {!previewItem.offer_locked_until && canBuyNow(previewItem) ? (
-                    <Pressable style={styles.modalActionButton} onPress={() => { setPreviewItem(null); handleBuyNow(previewItem); }}>
-                      <Text style={styles.modalActionButtonText}>Buy Now</Text>
-                    </Pressable>
-                  ) : !previewItem.offer_locked_until && canMakeOffer(previewItem) ? (
-                    <Pressable style={styles.modalActionButton} onPress={() => { const item = previewItem; setPreviewItem(null); setOfferItem(item); setOfferInput(''); }}>
-                      <Text style={styles.modalActionButtonText}>Make Offer</Text>
-                    </Pressable>
-                  ) : null}
-                </View>
-              )}
             </>
           ) : null}
 
@@ -882,33 +869,6 @@ export default function ProfileScreen() {
                   <Text style={styles.contextMenuItemText}>Share</Text>
                 </Pressable>
 
-                {!isOwnProfile && canMakeOffer(previewItem) && (
-                  <Pressable
-                    style={styles.contextMenuItem}
-                    onPress={() => {
-                      const item = previewItem;
-                      setContextMenuVisible(false);
-                      setPreviewItem(null);
-                      setOfferItem(item);
-                      setOfferInput('');
-                    }}
-                  >
-                    <Text style={styles.contextMenuItemText}>Make Offer</Text>
-                  </Pressable>
-                )}
-
-                {!isOwnProfile && canBuyNow(previewItem) && (
-                  <Pressable
-                    style={styles.contextMenuItem}
-                    onPress={() => {
-                      const item = previewItem;
-                      setContextMenuVisible(false);
-                      handleBuyNow(item);
-                    }}
-                  >
-                    <Text style={styles.contextMenuItemText}>Buy Now · {formatPublicVideoPrice(previewItem.price_cents)}</Text>
-                  </Pressable>
-                )}
 
                 <Pressable
                   style={styles.contextMenuItem}
@@ -966,7 +926,7 @@ export default function ProfileScreen() {
                 {[
                   { reason: 'impersonation', label: 'Impersonation' },
                   { reason: 'offensive_content', label: 'Offensive Content' },
-                  { reason: 'fraudulent_listing', label: 'Fraudulent Listing' },
+                  { reason: 'fraudulent_listing', label: 'Fraud or Scam' },
                   { reason: 'copyright_issue', label: 'Copyright / IP Issue' },
                 ].map(({ reason, label }) => (
                   <Pressable
@@ -1015,119 +975,185 @@ export default function ProfileScreen() {
           if (!personalizedSubmitting) setPersonalizedVisible(false);
         }}
       >
-        <Pressable
+        <KeyboardAvoidingView
           style={styles.offerOverlay}
-          onPress={() => {
-            if (!personalizedSubmitting) setPersonalizedVisible(false);
-          }}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={24}
         >
-          <View style={styles.offerSheet} onStartShouldSetResponder={() => true}>
-            <Text style={styles.offerTitle}>Request Personalized Autograph</Text>
-            <Text style={styles.offerSubtitle}>
-              {profile.display_name}
-              {' · '}Minimum {formatPublicVideoPrice(profile.personalized_min_price_cents ?? 1000)}
-            </Text>
-            <TextInput
-              style={styles.offerInput}
-              placeholder="Recipient name"
-              placeholderTextColor="#999"
-              value={personalizedRecipient}
-              onChangeText={setPersonalizedRecipient}
-              editable={!personalizedSubmitting}
-            />
-            <TextInput
-              style={styles.offerInput}
-              placeholder="Optional inscription"
-              placeholderTextColor="#999"
-              value={personalizedInscription}
-              onChangeText={setPersonalizedInscription}
-              editable={!personalizedSubmitting}
-            />
-            <TextInput
-              style={[styles.offerInput, styles.offerNoteInput]}
-              placeholder="Optional note to creator"
-              placeholderTextColor="#999"
-              value={personalizedNote}
-              onChangeText={setPersonalizedNote}
-              editable={!personalizedSubmitting}
-              multiline
-            />
-            <TextInput
-              style={styles.offerInput}
-              placeholder="Your offer in USD"
-              placeholderTextColor="#999"
-              keyboardType="decimal-pad"
-              value={personalizedAmount}
-              onChangeText={handlePersonalizedAmountChange}
-              editable={!personalizedSubmitting}
-            />
-            <Pressable
-              style={[styles.offerButton, personalizedSubmitting && { opacity: 0.6 }]}
-              onPress={handleCreatePersonalizedRequest}
-              disabled={personalizedSubmitting}
-            >
-              <Text style={styles.offerButtonText}>
-                {personalizedSubmitting ? 'Sending…' : 'Send Request'}
+          <ScrollView
+            contentContainerStyle={styles.offerScrollContent}
+            keyboardShouldPersistTaps="always"
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.offerSheet}>
+              <Text style={styles.offerTitle}>Request Personalized Print</Text>
+              <Text style={styles.offerSubtitle}>
+                {profile.display_name}
+                {' · '}{formatPublicVideoPrice(Math.max(profile.personalized_min_price_cents ?? 0, PERSONALIZED_REQUEST_MIN_CENTS))}
               </Text>
-            </Pressable>
-            <Pressable
-              style={styles.offerCancelButton}
-              onPress={() => {
-                if (!personalizedSubmitting) setPersonalizedVisible(false);
-              }}
-              disabled={personalizedSubmitting}
-            >
-              <Text style={styles.offerCancelText}>Cancel</Text>
-            </Pressable>
-          </View>
-        </Pressable>
+              <TextInput
+                style={styles.offerInput}
+                placeholder="Recipient name"
+                placeholderTextColor="#999"
+                value={personalizedRecipient}
+                onChangeText={setPersonalizedRecipient}
+                maxLength={26}
+                inputAccessoryViewID={PERSONALIZED_REQUEST_ACCESSORY_ID}
+                editable={!personalizedSubmitting}
+              />
+              <TextInput
+                style={[styles.offerInput, styles.offerNoteInput]}
+                placeholder="Optional inscription"
+                placeholderTextColor="#999"
+                value={personalizedInscription}
+                onChangeText={setPersonalizedInscription}
+                maxLength={100}
+                inputAccessoryViewID={PERSONALIZED_REQUEST_ACCESSORY_ID}
+                editable={!personalizedSubmitting}
+                multiline
+              />
+              <TextInput
+                style={styles.offerInput}
+                placeholder="Optional note to creator"
+                placeholderTextColor="#999"
+                value={personalizedNote}
+                onChangeText={setPersonalizedNote}
+                maxLength={26}
+                inputAccessoryViewID={PERSONALIZED_REQUEST_ACCESSORY_ID}
+                editable={!personalizedSubmitting}
+              />
+              <Pressable
+                style={[styles.offerButton, personalizedSubmitting && { opacity: 0.6 }]}
+                onPress={handlePersonalizedSubmitPress}
+                disabled={personalizedSubmitting}
+              >
+                <Text style={styles.offerButtonText}>
+                  {personalizedSubmitting
+                    ? 'Sending…'
+                    : `Send Request · ${formatPublicVideoPrice(Math.max(profile.personalized_min_price_cents ?? 0, PERSONALIZED_REQUEST_MIN_CENTS))}`}
+                </Text>
+              </Pressable>
+              <Pressable
+                style={styles.offerCancelButton}
+                onPress={() => {
+                  if (!personalizedSubmitting) setPersonalizedVisible(false);
+                }}
+                disabled={personalizedSubmitting}
+              >
+                <Text style={styles.offerCancelText}>Cancel</Text>
+              </Pressable>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
       </Modal>
 
-      <Modal
-        visible={!!offerItem}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => { if (!offerSubmitting) { setOfferItem(null); setOfferInput(''); } }}
-      >
-        <Pressable style={styles.offerOverlay} onPress={() => { if (!offerSubmitting) { setOfferItem(null); setOfferInput(''); } }}>
-          <View style={styles.offerSheet} onStartShouldSetResponder={() => true}>
-            <Text style={styles.offerTitle}>Make Offer</Text>
-            <Text style={styles.offerSubtitle}>
-              {offerItem?.creator_name ?? 'Autograph'}
-              {offerItem?.sale_state === 'fixed' && offerItem.price_cents
-                ? ` · ${getListingPriceLabel(offerItem)} ${formatPublicVideoPrice(offerItem.price_cents)}`
-                : ''
-              }
-              {' · '}Expires in 24 hours if not accepted
-            </Text>
-            <TextInput
-              style={styles.offerInput}
-              placeholder="Offer amount in USD"
-              placeholderTextColor="#999"
-              keyboardType="decimal-pad"
-              returnKeyType="done"
-              value={offerInput}
-              onChangeText={handleOfferChange}
-              editable={!offerSubmitting}
-            />
+      {Platform.OS === 'ios' ? (
+        <InputAccessoryView nativeID={PERSONALIZED_REQUEST_ACCESSORY_ID}>
+          <View style={styles.personalizedKeyboardAccessory}>
             <Pressable
-              style={[styles.offerButton, offerSubmitting && { opacity: 0.6 }]}
-              onPress={handleCreateOffer}
-              disabled={offerSubmitting}
+              style={[styles.personalizedKeyboardSubmitButton, personalizedSubmitting && { opacity: 0.6 }]}
+              onPress={handlePersonalizedSubmitPress}
+              disabled={personalizedSubmitting}
             >
-              <Text style={styles.offerButtonText}>{offerSubmitting ? 'Sending…' : 'Send Offer'}</Text>
+              <Text style={styles.personalizedKeyboardSubmitText}>
+                {personalizedSubmitting ? 'Sending...' : 'Send Request'}
+              </Text>
             </Pressable>
-            <Pressable
-              style={styles.offerCancelButton}
-              onPress={() => { if (!offerSubmitting) { setOfferItem(null); setOfferInput(''); } }}
-              disabled={offerSubmitting}
-            >
-              <Text style={styles.offerCancelText}>Cancel</Text>
+          </View>
+        </InputAccessoryView>
+      ) : null}
+
+      <AutographPrintModal
+        visible={!!printItem}
+        printItem={printItem ? {
+          creatorName: printItem.creator_name,
+          creatorSequenceNumber: printItem.creator_sequence_number ?? null,
+          createdAt: printItem.created_at,
+          seriesName: printItem.series_name ?? null,
+        } : null}
+        printPreview={printPreview}
+        printStep={printStep}
+        addressSheetVisible={addressSheetVisible}
+        creatingPrint={creatingPrint}
+        loadingPrintPreview={loadingPrintPreview}
+        quantity={printQuantity}
+        unitPriceCents={printPreview?.item_cents ?? 1000}
+        originalPriceCents={printPreview?.original_price_cents ?? 1000}
+        shippingCents={printPreview?.shipping_cents ?? 699}
+        onQuantityChange={setPrintQuantity}
+        onClose={closePrintPreview}
+        onProceedToPayment={handleProceedToPrintPayment}
+        onAddressSubmit={handlePrintAddressSubmit}
+        onAddressError={() => setAddressSheetVisible(false)}
+        formatCardDate={(value) => {
+          const d = new Date(value);
+          return Number.isNaN(d.getTime()) ? value : `${d.getMonth() + 1}/${d.getDate()}/${String(d.getFullYear()).slice(-2)}`;
+        }}
+      />
+    </ScrollView>
+
+      {creatorSavedNoticeVisible ? (
+        <View pointerEvents="none" style={styles.creatorSavedNotice}>
+          <Text style={styles.creatorSavedNoticeText}>Creator Saved</Text>
+        </View>
+      ) : null}
+
+      {profileMenuVisible && (
+        <Pressable style={styles.contextOverlay} onPress={() => setProfileMenuVisible(false)}>
+          <View style={styles.contextMenu} onStartShouldSetResponder={() => true}>
+            <Text style={styles.contextMenuTitle}>{profile?.display_name ?? 'User'}</Text>
+            {isBlockedProfile ? (
+              <Pressable
+                style={styles.contextMenuItem}
+                onPress={() => { setProfileMenuVisible(false); void handleToggleBlockedProfile(false); }}
+                disabled={blockingProfile}
+              >
+                <Text style={[styles.contextMenuItemText, { color: '#FF3B30' }]}>
+                  {blockingProfile ? 'Updating…' : 'Unblock User'}
+                </Text>
+              </Pressable>
+            ) : (
+              <Pressable
+                style={styles.contextMenuItem}
+                onPress={() => { setProfileMenuVisible(false); setReportProfileVisible(true); }}
+              >
+                <Text style={[styles.contextMenuItemText, { color: '#FF3B30' }]}>Report & Block User</Text>
+              </Pressable>
+            )}
+            <Pressable style={styles.contextMenuItem} onPress={() => setProfileMenuVisible(false)}>
+              <Text style={[styles.contextMenuItemText, { color: '#888' }]}>Cancel</Text>
             </Pressable>
           </View>
         </Pressable>
-      </Modal>
-    </ScrollView>
+      )}
+
+      {reportProfileVisible && (
+        <Pressable style={styles.contextOverlay} onPress={() => setReportProfileVisible(false)}>
+          <View style={styles.contextMenu} onStartShouldSetResponder={() => true}>
+            <Text style={styles.contextMenuTitle}>Why are you reporting this user?</Text>
+            {[
+              { reason: 'impersonation', label: 'Impersonation' },
+              { reason: 'offensive_content', label: 'Offensive Content' },
+              { reason: 'harassment_abuse', label: 'Harassment or Abuse' },
+              { reason: 'fraudulent_listing', label: 'Scam or Fraud' },
+              { reason: 'copyright_issue', label: 'Copyright / IP Issue' },
+            ].map(({ reason, label }) => (
+              <Pressable
+                key={reason}
+                style={styles.contextMenuItem}
+                onPress={() => handleReportAndBlock(reason)}
+                disabled={reportSubmitting}
+              >
+                <Text style={styles.contextMenuItemText}>{label}</Text>
+              </Pressable>
+            ))}
+            <Pressable style={styles.contextMenuItem} onPress={() => setReportProfileVisible(false)}>
+              <Text style={[styles.contextMenuItemText, { color: '#888' }]}>Cancel</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      )}
+    </View>
   );
 }
 
@@ -1153,18 +1179,58 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 8,
     gap: 12,
   },
   headerTapArea: {
     flex: 1,
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 12,
+  },
+  avatarColumn: {
+    alignItems: 'center',
+    width: 72,
   },
   headerInfo: {
     flex: 1,
+    paddingTop: 4,
+  },
+  profileHeaderActions: {
+    minHeight: 126,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 2,
+    paddingBottom: 10,
+  },
+  profileReportAction: {
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+  },
+  profileSaveAction: {
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+  },
+  creatorSavedNotice: {
+    position: 'absolute',
+    top: 18,
+    alignSelf: 'center',
+    backgroundColor: BrandColors.primary,
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  creatorSavedNoticeText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+    fontFamily: BrandFonts.primary,
   },
   nameRow: {
     flexDirection: 'row',
@@ -1180,16 +1246,14 @@ const styles = StyleSheet.create({
     fontFamily: BrandFonts.primary,
   },
   verifiedBadge: {
-    backgroundColor: BrandColors.primary,
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    marginTop: 6,
   },
   verifiedBadgeText: {
-    color: '#fff',
+    color: '#777',
     fontSize: 11,
     fontWeight: '700',
     fontFamily: BrandFonts.primary,
+    textAlign: 'center',
   },
   memberSince: {
     fontSize: 13,
@@ -1346,15 +1410,17 @@ const styles = StyleSheet.create({
   },
   profileListingCard: {
     flex: 1,
-    borderRadius: 12,
+    borderBottomLeftRadius: 10,
+    borderBottomRightRadius: 10,
     backgroundColor: '#fff',
     overflow: 'hidden',
   },
   profileListingThumbWrap: {
     backgroundColor: '#050505',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderBottomWidth: 0,
   },
   profileListingThumbnail: {
     width: '100%',
@@ -1434,10 +1500,59 @@ const styles = StyleSheet.create({
   profileListingCardPlaceholder: {
     flex: 1,
   },
+  loadMoreListingsButton: {
+    marginTop: 14,
+    alignSelf: 'center',
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#d9cfbe',
+    backgroundColor: '#fff',
+  },
+  loadMoreListingsButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#111',
+    fontFamily: BrandFonts.primary,
+  },
   profileListingBody: {
     paddingHorizontal: 8,
     paddingTop: 7,
     paddingBottom: 8,
+    minHeight: 52,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderBottomLeftRadius: 10,
+    borderBottomRightRadius: 10,
+  },
+  profileListingBodyBottom: {
+    marginTop: 2,
+  },
+  profileListingMetaColumn: {
+    minWidth: 0,
+  },
+  profileListingActionRow: {
+    marginTop: 7,
+    width: '100%',
+  },
+  profileCardBuyButton: {
+    backgroundColor: BrandColors.primary,
+    borderRadius: 999,
+    width: '100%',
+    minHeight: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  profileCardBuyButtonText: {
+    color: '#fff',
+    fontSize: 13,
+    lineHeight: 15,
+    fontWeight: '700',
+    fontFamily: BrandFonts.primary,
+    textAlign: 'center',
   },
   profileListingName: {
     fontSize: 13,
@@ -1571,14 +1686,12 @@ const styles = StyleSheet.create({
   closeButton: {
     paddingVertical: 8,
     paddingHorizontal: 14,
-    borderWidth: 1.5,
-    borderColor: '#fff',
-    borderRadius: 8,
   },
   closeButtonText: {
     color: '#fff',
     fontFamily: BrandFonts.primary,
     fontWeight: '600',
+    fontSize: 16,
   },
   modalMetaText: {
     color: '#fff',
@@ -1597,6 +1710,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    marginBottom: 3,
+  },
+  modalNameText: {
+    fontSize: 16,
+    color: '#fff',
+    fontFamily: BrandFonts.primary,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  modalMetaCentered: {
+    textAlign: 'center',
+    width: '100%',
+  },
+  modalMetaLine: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: 'rgba(255,255,255,0.6)',
+    fontFamily: BrandFonts.primary,
+    fontWeight: '500',
+    textAlign: 'center',
   },
   nameBadge: {
     width: 20,
@@ -1608,58 +1741,6 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
     backgroundColor: 'black',
     alignItems: 'center',
-  },
-  modalHeaderRow: {
-    width: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-    minHeight: 34,
-    marginBottom: 6,
-  },
-  modalHeaderMetaLeft: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    alignItems: 'flex-start',
-    gap: 2,
-  },
-  modalHeaderMetaText: {
-    fontSize: 12,
-    lineHeight: 15,
-    color: '#fff',
-    fontFamily: BrandFonts.primary,
-    fontWeight: '600',
-  },
-  modalInfoRow: {
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    minHeight: 18,
-    marginTop: 2,
-  },
-  modalInfoLeft: {
-    width: '44%',
-    alignItems: 'flex-start',
-  },
-  modalInfoCenter: {
-    width: '40%',
-    alignItems: 'center',
-  },
-  modalInfoText: {
-    fontSize: 12,
-    lineHeight: 15,
-    color: '#fff',
-    fontFamily: BrandFonts.primary,
-    fontWeight: '600',
-  },
-  modalSeriesText: {
-    fontSize: 12,
-    lineHeight: 15,
-    color: '#d9d9d9',
-    fontFamily: BrandFonts.primary,
-    fontWeight: '600',
-    textAlign: 'center',
   },
   certificateLink: {
     position: 'absolute',
@@ -1726,6 +1807,26 @@ const styles = StyleSheet.create({
   },
   personalizedCard: {
     marginTop: 4,
+    marginBottom: 12,
+    backgroundColor: BrandColors.primary,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: BrandColors.primary,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  personalizedButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    lineHeight: 18,
+    fontFamily: BrandFonts.primary,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  personalizedUnavailableCard: {
+    marginTop: 4,
     marginBottom: 18,
     backgroundColor: '#fff1f0',
     borderRadius: 18,
@@ -1759,8 +1860,15 @@ const styles = StyleSheet.create({
   offerOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.45)',
-    justifyContent: 'center',
     padding: 20,
+    justifyContent: 'center',
+    paddingTop: 36,
+    paddingBottom: 32,
+  },
+  offerScrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingVertical: 24,
   },
   offerSheet: {
     backgroundColor: '#fff',
@@ -1791,7 +1899,7 @@ const styles = StyleSheet.create({
     fontFamily: BrandFonts.primary,
   },
   offerNoteInput: {
-    minHeight: 92,
+    minHeight: 76,
     textAlignVertical: 'top',
   },
   offerButton: {
@@ -1804,6 +1912,26 @@ const styles = StyleSheet.create({
   offerButtonText: {
     color: '#fff',
     fontSize: 16,
+    fontWeight: '700',
+    fontFamily: BrandFonts.primary,
+  },
+  personalizedKeyboardAccessory: {
+    backgroundColor: '#fff',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#d8d8d8',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    alignItems: 'flex-end',
+  },
+  personalizedKeyboardSubmitButton: {
+    backgroundColor: BrandColors.primary,
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  personalizedKeyboardSubmitText: {
+    color: '#fff',
+    fontSize: 14,
     fontWeight: '700',
     fontFamily: BrandFonts.primary,
   },
@@ -1826,8 +1954,8 @@ const styles = StyleSheet.create({
   },
   verificationCard: {
     width: '100%',
-    marginTop: 12,
-    marginBottom: 4,
+    marginTop: 6,
+    marginBottom: 2,
     borderRadius: 16,
     backgroundColor: '#F8F8F8',
     borderWidth: 1,

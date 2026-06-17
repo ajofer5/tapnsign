@@ -16,6 +16,8 @@ type PrintItem = {
   seriesName: string | null;
 };
 
+const MAX_QUANTITY = 5;
+
 type Props = {
   visible: boolean;
   printItem: PrintItem | null;
@@ -24,6 +26,11 @@ type Props = {
   addressSheetVisible: boolean;
   creatingPrint: boolean;
   loadingPrintPreview?: boolean;
+  quantity: number;
+  unitPriceCents?: number;
+  originalPriceCents?: number;
+  shippingCents?: number;
+  onQuantityChange: (qty: number) => void;
   onClose: () => void;
   onProceedToPayment: () => void;
   onAddressSubmit: (address: AddressDetails) => void;
@@ -39,16 +46,25 @@ export function AutographPrintModal({
   addressSheetVisible,
   creatingPrint,
   loadingPrintPreview = false,
+  quantity,
+  unitPriceCents = 1000,
+  originalPriceCents = 1000,
+  shippingCents = 699,
+  onQuantityChange,
   onClose,
   onProceedToPayment,
   onAddressSubmit,
   onAddressError,
   formatCardDate,
 }: Props) {
+  const isOnSale = unitPriceCents < originalPriceCents;
+  const totalCents = (unitPriceCents * quantity) + shippingCents;
+  const totalDisplay = `$${(totalCents / 100).toFixed(2)}`;
+  const unitDisplay = `$${(unitPriceCents / 100).toFixed(2)}`;
+  const shippingDisplay = `$${(shippingCents / 100).toFixed(2)}`;
   const { width } = useWindowDimensions();
   const [urlFallbackIndex, setUrlFallbackIndex] = useState(0);
   const previewImageWidth = Math.min(width - 84, 304);
-  const previewImageHeight = Math.round(previewImageWidth * 1.25);
   const previewCardWidth = previewImageWidth + 36;
   const printPreviewUrl = printPreview?.print_preview_url ?? null;
   const printLayoutUrl = printPreview?.print_layout_url ?? null;
@@ -67,10 +83,10 @@ export function AutographPrintModal({
       onRequestClose={onClose}
     >
       <Pressable style={styles.sellSheetOverlay} onPress={printStep === 'processing' ? undefined : onClose}>
+        <Pressable onPress={() => {}} style={{ width: '100%' }}>
         <ScrollView
           style={{ width: '100%' }}
           contentContainerStyle={styles.printSheet}
-          onStartShouldSetResponder={() => true}
         >
           {printItem ? (
             <>
@@ -83,8 +99,8 @@ export function AutographPrintModal({
                     {currentUrl ? (
                       <Image
                         source={{ uri: currentUrl }}
-                        style={[styles.printPreviewImage, { width: previewImageWidth, height: previewImageHeight }]}
-                        resizeMode="contain"
+                        style={[styles.printPreviewImage, { width: previewImageWidth, aspectRatio: 5/4 }]}
+                        resizeMode="cover"
                         onError={(event) => {
                           console.warn('[AutographPrintModal] print preview image failed to load', {
                             url: currentUrl,
@@ -94,16 +110,10 @@ export function AutographPrintModal({
                         }}
                       />
                     ) : (
-                      <View style={[styles.printPreviewLoadingPanel, { width: previewImageWidth, height: previewImageHeight }]}>
+                      <View style={[styles.printPreviewLoadingPanel, { width: previewImageWidth, aspectRatio: 5/4 }]}>
                         <ActivityIndicator color="#001B5C" />
                       </View>
                     )}
-                    <View pointerEvents="none" style={[styles.previewWatermark, { width: previewImageWidth, height: previewImageHeight }]}>
-                      <View style={styles.previewWatermarkBand}>
-                        <Text style={styles.previewWatermarkText}>PREVIEW</Text>
-                      </View>
-                      <Text style={styles.previewWatermarkFooter}>Official print preview</Text>
-                    </View>
                   </View>
 
                   <Text style={styles.printInfoText}>
@@ -114,6 +124,46 @@ export function AutographPrintModal({
                   {loadingPrintPreview ? (
                     <ActivityIndicator color="#111" style={{ marginTop: 12 }} />
                   ) : null}
+
+                  {/* Quantity stepper */}
+                  <View style={styles.quantityRow}>
+                    <Pressable
+                      style={[styles.qtyButton, quantity <= 1 && styles.qtyButtonDisabled]}
+                      onPress={() => { if (quantity > 1) onQuantityChange(quantity - 1); }}
+                    >
+                      <Text style={styles.qtyButtonText}>−</Text>
+                    </Pressable>
+                    <Text style={styles.qtyValue}>{quantity}</Text>
+                    <Pressable
+                      style={[styles.qtyButton, quantity >= MAX_QUANTITY && styles.qtyButtonDisabled]}
+                      onPress={() => { if (quantity < MAX_QUANTITY) onQuantityChange(quantity + 1); }}
+                    >
+                      <Text style={styles.qtyButtonText}>+</Text>
+                    </Pressable>
+                  </View>
+                  {isOnSale && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 }}>
+                      <View style={{ backgroundColor: '#FEE2E2', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 }}>
+                        <Text style={{ color: '#DC2626', fontSize: 11, fontWeight: '800', fontFamily: BrandFonts.primary, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                          {Math.round((1 - unitPriceCents / originalPriceCents) * 100)}% OFF
+                        </Text>
+                      </View>
+                      <Text style={{ color: '#9CA3AF', fontSize: 12, fontFamily: BrandFonts.primary, textDecorationLine: 'line-through' }}>
+                        ${(originalPriceCents / 100).toFixed(2)}
+                      </Text>
+                    </View>
+                  )}
+                  <Text style={styles.priceLine}>
+                    {quantity > 1
+                      ? `${unitDisplay} × ${quantity} + ${shippingDisplay} shipping = ${totalDisplay}`
+                      : `${unitDisplay} + ${shippingDisplay} shipping = ${totalDisplay}`}
+                  </Text>
+                  {isOnSale && (
+                    <Text style={{ color: '#16A34A', fontSize: 12, fontFamily: BrandFonts.primary, fontWeight: '600', marginTop: 2 }}>
+                      You save ${(((originalPriceCents - unitPriceCents) * quantity) / 100).toFixed(2)}
+                    </Text>
+                  )}
+
                   <Pressable
                     style={[
                       styles.certCloseButton,
@@ -124,7 +174,7 @@ export function AutographPrintModal({
                     disabled={!printPreview || loadingPrintPreview || creatingPrint}
                   >
                     <Text style={styles.closeButtonText}>
-                      {loadingPrintPreview ? 'Preparing Preview…' : 'Order Print - $19.99'}
+                      {loadingPrintPreview ? 'Preparing Preview…' : `Order Print${quantity > 1 ? 's' : ''}`}
                     </Text>
                   </Pressable>
 
@@ -149,11 +199,12 @@ export function AutographPrintModal({
                 additionalFields={{ phoneNumber: 'hidden' }}
                 allowedCountries={['US']}
                 primaryButtonTitle="Continue to Payment"
-                appearance={{ colors: { primary: '#FA0909' } }}
+                appearance={{ colors: { primary: '#001B5C' } }}
               />
             </>
           ) : null}
         </ScrollView>
+        </Pressable>
       </Pressable>
     </Modal>
   );
@@ -163,16 +214,17 @@ const styles = StyleSheet.create({
   sellSheetOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
-    paddingTop: 50,
+    justifyContent: 'center',
+    paddingHorizontal: 16,
   },
   printSheet: {
     width: '100%',
     alignItems: 'center',
     paddingHorizontal: 18,
-    paddingTop: 32,
+    paddingTop: 16,
     paddingBottom: 28,
     backgroundColor: BrandColors.background,
+    borderRadius: 16,
   },
   certTitle: {
     fontSize: 22,
@@ -191,7 +243,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#666',
     fontFamily: BrandFonts.primary,
-    marginTop: 14,
+    marginTop: 6,
     marginBottom: 8,
   },
   previewFrame: {
@@ -273,5 +325,43 @@ const styles = StyleSheet.create({
     fontFamily: BrandFonts.primary,
     fontWeight: '600',
     fontSize: 16,
+  },
+  quantityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 20,
+    gap: 20,
+  },
+  qtyButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: BrandColors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  qtyButtonDisabled: {
+    opacity: 0.3,
+  },
+  qtyButtonText: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: '600',
+    lineHeight: 24,
+  },
+  qtyValue: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#111',
+    fontFamily: BrandFonts.primary,
+    minWidth: 24,
+    textAlign: 'center',
+  },
+  priceLine: {
+    marginTop: 8,
+    fontSize: 16,
+    fontWeight: '600',
+    color: BrandColors.primary,
+    fontFamily: BrandFonts.primary,
   },
 });
