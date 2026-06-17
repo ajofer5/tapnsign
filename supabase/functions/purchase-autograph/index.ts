@@ -1,6 +1,8 @@
 import {
   assert,
+  assertUsersNotBlocked,
   getAutographForUpdate,
+  getProfile,
   handleRequest,
   json,
   parseJson,
@@ -13,6 +15,10 @@ import {
 Deno.serve((req) =>
   handleRequest(async (request) => {
     const user = await requireUser(request);
+    const profile = await getProfile(user.id);
+    assert(!profile.suspended_at, 403, 'Account is suspended.');
+    assert(profile.is_creator === true, 403, 'You must be 18 or older to purchase autographs.');
+
     const body = await parseJson(request);
 
     const autographId = requireString(body.autograph_id, 'autograph_id');
@@ -21,9 +27,22 @@ Deno.serve((req) =>
     const autograph = await getAutographForUpdate(autographId);
     assert(autograph.status === 'active', 409, 'Autograph is not active.');
     assert(autograph.is_for_sale, 409, 'Autograph is not listed for sale.');
-    assert(autograph.listing_type === 'fixed', 409, 'Autograph is not a fixed-price listing.');
+    assert(autograph.sale_state === 'fixed', 409, 'Autograph is not an active listing.');
+    assert(autograph.listing_mode === 'buy_now', 409, 'Autograph is not available for direct purchase.');
     assert(autograph.owner_id !== user.id, 409, 'You already own this autograph.');
+    await assertUsersNotBlocked(user.id, autograph.owner_id, 'You cannot purchase from this user.');
     assert(typeof autograph.price_cents === 'number' && autograph.price_cents > 0, 409, 'Listing price is invalid.');
+
+    const { data: acceptedOfferLock } = await supabaseAdmin
+      .from('autograph_offers')
+      .select('id')
+      .eq('autograph_id', autographId)
+      .eq('status', 'accepted')
+      .is('accepted_transfer_id', null)
+      .gt('payment_due_at', new Date().toISOString())
+      .maybeSingle();
+
+    assert(!acceptedOfferLock, 409, 'Autograph is currently locked for an accepted offer.');
 
     const { data: paymentEvent, error: paymentEventError } = await supabaseAdmin
       .from('payment_events')

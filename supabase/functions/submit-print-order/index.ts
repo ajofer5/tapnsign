@@ -399,7 +399,6 @@ Deno.serve((req) =>
 
     // Notify the collector
     const label = await getAutographDisplayLabel(autographId);
-    const printWord = allPrintIds.length > 1 ? `${allPrintIds.length} prints` : 'print';
     await sendPrintOrderConfirmationEmail({
       to: user.email,
       orderReference: printId,
@@ -419,7 +418,7 @@ Deno.serve((req) =>
     await notifyUser(
       user.id,
       'Print Order Submitted',
-      `Your official ${printWord} of ${label} ${allPrintIds.length > 1 ? 'have' : 'has'} been submitted for production.`
+      'Your official Ophinia print has been submitted for production.'
     );
 
     return json({

@@ -2,7 +2,7 @@ import Stripe from 'https://esm.sh/stripe@14?target=deno';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2?target=deno';
 
 export const corsHeaders = {
-  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') ?? 'https://tapnsign.app',
+  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') ?? 'https://ophinia.com',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -181,7 +181,9 @@ export async function getAutographForUpdate(autographId: string) {
       open_to_trade,
       latest_transfer_id,
       auto_decline_below,
-      auto_accept_above
+      auto_accept_above,
+      prints_enabled,
+      print_limit
     `)
     .eq('id', autographId)
     .single();
@@ -221,24 +223,6 @@ export async function createTransfer(params: {
   }
 
   return data.id as string;
-}
-
-export async function markTradeOffersInactive(autographIds: string[]) {
-  if (!autographIds.length) return;
-
-  const { error } = await supabaseAdmin
-    .from('trade_offers')
-    .update({ status: 'expired', responded_at: new Date().toISOString() })
-    .eq('status', 'pending')
-    .or(
-      autographIds
-        .map((id) => `target_autograph_id.eq.${id},offered_autograph_id.eq.${id}`)
-        .join(',')
-    );
-
-  if (error) {
-    throw new HttpError(500, error.message);
-  }
 }
 
 export async function logInterestEvent(params: {
@@ -511,6 +495,20 @@ export async function captureAuthorizedPaymentEvent(paymentEventId: string | nul
     throw new HttpError(404, error?.message ?? 'Payment authorization not found.');
   }
 
+  const existingIntent = await stripe.paymentIntents.retrieve(paymentEvent.stripe_payment_intent_id);
+  if (existingIntent.status === 'succeeded' || existingIntent.status === 'processing') {
+    await supabaseAdmin
+      .from('payment_events')
+      .update({
+        status: 'captured',
+        captured_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', paymentEventId);
+
+    return existingIntent;
+  }
+
   const paymentIntent = await stripe.paymentIntents.capture(paymentEvent.stripe_payment_intent_id);
   assert(
     paymentIntent.status === 'succeeded' || paymentIntent.status === 'processing',
@@ -528,88 +526,6 @@ export async function captureAuthorizedPaymentEvent(paymentEventId: string | nul
     .eq('id', paymentEventId);
 
   return paymentIntent;
-}
-
-export async function autoDeclinePendingOffers() {
-  try {
-    const { data: declineCandidates } = await supabaseAdmin
-      .from('autograph_offers')
-      .select('id, autograph_id, buyer_id, buyer_commitment_id')
-      .eq('status', 'pending')
-      .not('decline_after', 'is', null)
-      .lt('decline_after', new Date().toISOString());
-
-    await supabaseAdmin.rpc('auto_decline_pending_offers');
-
-    for (const offer of declineCandidates ?? []) {
-      await updateBuyerCommitmentStatus(offer.buyer_commitment_id, 'released');
-      const label = await getAutographDisplayLabel(offer.autograph_id);
-      await notifyUser(
-        offer.buyer_id,
-        'Offer Not Accepted',
-        `The seller is not currently accepting offers below their estimated value for ${label}. Feel free to adjust your offer and resubmit if you're still interested.`
-      );
-    }
-  } catch (error) {
-    console.warn('auto decline offers failed:', error);
-  }
-}
-
-export async function expireOffersAndNotify() {
-  await autoDeclinePendingOffers();
-  const nowIso = new Date().toISOString();
-
-  const { data: reopenCandidates } = await supabaseAdmin
-    .from('autograph_offers')
-    .select('id, autograph_id, buyer_id, owner_id, buyer_commitment_id')
-    .eq('status', 'accepted')
-    .is('accepted_transfer_id', null)
-    .lt('payment_due_at', nowIso);
-
-  const { data: expiredPendingCandidates } = await supabaseAdmin
-    .from('autograph_offers')
-    .select('id, buyer_commitment_id')
-    .eq('status', 'pending')
-    .lt('expires_at', nowIso);
-
-  const autographIds = [...new Set((reopenCandidates ?? []).map((offer) => offer.autograph_id))];
-  const { data: heldCandidates } = autographIds.length > 0
-    ? await supabaseAdmin
-        .from('autograph_offers')
-        .select('id, autograph_id, buyer_id')
-        .in('autograph_id', autographIds)
-        .eq('status', 'on_hold')
-    : { data: [] };
-
-  await supabaseAdmin.rpc('expire_autograph_offers');
-
-  for (const offer of expiredPendingCandidates ?? []) {
-    await updateBuyerCommitmentStatus(offer.buyer_commitment_id, 'expired');
-  }
-
-  for (const offer of reopenCandidates ?? []) {
-    await updateBuyerCommitmentStatus(offer.buyer_commitment_id, 'expired');
-    const label = await getAutographDisplayLabel(offer.autograph_id);
-    await notifyUser(
-      offer.buyer_id,
-      'Offer Reopened',
-      `Your accepted offer on ${label} reopened after the payment window expired.`
-    );
-    await notifyUser(
-      offer.owner_id,
-      'Offer Reopened',
-      `${label} is available again after the buyer missed the payment window.`
-    );
-  }
-
-  for (const offer of heldCandidates ?? []) {
-    const label = await getAutographDisplayLabel(offer.autograph_id);
-    await notifyUser(
-      offer.buyer_id,
-      'Offer Active Again',
-      `Your offer on ${label} is active again after a higher offer was not completed.`
-    );
-  }
 }
 
 export function getRequestId() {
