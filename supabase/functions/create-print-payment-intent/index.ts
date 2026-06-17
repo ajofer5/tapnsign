@@ -1,5 +1,6 @@
 import {
   assert,
+  assertPaymentIntentRateLimit,
   assertUsersNotBlocked,
   getAutographForUpdate,
   getIdempotencyKey,
@@ -31,6 +32,8 @@ Deno.serve((req) =>
     const quantity = typeof body.quantity === 'number' && body.quantity >= 1 && body.quantity <= 5
       ? Math.floor(body.quantity)
       : 1;
+
+    await assertPaymentIntentRateLimit(user.id);
 
     const [autograph, profile] = await Promise.all([
       getAutographForUpdate(autographId),

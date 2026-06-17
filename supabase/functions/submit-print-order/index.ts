@@ -23,6 +23,35 @@ const PRODIGI_API_URL = Deno.env.get('PRODIGI_SANDBOX') === 'true'
   : 'https://api.prodigi.com/v4.0/Orders';
 const PRODIGI_API_KEY = Deno.env.get('PRODIGI_API_KEY') ?? '';
 
+// Kill switch — set PRODIGI_SUBMISSION_ENABLED=false in Supabase secrets to instantly halt new orders
+const PRODIGI_SUBMISSION_ENABLED = Deno.env.get('PRODIGI_SUBMISSION_ENABLED') !== 'false';
+
+// Daily order cap — protects against bugs or abuse at launch
+const DAILY_ORDER_CAP = parseInt(Deno.env.get('DAILY_PRINT_ORDER_CAP') ?? '50', 10);
+
+async function sendAdminAlert(subject: string, body: string) {
+  const apiKey = Deno.env.get('RESEND_API_KEY') ?? '';
+  const adminEmail = Deno.env.get('ADMIN_ALERT_EMAIL') ?? '';
+  if (!apiKey || !adminEmail) {
+    console.error('[admin-alert] not configured:', subject, body);
+    return;
+  }
+  try {
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: Deno.env.get('ORDER_EMAIL_FROM') ?? 'Ophinia Alerts <noreply@ophinia.com>',
+        to: adminEmail,
+        subject: `[Ophinia Alert] ${subject}`,
+        text: body,
+      }),
+    });
+  } catch (err) {
+    console.error('[admin-alert] send failed:', err);
+  }
+}
+
 // Prodigi SKU for 8×10 photo print
 const SKU_8X10 = 'GLOBAL-PHO-8X10';
 
@@ -103,20 +132,35 @@ async function submitProdigiOrder(params: {
 
 Deno.serve((req) =>
   handleRequest(async (request) => {
+    // Kill switch — instantly halt new print orders without redeploy
+    assert(PRODIGI_SUBMISSION_ENABLED, 503, 'Print orders are temporarily unavailable. Please try again later.');
+
+    // PRODIGI_SANDBOX only controls which Prodigi API URL is used — auth and payment
+    // validation are always enforced regardless of sandbox mode.
     const isSandbox = Deno.env.get('PRODIGI_SANDBOX') === 'true';
     const body = await parseJson(request);
-
-    // In sandbox mode accept a sandbox_user_id in the body to bypass JWT auth
-    // (needed because ES256 tokens are not supported by the edge function runtime in some versions)
-    let user: { id: string; email: string | null };
-    if (isSandbox && typeof body.sandbox_user_id === 'string') {
-      user = { id: body.sandbox_user_id, email: null };
-    } else {
-      user = await requireUser(request);
-    }
+    const user = await requireUser(request);
 
     const autographId = requireString(body.autograph_id, 'autograph_id');
     const paymentEventId = requireString(body.payment_event_id, 'payment_event_id');
+
+    // Daily order cap — rejects new orders once the day's limit is hit
+    if (!isSandbox) {
+      const todayStart = new Date();
+      todayStart.setUTCHours(0, 0, 0, 0);
+      const { count: todayCount } = await supabaseAdmin
+        .from('autograph_prints')
+        .select('id', { count: 'exact', head: true })
+        .gte('created_at', todayStart.toISOString());
+      if ((todayCount ?? 0) >= DAILY_ORDER_CAP) {
+        await sendAdminAlert(
+          'Daily print order cap reached',
+          `The daily cap of ${DAILY_ORDER_CAP} print orders has been reached. No new orders will be accepted today. Increase DAILY_PRINT_ORDER_CAP or wait until midnight UTC.`
+        );
+        throw new HttpError(503, 'Daily order capacity has been reached. Please try again tomorrow.');
+      }
+    }
+
     const quantity = typeof body.quantity === 'number' && body.quantity >= 1 && body.quantity <= 5
       ? Math.floor(body.quantity)
       : 1;
@@ -150,7 +194,17 @@ Deno.serve((req) =>
     await assertUsersNotBlocked(user.id, autograph.creator_id, 'You cannot purchase a print from this creator.');
     await assertUsersNotBlocked(user.id, autograph.owner_id, 'You cannot purchase a print from this owner.');
 
-    let paymentEvent: {
+    const { data, error: paymentEventError } = await supabaseAdmin
+      .from('payment_events')
+      .select('id, user_id, autograph_id, purpose, status, amount_cents, stripe_payment_intent_id, provider_metadata')
+      .eq('id', paymentEventId)
+      .single();
+
+    if (paymentEventError || !data) {
+      throw new HttpError(404, 'Payment event not found.');
+    }
+
+    const paymentEvent: {
       id: string;
       user_id: string | null;
       autograph_id: string | null;
@@ -159,35 +213,20 @@ Deno.serve((req) =>
       amount_cents: number;
       stripe_payment_intent_id: string | null;
       provider_metadata: Record<string, unknown> | null;
-    } | null = null;
+    } = data;
 
-    // In sandbox mode, payment validation is bypassed for test orders
-    if (!isSandbox) {
-      const { data, error: paymentEventError } = await supabaseAdmin
-        .from('payment_events')
-        .select('id, user_id, autograph_id, purpose, status, amount_cents, stripe_payment_intent_id, provider_metadata')
-        .eq('id', paymentEventId)
-        .single();
+    assert(paymentEvent.user_id === user.id, 403, 'Payment event does not belong to this user.');
+    assert(paymentEvent.autograph_id === autographId, 409, 'Payment event does not match this autograph.');
+    assert(paymentEvent.purpose === 'print_bundle', 409, 'Payment event purpose mismatch.');
+    assert(paymentEvent.amount_cents > 0, 409, 'Payment amount mismatch.');
+    assert(typeof paymentEvent.stripe_payment_intent_id === 'string', 409, 'Payment intent reference missing.');
 
-      if (paymentEventError || !data) {
-        throw new HttpError(404, 'Payment event not found.');
-      }
-
-      paymentEvent = data;
-
-      assert(paymentEvent.user_id === user.id, 403, 'Payment event does not belong to this user.');
-      assert(paymentEvent.autograph_id === autographId, 409, 'Payment event does not match this autograph.');
-      assert(paymentEvent.purpose === 'print_bundle', 409, 'Payment event purpose mismatch.');
-      assert(paymentEvent.amount_cents > 0, 409, 'Payment amount mismatch.');
-      assert(typeof paymentEvent.stripe_payment_intent_id === 'string', 409, 'Payment intent reference missing.');
-
-      const paymentIntent = await stripe.paymentIntents.retrieve(paymentEvent.stripe_payment_intent_id);
-      assert(
-        paymentIntent.status === 'succeeded' || paymentIntent.status === 'processing',
-        409,
-        'Payment has not completed.'
-      );
-    }
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentEvent.stripe_payment_intent_id);
+    assert(
+      paymentIntent.status === 'succeeded' || paymentIntent.status === 'processing',
+      409,
+      'Payment has not completed.'
+    );
 
     // Check for an existing print record by payment event only (idempotency).
     // Owners are allowed to order multiple prints — each gets a new sequence number.
@@ -219,8 +258,8 @@ Deno.serve((req) =>
       const { error: updateError } = await supabaseAdmin
         .from('autograph_prints')
         .update({
-          payment_intent_id: isSandbox ? null : paymentEvent!.stripe_payment_intent_id,
-          payment_event_id: isSandbox ? null : paymentEvent!.id,
+          payment_intent_id: paymentEvent.stripe_payment_intent_id,
+          payment_event_id: paymentEvent.id,
           payment_confirmed_at: now,
           shipping_name: shippingName,
           shipping_line1: shippingLine1,
@@ -256,8 +295,8 @@ Deno.serve((req) =>
         owner_id_at_print: user.id,
         print_sequence_number: baseSequence + i,
         status: 'created',
-        payment_intent_id: isSandbox ? null : paymentEvent!.stripe_payment_intent_id,
-        payment_event_id: isSandbox ? null : paymentEvent!.id,
+        payment_intent_id: paymentEvent.stripe_payment_intent_id,
+        payment_event_id: paymentEvent.id,
         payment_confirmed_at: now,
         shipping_name: shippingName,
         shipping_line1: shippingLine1,
@@ -278,15 +317,13 @@ Deno.serve((req) =>
       additionalPrintIds = newPrints.slice(1).map((p: { id: string }) => p.id);
     }
 
-    // Mark payment event as captured (skipped in sandbox mode — no real payment event exists)
-    if (!isSandbox) {
-      await supabaseAdmin
-        .from('payment_events')
-        .update({ status: 'captured' })
-        .eq('id', paymentEventId);
-      // NOTE: owner ledger row is inserted below, after Prodigi confirms the order,
-      // so we never owe a payout for a print that was never actually submitted.
-    }
+    // Mark payment event as captured.
+    // NOTE: owner ledger row is inserted below, after Prodigi confirms the order,
+    // so we never owe a payout for a print that was never actually submitted.
+    await supabaseAdmin
+      .from('payment_events')
+      .update({ status: 'captured' })
+      .eq('id', paymentEventId);
 
     // Generate print layout via the Railway print-renderer service
     let imageUrl = imageUrlProvided;
@@ -353,6 +390,12 @@ Deno.serve((req) =>
         .update({ fulfillment_status: 'failed' })
         .in('id', allPrintIds);
 
+      // Alert admin — payment succeeded but Prodigi submission failed
+      await sendAdminAlert(
+        'Prodigi submission failed after successful payment',
+        `Print ID: ${printId}\nAutograph ID: ${autographId}\nUser ID: ${user.id}\nPayment Event: ${paymentEventId}\nError: ${error?.message ?? String(error)}\n\nThe payment has been captured but the order was NOT sent to Prodigi. Manual retry required.`
+      );
+
       throw error;
     }
 
@@ -373,28 +416,26 @@ Deno.serve((req) =>
     // TODO: when Stripe Connect onboarding is built, verify account.charges_enabled before
     //       setting transfer_data on the PaymentIntent; until then owner_connect_scheduled
     //       will always be false for accounts that haven't completed onboarding.
-    if (!isSandbox) {
-      const meta = paymentEvent?.provider_metadata ?? {};
-      const ownerConnectScheduled = meta.owner_connect_scheduled === true;
-      const ownerPayoutCents = typeof meta.owner_payout_cents === 'number' ? meta.owner_payout_cents : 0;
-      const ownerId = typeof meta.owner_id === 'string' ? meta.owner_id : null;
+    const meta = paymentEvent.provider_metadata ?? {};
+    const ownerConnectScheduled = meta.owner_connect_scheduled === true;
+    const ownerPayoutCents = typeof meta.owner_payout_cents === 'number' ? meta.owner_payout_cents : 0;
+    const ownerId = typeof meta.owner_id === 'string' ? meta.owner_id : null;
 
-      if (!ownerConnectScheduled && ownerPayoutCents > 0 && ownerId) {
-        const perPrintPayout = Math.round(ownerPayoutCents / allPrintIds.length);
-        await supabaseAdmin
-          .from('royalties_ledger')
-          .upsert(
-            allPrintIds.map((pid) => ({
-              creator_id: ownerId,
-              royalty_type: 'print_owner',
-              print_id: pid,
-              autograph_id: autographId,
-              print_royalty_cents_snapshot: perPrintPayout,
-              royalty_amount_cents: perPrintPayout,
-            })),
-            { onConflict: 'print_id,creator_id,royalty_type', ignoreDuplicates: true }
-          );
-      }
+    if (!ownerConnectScheduled && ownerPayoutCents > 0 && ownerId) {
+      const perPrintPayout = Math.round(ownerPayoutCents / allPrintIds.length);
+      await supabaseAdmin
+        .from('royalties_ledger')
+        .upsert(
+          allPrintIds.map((pid) => ({
+            creator_id: ownerId,
+            royalty_type: 'print_owner',
+            print_id: pid,
+            autograph_id: autographId,
+            print_royalty_cents_snapshot: perPrintPayout,
+            royalty_amount_cents: perPrintPayout,
+          })),
+          { onConflict: 'print_id,creator_id,royalty_type', ignoreDuplicates: true }
+        );
     }
 
     // Notify the collector
@@ -404,7 +445,7 @@ Deno.serve((req) =>
       orderReference: printId,
       momentLabel: label,
       quantity: allPrintIds.length,
-      totalCents: paymentEvent?.amount_cents ?? null,
+      totalCents: paymentEvent.amount_cents,
       shipping: {
         name: shippingName,
         line1: shippingLine1,
