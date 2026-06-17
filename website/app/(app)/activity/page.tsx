@@ -14,10 +14,10 @@ const EVENT_LABELS: Record<WebsiteActivityEntry['type'], string> = {
   personalized_request_expired: 'Personalized Request Expired',
   personalized_request_fulfilled: 'Personalized Request Ready',
   personalized_request_completed: 'Personalized Request Complete',
-  print_ordered: 'Print Ordered',
-  daily_print_summary: 'Print Activity',
+  print_ordered: 'Print Purchased',
+  daily_print_summary: 'Prints Sold',
   verification_status: 'Verification',
-  payout_status: 'Payouts',
+  payout_status: 'Payout Account',
 };
 
 function formatPrintStatus(status?: string | null) {
@@ -88,7 +88,7 @@ export default async function ActivityPage() {
               <article key={entry.id} className="rounded-[6px] border border-gray-200 bg-white px-5 py-4">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0 flex-1">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-400">
+                    <div className="text-[13px] font-semibold text-gray-500">
                       {EVENT_LABELS[entry.type] ?? entry.type}
                     </div>
                     {showAutographLine && entry.autograph_id ? (
