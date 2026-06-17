@@ -72,13 +72,31 @@ export async function POST(request: NextRequest) {
 
     const supabase = createWebsiteAdminSupabaseClient();
 
-    // Daily order cap — block new sessions when combined app+web orders hit the cap.
-    // Cap counts orders (not individual prints): one payment_events row = one app order;
+    // Hourly + daily caps — block new sessions before any Stripe work.
+    // Both caps count orders (not individual prints): one payment_events row = one app order;
     // one web_print_orders row = one web order. This matches the app payment-intent cap.
-    const DAILY_ORDER_CAP = parseInt(process.env.DAILY_PRINT_ORDER_CAP ?? '50', 10);
-    const todayStart = new Date();
+    const HOURLY_ORDER_CAP = parseInt(process.env.HOURLY_PRINT_ORDER_CAP ?? '50', 10);
+    const DAILY_ORDER_CAP = parseInt(process.env.DAILY_PRINT_ORDER_CAP ?? '250', 10);
+    const now = new Date();
+    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000).toISOString();
+    const todayStart = new Date(now);
     todayStart.setUTCHours(0, 0, 0, 0);
-    const [{ count: appCount }, { count: webCount }] = await Promise.all([
+    const [
+      { count: appHourCount },
+      { count: webHourCount },
+      { count: appDayCount },
+      { count: webDayCount },
+    ] = await Promise.all([
+      supabase
+        .from('payment_events')
+        .select('id', { count: 'exact', head: true })
+        .eq('purpose', 'print_bundle')
+        .gte('created_at', oneHourAgo),
+      supabase
+        .from('web_print_orders')
+        .select('id', { count: 'exact', head: true })
+        .gte('created_at', oneHourAgo)
+        .in('status', ['pending', 'paid', 'submitted']),
       supabase
         .from('payment_events')
         .select('id', { count: 'exact', head: true })
@@ -90,7 +108,17 @@ export async function POST(request: NextRequest) {
         .gte('created_at', todayStart.toISOString())
         .in('status', ['pending', 'paid', 'submitted']),
     ]);
-    if ((appCount ?? 0) + (webCount ?? 0) >= DAILY_ORDER_CAP) {
+    if ((appHourCount ?? 0) + (webHourCount ?? 0) >= HOURLY_ORDER_CAP) {
+      await sendAdminAlert(
+        'Hourly print order cap reached',
+        `The combined hourly cap of ${HOURLY_ORDER_CAP} print orders has been reached. This may indicate a bug or unusual traffic spike.`
+      );
+      return NextResponse.json(
+        { error: 'Order volume is unusually high right now. Please try again in a few minutes.' },
+        { status: 503 }
+      );
+    }
+    if ((appDayCount ?? 0) + (webDayCount ?? 0) >= DAILY_ORDER_CAP) {
       await sendAdminAlert(
         'Daily print order cap reached',
         `The combined daily cap of ${DAILY_ORDER_CAP} print orders has been reached. No new checkout sessions will be created today.`

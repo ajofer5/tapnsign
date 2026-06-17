@@ -24,8 +24,10 @@ const OWNER_PRINT_PAYOUT_CENTS = 250;
 
 // Kill switch — mirrors submit-print-order; blocks payment intent creation when disabled
 const PRODIGI_SUBMISSION_ENABLED = Deno.env.get('PRODIGI_SUBMISSION_ENABLED') !== 'false';
-// Daily order cap — checked here so customers cannot start a payment when the cap is already hit
-const DAILY_ORDER_CAP = parseInt(Deno.env.get('DAILY_PRINT_ORDER_CAP') ?? '50', 10);
+// Order caps — checked before any Stripe work so customers never pay for a blocked order.
+// Both count orders (not individual prints): one payment_events row = one app order.
+const HOURLY_ORDER_CAP = parseInt(Deno.env.get('HOURLY_PRINT_ORDER_CAP') ?? '50', 10);
+const DAILY_ORDER_CAP = parseInt(Deno.env.get('DAILY_PRINT_ORDER_CAP') ?? '250', 10);
 
 Deno.serve((req) =>
   handleRequest(async (request) => {
@@ -34,14 +36,31 @@ Deno.serve((req) =>
 
     const user = await requireUser(request);
 
-    // Daily cap — check before creating a Stripe payment intent so customers
+    // Hourly + daily caps — checked before creating a Stripe payment intent so customers
     // never pay for an order that would be rejected at fulfillment time.
-    // Cap is defined as total print orders (app + web) created today, where one
-    // payment intent = one app order and one web_print_orders row = one web order,
-    // regardless of quantity. This matches the web checkout cap calculation.
-    const todayStart = new Date();
+    // Both caps count orders (not individual prints): one payment_events row = one app order;
+    // one web_print_orders row = one web order. This matches the web checkout cap calculation.
+    const now = new Date();
+    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000).toISOString();
+    const todayStart = new Date(now);
     todayStart.setUTCHours(0, 0, 0, 0);
-    const [{ count: appOrderCount }, { count: webOrderCount }] = await Promise.all([
+
+    const [
+      { count: appHourCount },
+      { count: webHourCount },
+      { count: appDayCount },
+      { count: webDayCount },
+    ] = await Promise.all([
+      supabaseAdmin
+        .from('payment_events')
+        .select('id', { count: 'exact', head: true })
+        .eq('purpose', 'print_bundle')
+        .gte('created_at', oneHourAgo),
+      supabaseAdmin
+        .from('web_print_orders')
+        .select('id', { count: 'exact', head: true })
+        .gte('created_at', oneHourAgo)
+        .in('status', ['pending', 'paid', 'submitted']),
       supabaseAdmin
         .from('payment_events')
         .select('id', { count: 'exact', head: true })
@@ -54,7 +73,12 @@ Deno.serve((req) =>
         .in('status', ['pending', 'paid', 'submitted']),
     ]);
     assert(
-      (appOrderCount ?? 0) + (webOrderCount ?? 0) < DAILY_ORDER_CAP,
+      (appHourCount ?? 0) + (webHourCount ?? 0) < HOURLY_ORDER_CAP,
+      503,
+      'Order volume is unusually high right now. Please try again in a few minutes.'
+    );
+    assert(
+      (appDayCount ?? 0) + (webDayCount ?? 0) < DAILY_ORDER_CAP,
       503,
       'Daily order capacity has been reached. Please try again tomorrow.'
     );
