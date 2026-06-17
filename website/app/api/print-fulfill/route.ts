@@ -4,6 +4,24 @@ import { sendPrintOrderConfirmationEmail } from '../../../lib/order-email';
 
 export const runtime = 'nodejs';
 
+async function sendAdminAlert(subject: string, body: string) {
+  const apiKey = process.env.RESEND_API_KEY ?? '';
+  const adminEmail = process.env.ADMIN_ALERT_EMAIL ?? '';
+  if (!apiKey || !adminEmail) return;
+  try {
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: process.env.ORDER_EMAIL_FROM ?? 'Ophinia Alerts <noreply@ophinia.com>',
+        to: adminEmail,
+        subject: `[Ophinia Alert] ${subject}`,
+        text: body,
+      }),
+    });
+  } catch { /* best-effort */ }
+}
+
 const SKU_8X10 = 'GLOBAL-PHO-8X10';
 
 function getStripeSecretKey() {
@@ -214,6 +232,15 @@ async function submitProdigiOrder(params: {
 
 export async function POST(request: NextRequest) {
   try {
+    // Kill switch — if submission is disabled, don't attempt Prodigi even for paid orders.
+    // The customer has already paid; the admin alert below will flag this for manual fulfillment.
+    if (process.env.PRODIGI_SUBMISSION_ENABLED === 'false') {
+      return NextResponse.json(
+        { error: 'Print fulfillment is temporarily paused. Your order has been recorded and will be fulfilled shortly.' },
+        { status: 503 }
+      );
+    }
+
     const body = await request.json();
     const sessionId = typeof body.session_id === 'string' ? body.session_id.trim() : '';
     const orderId = typeof body.order_id === 'string' ? body.order_id.trim() : '';
@@ -341,13 +368,17 @@ export async function POST(request: NextRequest) {
   } catch (err: any) {
     console.error('[print-fulfill]', err);
 
-    // Mark order as failed if we have an order_id
+    // Mark order as failed and alert admin — payment succeeded but fulfillment failed
     try {
       const body = await (request.clone()).json().catch(() => ({}));
       const orderId = typeof body.order_id === 'string' ? body.order_id : null;
       if (orderId) {
         const supabase = createWebsiteAdminSupabaseClient();
         await supabase.from('web_print_orders').update({ status: 'failed' }).eq('id', orderId).eq('status', 'paid');
+        await sendAdminAlert(
+          'Web print fulfillment failed after payment',
+          `Order ID: ${orderId}\nError: ${err?.message ?? String(err)}\n\nThe customer has paid but the order was NOT submitted to Prodigi. Manual fulfillment required.`
+        );
       }
     } catch { /* ignore */ }
 

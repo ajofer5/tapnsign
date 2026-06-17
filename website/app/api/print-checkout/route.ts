@@ -6,6 +6,24 @@ export const runtime = 'nodejs';
 const PRINT_PRICE_CENTS = 1000;
 const SHIPPING_CENTS = 699;
 
+async function sendAdminAlert(subject: string, body: string) {
+  const apiKey = process.env.RESEND_API_KEY ?? '';
+  const adminEmail = process.env.ADMIN_ALERT_EMAIL ?? '';
+  if (!apiKey || !adminEmail) return;
+  try {
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: process.env.ORDER_EMAIL_FROM ?? 'Ophinia Alerts <noreply@ophinia.com>',
+        to: adminEmail,
+        subject: `[Ophinia Alert] ${subject}`,
+        text: body,
+      }),
+    });
+  } catch { /* best-effort */ }
+}
+
 function getStripeSecretKey() {
   const value = process.env.STRIPE_SECRET_KEY;
   if (!value) throw new Error('STRIPE_SECRET_KEY is required.');
@@ -33,6 +51,14 @@ function getSiteUrl(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    // Kill switch — halt new checkout sessions without redeploy
+    if (process.env.PRODIGI_SUBMISSION_ENABLED === 'false') {
+      return NextResponse.json(
+        { error: 'Print orders are temporarily unavailable. Please try again later.' },
+        { status: 503 }
+      );
+    }
+
     const body = await request.json();
     const autographId = typeof body.autograph_id === 'string' ? body.autograph_id.trim() : '';
     const quantity = typeof body.quantity === 'number' && body.quantity >= 1 && body.quantity <= 5
@@ -45,6 +71,32 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = createWebsiteAdminSupabaseClient();
+
+    // Daily order cap — block new sessions when combined app+web orders hit the cap
+    const DAILY_ORDER_CAP = parseInt(process.env.DAILY_PRINT_ORDER_CAP ?? '50', 10);
+    const todayStart = new Date();
+    todayStart.setUTCHours(0, 0, 0, 0);
+    const [{ count: appCount }, { count: webCount }] = await Promise.all([
+      supabase
+        .from('autograph_prints')
+        .select('id', { count: 'exact', head: true })
+        .gte('created_at', todayStart.toISOString()),
+      supabase
+        .from('web_print_orders')
+        .select('id', { count: 'exact', head: true })
+        .gte('created_at', todayStart.toISOString())
+        .in('status', ['pending', 'paid', 'submitted']),
+    ]);
+    if ((appCount ?? 0) + (webCount ?? 0) >= DAILY_ORDER_CAP) {
+      await sendAdminAlert(
+        'Daily print order cap reached',
+        `The combined daily cap of ${DAILY_ORDER_CAP} print orders has been reached. No new checkout sessions will be created today.`
+      );
+      return NextResponse.json(
+        { error: 'Daily order capacity has been reached. Please try again tomorrow.' },
+        { status: 503 }
+      );
+    }
 
     // Verify autograph exists and prints are enabled
     const { data: autograph, error: autographError } = await supabase

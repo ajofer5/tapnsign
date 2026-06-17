@@ -36,7 +36,9 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Deduplication — Stripe retries webhooks on failure; skip events we've already processed
+    // Deduplication — Stripe retries webhooks on failure; skip events we've already processed.
+    // The event record is inserted AFTER processing so that a processing failure leaves no record,
+    // allowing Stripe's retry to process the event again rather than being silently skipped.
     const eventId: string = event.id;
     const { data: existing } = await supabaseAdmin
       .from('stripe_webhook_events')
@@ -47,10 +49,6 @@ Deno.serve(async (req) => {
     if (existing) {
       return json({ received: true, duplicate: true, type: event.type });
     }
-
-    await supabaseAdmin
-      .from('stripe_webhook_events')
-      .insert({ stripe_event_id: eventId, event_type: event.type, processed_at: new Date().toISOString() });
 
     if (event.type === 'charge.dispute.created') {
       const dispute = event.data.object as any;
@@ -77,6 +75,15 @@ Deno.serve(async (req) => {
         });
       }
     }
+
+    // Record the processed event only after successful handling so Stripe retries can re-run
+    // processing if this function previously threw before reaching this point.
+    await supabaseAdmin
+      .from('stripe_webhook_events')
+      .upsert(
+        { stripe_event_id: eventId, event_type: event.type, processed_at: new Date().toISOString() },
+        { onConflict: 'stripe_event_id', ignoreDuplicates: true }
+      );
 
     return json({ received: true, type: event.type });
   } catch (error: any) {

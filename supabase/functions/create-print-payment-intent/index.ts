@@ -22,9 +22,31 @@ const FLAT_SHIPPING_CENTS = 699;
 // Fixed payout to the autograph owner per print sold
 const OWNER_PRINT_PAYOUT_CENTS = 250;
 
+// Kill switch — mirrors submit-print-order; blocks payment intent creation when disabled
+const PRODIGI_SUBMISSION_ENABLED = Deno.env.get('PRODIGI_SUBMISSION_ENABLED') !== 'false';
+// Daily order cap — checked here so customers cannot start a payment when the cap is already hit
+const DAILY_ORDER_CAP = parseInt(Deno.env.get('DAILY_PRINT_ORDER_CAP') ?? '50', 10);
+
 Deno.serve((req) =>
   handleRequest(async (request) => {
+    // Kill switch — bail before any DB or Stripe work
+    assert(PRODIGI_SUBMISSION_ENABLED, 503, 'Print orders are temporarily unavailable. Please try again later.');
+
     const user = await requireUser(request);
+
+    // Daily cap — check before creating a Stripe payment intent so customers
+    // never pay for an order that would be rejected at fulfillment time.
+    const todayStart = new Date();
+    todayStart.setUTCHours(0, 0, 0, 0);
+    const { count: todayCount } = await supabaseAdmin
+      .from('autograph_prints')
+      .select('id', { count: 'exact', head: true })
+      .gte('created_at', todayStart.toISOString());
+    assert(
+      (todayCount ?? 0) < DAILY_ORDER_CAP,
+      503,
+      'Daily order capacity has been reached. Please try again tomorrow.'
+    );
     const body = await parseJson(request);
 
     const autographId = requireString(body.autograph_id, 'autograph_id');

@@ -56,16 +56,8 @@ function formatOrdinal(value: number) {
 
 Deno.serve((req) =>
   handleRequest(async (request) => {
-    const isSandbox = Deno.env.get('PRODIGI_SANDBOX') === 'true';
     const body = await parseJson(request);
-
-    let user: { id: string; email: string | null };
-    if (isSandbox && typeof body.sandbox_user_id === 'string') {
-      user = { id: body.sandbox_user_id, email: null };
-    } else {
-      user = await requireUser(request);
-    }
-
+    const user = await requireUser(request);
     const profile = await getProfile(user.id);
     assert(!profile.suspended_at, 403, 'Account is suspended.');
 
