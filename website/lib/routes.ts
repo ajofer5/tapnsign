@@ -8,7 +8,6 @@ export const webRoutes = {
   saved: '/saved',
   personalizedRequests: '/personalized-requests',
   myListings: '/me/listings',
-  myOffers: '/me/offers',
   login: '/login',
   signup: '/signup',
   logout: '/logout',
@@ -66,14 +65,6 @@ export function webRouteToVerify(id: string) {
 
 export function webRouteToCheckout(id: string) {
   return `/checkout/${id}`;
-}
-
-export function webRouteToOffer(id: string) {
-  return `/offer/${id}`;
-}
-
-export function webRouteToOffersCheckout(id: string) {
-  return `/offers/${id}/checkout`;
 }
 
 export function webRouteToProfilePersonalizedRequestStart(id: string) {

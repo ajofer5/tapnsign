@@ -1,7 +1,5 @@
 import { createWebsiteAdminSupabaseClient } from './supabase';
 
-import { DIGITAL_TRADING_ENABLED } from './digital-trading';
-
 export type WebsiteListing = {
   id: string;
   certificate_id: string;
@@ -9,7 +7,6 @@ export type WebsiteListing = {
   creator_id: string;
   owner_id: string;
   sale_state: 'not_for_sale' | 'fixed';
-  listing_mode: 'buy_now' | 'make_offer';
   price_cents: number | null;
   video_url: string;
   thumbnail_url: string | null;
@@ -27,7 +24,6 @@ export type WebsiteListing = {
   } | null;
   series_name: string | null;
   series_max_size: number | null;
-  offer_locked_until: string | null;
   print_count: number | null;
   prints_enabled: boolean;
   print_limit: number | null;
@@ -43,7 +39,6 @@ export function mapWebsiteListingRow(row: any): WebsiteListing {
     creator_id: row.creator_id,
     owner_id: row.owner_id,
     sale_state: row.sale_state === 'fixed' ? 'fixed' : 'not_for_sale',
-    listing_mode: row.listing_mode === 'buy_now' ? 'buy_now' : 'make_offer',
     price_cents: row.price_cents ?? null,
     video_url: row.video_url,
     thumbnail_url: row.thumbnail_url ?? null,
@@ -65,7 +60,6 @@ export function mapWebsiteListingRow(row: any): WebsiteListing {
       : row.owner ?? null,
     series_name: row.series_name ?? null,
     series_max_size: row.series_max_size ?? null,
-    offer_locked_until: row.offer_locked_until ?? null,
     print_count: row.print_count ?? null,
     prints_enabled: !!row.prints_enabled,
     print_limit: row.print_limit ?? null,
@@ -88,16 +82,6 @@ export function formatDate(value: string) {
     month: 'long',
     day: 'numeric',
   });
-}
-
-export function canBuyNow(item: Pick<WebsiteListing, 'sale_state' | 'listing_mode' | 'offer_locked_until'>) {
-  if (!DIGITAL_TRADING_ENABLED) return false;
-  return item.sale_state === 'fixed' && item.listing_mode === 'buy_now' && !item.offer_locked_until;
-}
-
-export function canMakeOffer(item: Pick<WebsiteListing, 'sale_state' | 'listing_mode' | 'offer_locked_until'>) {
-  if (!DIGITAL_TRADING_ENABLED) return false;
-  return item.sale_state === 'fixed' && item.listing_mode === 'make_offer' && !item.offer_locked_until;
 }
 
 export async function getWebsiteListing(id: string, viewerId?: string | null): Promise<WebsiteListing | null> {
@@ -145,17 +129,6 @@ export async function getWebsiteListing(id: string, viewerId?: string | null): P
 
   if (ownedError || !ownedAutograph) return null;
 
-  const { data: lockedOffer } = await supabase
-    .from('autograph_offers')
-    .select('payment_due_at')
-    .eq('autograph_id', id)
-    .eq('status', 'accepted')
-    .is('accepted_transfer_id', null)
-    .gt('payment_due_at', new Date().toISOString())
-    .order('payment_due_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
   return mapWebsiteListingRow({
     ...ownedAutograph,
     creator_display_name: (ownedAutograph as any).creator?.display_name ?? null,
@@ -163,6 +136,5 @@ export async function getWebsiteListing(id: string, viewerId?: string | null): P
     owner_display_name: (ownedAutograph as any).owner?.display_name ?? null,
     series_name: (ownedAutograph as any).series?.name ?? null,
     series_max_size: (ownedAutograph as any).series?.max_size ?? null,
-    offer_locked_until: lockedOffer?.payment_due_at ?? null,
   });
 }
