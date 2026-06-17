@@ -85,7 +85,7 @@ const SIG_SQ  = { x: tx(600), y: ty(89),  w: tx(273), h: ty(257) };
 const BADGE_AREA = { x: tx(802), y: ty(440), w: tx(84), h: ty(84) };
 
 const META_AREA = { x: tx(499), y: ty(388), w: tx(284), h: ty(142) };
-const DISCLOSURE_AREA = { x: tx(530), y: ty(765), w: tx(405), h: ty(24) };
+const DISCLOSURE_AREA = { x: 0, y: ty(765), w: CANVAS_W, h: ty(24) };
 
 const SF_Y     = ty(573);
 const SF_W     = tx(88);
@@ -444,8 +444,9 @@ function buildLayoutSvg({
   const disclosureY = DISCLOSURE_AREA.y + 18;
   elements.push(`
     <text
-      x="${DISCLOSURE_AREA.x}"
+      x="${DISCLOSURE_AREA.x + DISCLOSURE_AREA.w / 2}"
       y="${disclosureY}"
+      text-anchor="middle"
       font-family="Optima, Optima Nova LT, serif"
       font-size="${disclosureFontSize}"
       fill="white"
