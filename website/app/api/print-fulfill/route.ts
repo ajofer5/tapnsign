@@ -232,15 +232,6 @@ async function submitProdigiOrder(params: {
 
 export async function POST(request: NextRequest) {
   try {
-    // Kill switch — if submission is disabled, don't attempt Prodigi even for paid orders.
-    // The customer has already paid; the admin alert below will flag this for manual fulfillment.
-    if (process.env.PRODIGI_SUBMISSION_ENABLED === 'false') {
-      return NextResponse.json(
-        { error: 'Print fulfillment is temporarily paused. Your order has been recorded and will be fulfilled shortly.' },
-        { status: 503 }
-      );
-    }
-
     const body = await request.json();
     const sessionId = typeof body.session_id === 'string' ? body.session_id.trim() : '';
     const orderId = typeof body.order_id === 'string' ? body.order_id.trim() : '';
@@ -303,7 +294,8 @@ export async function POST(request: NextRequest) {
       ? session.payment_intent
       : session.payment_intent?.id ?? null;
 
-    // Mark as paid and store shipping
+    // Mark as paid and store shipping — do this BEFORE the kill-switch check so the order
+    // is always persisted as paid even if submission is disabled.
     await supabase
       .from('web_print_orders')
       .update({
@@ -320,6 +312,19 @@ export async function POST(request: NextRequest) {
         shipping_country: shipping.country ?? 'US',
       })
       .eq('id', orderId);
+
+    // Kill switch — checked AFTER marking the order paid so paid orders are never lost.
+    // The admin alert ensures manual fulfillment happens.
+    if (process.env.PRODIGI_SUBMISSION_ENABLED === 'false') {
+      await sendAdminAlert(
+        'Web print order held — submission disabled',
+        `Order ID: ${orderId}\nStripe Session: ${sessionId}\nPayment Intent: ${paymentIntentId ?? 'unknown'}\n\nThe kill switch (PRODIGI_SUBMISSION_ENABLED=false) was active when this order was fulfilled. The order is saved as "paid". Manual Prodigi submission required.`
+      );
+      return NextResponse.json(
+        { error: 'Print fulfillment is temporarily paused. Your order has been recorded and will be fulfilled shortly.' },
+        { status: 503 }
+      );
+    }
 
     // Generate print layout
     const imageUrl = await getPrintLayoutUrl(order.autograph_id);

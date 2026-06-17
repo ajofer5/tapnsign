@@ -36,14 +36,25 @@ Deno.serve((req) =>
 
     // Daily cap — check before creating a Stripe payment intent so customers
     // never pay for an order that would be rejected at fulfillment time.
+    // Cap is defined as total print orders (app + web) created today, where one
+    // payment intent = one app order and one web_print_orders row = one web order,
+    // regardless of quantity. This matches the web checkout cap calculation.
     const todayStart = new Date();
     todayStart.setUTCHours(0, 0, 0, 0);
-    const { count: todayCount } = await supabaseAdmin
-      .from('autograph_prints')
-      .select('id', { count: 'exact', head: true })
-      .gte('created_at', todayStart.toISOString());
+    const [{ count: appOrderCount }, { count: webOrderCount }] = await Promise.all([
+      supabaseAdmin
+        .from('payment_events')
+        .select('id', { count: 'exact', head: true })
+        .eq('purpose', 'print_bundle')
+        .gte('created_at', todayStart.toISOString()),
+      supabaseAdmin
+        .from('web_print_orders')
+        .select('id', { count: 'exact', head: true })
+        .gte('created_at', todayStart.toISOString())
+        .in('status', ['pending', 'paid', 'submitted']),
+    ]);
     assert(
-      (todayCount ?? 0) < DAILY_ORDER_CAP,
+      (appOrderCount ?? 0) + (webOrderCount ?? 0) < DAILY_ORDER_CAP,
       503,
       'Daily order capacity has been reached. Please try again tomorrow.'
     );

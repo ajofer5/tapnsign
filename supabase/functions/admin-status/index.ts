@@ -39,10 +39,11 @@ Deno.serve((req) =>
       { data: stuckAppOrders },
       { data: stuckWebOrders },
     ] = await Promise.all([
-      // App print orders today
+      // App print orders today — counted as payment_events(purpose=print_bundle) to match cap logic
       supabaseAdmin
-        .from('autograph_prints')
+        .from('payment_events')
         .select('id', { count: 'exact', head: true })
+        .eq('purpose', 'print_bundle')
         .gte('created_at', todayStart.toISOString()),
       // Web print orders today (non-cancelled)
       supabaseAdmin

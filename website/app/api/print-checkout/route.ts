@@ -72,14 +72,17 @@ export async function POST(request: NextRequest) {
 
     const supabase = createWebsiteAdminSupabaseClient();
 
-    // Daily order cap — block new sessions when combined app+web orders hit the cap
+    // Daily order cap — block new sessions when combined app+web orders hit the cap.
+    // Cap counts orders (not individual prints): one payment_events row = one app order;
+    // one web_print_orders row = one web order. This matches the app payment-intent cap.
     const DAILY_ORDER_CAP = parseInt(process.env.DAILY_PRINT_ORDER_CAP ?? '50', 10);
     const todayStart = new Date();
     todayStart.setUTCHours(0, 0, 0, 0);
     const [{ count: appCount }, { count: webCount }] = await Promise.all([
       supabase
-        .from('autograph_prints')
+        .from('payment_events')
         .select('id', { count: 'exact', head: true })
+        .eq('purpose', 'print_bundle')
         .gte('created_at', todayStart.toISOString()),
       supabase
         .from('web_print_orders')
