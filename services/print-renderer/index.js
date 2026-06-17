@@ -85,7 +85,7 @@ const SIG_SQ  = { x: tx(600), y: ty(89),  w: tx(273), h: ty(257) };
 const BADGE_AREA = { x: tx(802), y: ty(440), w: tx(84), h: ty(84) };
 
 const META_AREA = { x: tx(499), y: ty(388), w: tx(284), h: ty(142) };
-const DISCLOSURE_AREA = { x: tx(615), y: ty(765), w: tx(320), h: ty(24) };
+const DISCLOSURE_AREA = { x: tx(500), y: ty(765), w: tx(435), h: ty(24) };
 
 const SF_Y     = ty(573);
 const SF_W     = tx(88);
