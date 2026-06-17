@@ -3,8 +3,8 @@ import { createWebsiteAdminSupabaseClient } from '../../../lib/supabase';
 
 export const runtime = 'nodejs';
 
-const PRINT_PRICE_CENTS = parseInt(process.env.PRINT_PRICE_CENTS ?? '1500', 10);
-const SHIPPING_CENTS = parseInt(process.env.SHIPPING_CENTS ?? '499', 10);
+const PRINT_PRICE_CENTS = 1500;
+const SHIPPING_CENTS = 499;
 
 function getStripeSecretKey() {
   const value = process.env.STRIPE_SECRET_KEY;

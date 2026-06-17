@@ -1,5 +1,6 @@
 import {
   assert,
+  assertUsersNotBlocked,
   getAutographForUpdate,
   getIdempotencyKey,
   getPlatformFee,
@@ -15,38 +16,10 @@ import {
   supabaseAdmin,
 } from '../_shared/utils.ts';
 
-const PRODIGI_QUOTE_URL = Deno.env.get('PRODIGI_SANDBOX') === 'true'
-  ? 'https://api.sandbox.prodigi.com/v4.0/quotes'
-  : 'https://api.prodigi.com/v4.0/quotes';
-const PRODIGI_API_KEY = Deno.env.get('PRODIGI_API_KEY') ?? '';
-const SKU_8X10 = 'GLOBAL-PHO-8X10';
-// Fallback price if Prodigi quote fails
-const FALLBACK_PRINT_CENTS = 1699;
-
-async function getProdigiTotalCents(): Promise<number> {
-  try {
-    const response = await fetch(PRODIGI_QUOTE_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-API-Key': PRODIGI_API_KEY },
-      body: JSON.stringify({
-        shippingMethod: 'Standard',
-        destinationCountryCode: 'US',
-        currencyCode: 'USD',
-        items: [{ sku: SKU_8X10, copies: 1, attributes: { finish: 'lustre' }, assets: [{ printArea: 'default' }] }],
-      }),
-    });
-    if (!response.ok) return FALLBACK_PRINT_CENTS;
-    const data = await response.json();
-    const quote = data?.quotes?.[0];
-    if (!quote) return FALLBACK_PRINT_CENTS;
-    const item = parseFloat(quote.costSummary?.items?.amount ?? '0');
-    const shipping = parseFloat(quote.costSummary?.shipping?.amount ?? '0');
-    if (isNaN(item) || isNaN(shipping)) return FALLBACK_PRINT_CENTS;
-    return Math.round((item + shipping) * 100);
-  } catch {
-    return FALLBACK_PRINT_CENTS;
-  }
-}
+const RETAIL_PRINT_CENTS = 1500;
+const FLAT_SHIPPING_CENTS = 499;
+// Fixed payout to the autograph owner per print sold
+const OWNER_PRINT_PAYOUT_CENTS = 250;
 
 Deno.serve((req) =>
   handleRequest(async (request) => {
@@ -55,17 +28,47 @@ Deno.serve((req) =>
 
     const autographId = requireString(body.autograph_id, 'autograph_id');
     const idempotencyKey = getIdempotencyKey(request, body, crypto.randomUUID());
+    const quantity = typeof body.quantity === 'number' && body.quantity >= 1 && body.quantity <= 5
+      ? Math.floor(body.quantity)
+      : 1;
 
-    const [autograph, profile, printBundleCents] = await Promise.all([
+    const [autograph, profile] = await Promise.all([
       getAutographForUpdate(autographId),
       getProfile(user.id),
-      getProdigiTotalCents(),
     ]);
+    const printBundleCents = (RETAIL_PRINT_CENTS * quantity) + FLAT_SHIPPING_CENTS;
 
     assert(!profile.suspended_at, 403, 'Account is suspended.');
     assert(profile.is_creator === true, 403, 'You must be 18 or older to purchase prints.');
     assert(autograph.status === 'active', 409, 'Autograph is not active.');
-    assert(autograph.owner_id === user.id, 403, 'You do not own this autograph.');
+    assert(autograph.visibility === 'public' || autograph.owner_id === user.id, 403, 'This autograph is not available for prints.');
+    assert(autograph.owner_id === user.id || autograph.prints_enabled === true, 409, 'Prints are not available for this autograph.');
+    await assertUsersNotBlocked(user.id, autograph.creator_id, 'You cannot purchase a print from this creator.');
+    await assertUsersNotBlocked(user.id, autograph.owner_id, 'You cannot purchase a print from this owner.');
+
+    // Fetch owner's Stripe Connect account for real-time payout split
+    const { data: ownerConnectData } = await supabaseAdmin
+      .from('profiles')
+      .select('stripe_connect_account_id, stripe_connect_charges_enabled, stripe_connect_payouts_enabled, stripe_connect_onboarding_complete')
+      .eq('id', autograph.owner_id)
+      .single();
+    const ownerConnectAccountId: string | null =
+      ownerConnectData?.stripe_connect_onboarding_complete === true &&
+      ownerConnectData?.stripe_connect_charges_enabled === true &&
+      ownerConnectData?.stripe_connect_payouts_enabled === true
+        ? ownerConnectData.stripe_connect_account_id
+        : null;
+
+    if (typeof autograph.print_limit === 'number') {
+      const { count, error: printCountError } = await supabaseAdmin
+        .from('autograph_prints')
+        .select('id', { count: 'exact', head: true })
+        .eq('autograph_id', autographId)
+        .eq('status', 'created');
+
+      if (printCountError) throw new HttpError(500, printCountError.message);
+      assert((count ?? 0) < autograph.print_limit, 409, 'This autograph has reached its print limit.');
+    }
 
     // Reuse an existing open payment intent for idempotency
     const { data: existingEvent } = await supabaseAdmin
@@ -100,6 +103,7 @@ Deno.serve((req) =>
     }
 
     const requestId = getRequestId();
+    const ownerPayoutCents = OWNER_PRINT_PAYOUT_CENTS * quantity;
     const { feeCents } = await getPlatformFee(printBundleCents);
     const paymentIntent = await stripe.paymentIntents.create({
       amount: printBundleCents,
@@ -110,7 +114,11 @@ Deno.serve((req) =>
         purpose: 'print_bundle',
         autograph_id: autographId,
         user_id: user.id,
+        quantity: String(quantity),
       },
+      ...(ownerConnectAccountId
+        ? { transfer_data: { amount: ownerPayoutCents, destination: ownerConnectAccountId } }
+        : {}),
     }, { idempotencyKey });
 
     const { data: paymentEvent, error } = await supabaseAdmin
@@ -126,7 +134,13 @@ Deno.serve((req) =>
         idempotency_key: idempotencyKey,
         stripe_payment_intent_id: paymentIntent.id,
         platform_fee_cents: feeCents,
-        provider_metadata: { request_id: requestId },
+        provider_metadata: {
+          request_id: requestId,
+          owner_id: autograph.owner_id,
+          owner_payout_cents: ownerPayoutCents,
+          owner_connect_scheduled: ownerConnectAccountId !== null,
+          quantity,
+        },
       })
       .select('id')
       .single();

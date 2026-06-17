@@ -1,11 +1,8 @@
 import { assert, assertUsersNotBlocked, getAutographForUpdate, getProfile, handleRequest, HttpError, json, parseJson, requireString, requireUser, supabaseAdmin } from '../_shared/utils.ts';
 
-const PRODIGI_QUOTE_URL = Deno.env.get('PRODIGI_SANDBOX') === 'true'
-  ? 'https://api.sandbox.prodigi.com/v4.0/quotes'
-  : 'https://api.prodigi.com/v4.0/quotes';
-const PRODIGI_API_KEY = Deno.env.get('PRODIGI_API_KEY') ?? '';
-
-const SKU_8X10 = 'GLOBAL-PHO-8X10';
+const PRINT_PRICE_CENTS = 1500;
+const PRINT_ORIGINAL_PRICE_CENTS = PRINT_PRICE_CENTS;
+const SHIPPING_CENTS = 499;
 
 async function getPrintLayoutUrl(autographId: string) {
   const rendererUrl = Deno.env.get('PRINT_RENDERER_URL') ?? '';
@@ -57,51 +54,6 @@ function formatOrdinal(value: number) {
   return `${value}th`;
 }
 
-async function getProdigiQuote(): Promise<{ itemCents: number; shippingCents: number } | null> {
-  try {
-    const response = await fetch(PRODIGI_QUOTE_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-API-Key': PRODIGI_API_KEY,
-      },
-      body: JSON.stringify({
-        shippingMethod: 'Standard',
-        destinationCountryCode: 'US',
-        currencyCode: 'USD',
-        items: [
-          {
-            sku: SKU_8X10,
-            copies: 1,
-            attributes: { finish: 'lustre' },
-            assets: [{ printArea: 'default' }],
-          },
-        ],
-      }),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) return null;
-
-    // Prodigi quote response: data.quotes[0].costSummary
-    const quote = data?.quotes?.[0];
-    if (!quote) return null;
-
-    const itemAmount = parseFloat(quote.costSummary?.items?.amount ?? '0');
-    const shippingAmount = parseFloat(quote.costSummary?.shipping?.amount ?? '0');
-
-    if (isNaN(itemAmount) || isNaN(shippingAmount)) return null;
-
-    return {
-      itemCents: Math.round(itemAmount * 100),
-      shippingCents: Math.round(shippingAmount * 100),
-    };
-  } catch {
-    return null;
-  }
-}
-
 Deno.serve((req) =>
   handleRequest(async (request) => {
     const isSandbox = Deno.env.get('PRODIGI_SANDBOX') === 'true';
@@ -137,7 +89,6 @@ Deno.serve((req) =>
     const [
       { data: prints, error: printsError },
       { data: ownerPrints, error: ownerPrintsError },
-      quote,
     ] = await Promise.all([
       supabaseAdmin
         .from('autograph_prints')
@@ -152,7 +103,6 @@ Deno.serve((req) =>
         .eq('owner_id_at_print', user.id)
         .eq('status', 'created')
         .order('print_sequence_number', { ascending: false }),
-      getProdigiQuote(),
     ]);
 
     assert(!printsError, 500, printsError?.message ?? 'Could not load print preview.');
@@ -186,8 +136,9 @@ Deno.serve((req) =>
             created_at: latestOwnerPrint.created_at,
           }
         : null,
-      item_cents: quote?.itemCents ?? null,
-      shipping_cents: quote?.shippingCents ?? null,
+      item_cents: PRINT_PRICE_CENTS,
+      original_price_cents: PRINT_ORIGINAL_PRICE_CENTS,
+      shipping_cents: SHIPPING_CENTS,
     });
   }, req)
 );

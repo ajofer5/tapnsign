@@ -3,6 +3,10 @@ import { createWebsiteAdminSupabaseClient } from '../../../../lib/supabase';
 
 export const runtime = 'nodejs';
 
+const PRINT_PRICE_CENTS = 1500;
+const PRINT_ORIGINAL_PRICE_CENTS = PRINT_PRICE_CENTS;
+const SHIPPING_CENTS = 499;
+
 async function fetchPrintUrls(autographId: string): Promise<{ layoutUrl: string | null; previewUrl: string | null }> {
   const rendererUrl = process.env.PRINT_RENDERER_URL ?? '';
   const internalSecret = process.env.INTERNAL_FUNCTION_SECRET ?? '';
@@ -93,8 +97,8 @@ export async function GET(
     print_layout_url: layoutUrl,
     print_preview_url: previewUrl,
     prints_enabled: data.prints_enabled,
-    item_cents: parseInt(process.env.PRINT_PRICE_CENTS ?? '1500', 10),
-    original_price_cents: parseInt(process.env.PRINT_ORIGINAL_PRICE_CENTS ?? '1500', 10),
-    shipping_cents: parseInt(process.env.SHIPPING_CENTS ?? '499', 10),
+    item_cents: PRINT_PRICE_CENTS,
+    original_price_cents: PRINT_ORIGINAL_PRICE_CENTS,
+    shipping_cents: SHIPPING_CENTS,
   });
 }
