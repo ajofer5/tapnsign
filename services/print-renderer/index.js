@@ -28,8 +28,8 @@ const INTERNAL_SECRET = process.env.INTERNAL_FUNCTION_SECRET ?? '';
 const SUPABASE_URL = process.env.SUPABASE_URL ?? '';
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
 const OUTPUT_BUCKET = 'print-layouts';
-const RENDERER_VERSION = 'print-template-v5';
-const PREVIEW_VERSION = 'preview-v4';
+const RENDERER_VERSION = 'print-template-v6';
+const PREVIEW_VERSION = 'preview-v5';
 const BUNNY_STORAGE_API_KEY = process.env.BUNNY_STORAGE_API_KEY ?? '';
 const BUNNY_STORAGE_ZONE_NAME = process.env.BUNNY_STORAGE_ZONE_NAME ?? '';
 const BUNNY_CDN_HOSTNAME = process.env.BUNNY_CDN_HOSTNAME ?? '';
@@ -85,7 +85,7 @@ const SIG_SQ  = { x: tx(600), y: ty(89),  w: tx(273), h: ty(257) };
 const BADGE_AREA = { x: tx(802), y: ty(440), w: tx(84), h: ty(84) };
 
 const META_AREA = { x: tx(499), y: ty(388), w: tx(284), h: ty(142) };
-const DISCLOSURE_AREA = { x: tx(500), y: ty(765), w: tx(435), h: ty(24) };
+const DISCLOSURE_AREA = { x: tx(530), y: ty(765), w: tx(405), h: ty(24) };
 
 const SF_Y     = ty(573);
 const SF_W     = tx(88);
@@ -358,7 +358,7 @@ function frameBorderSvg(r, pad = 6, color = 'white', opacity = 0.45) {
 
 function buildLayoutSvg({
   frame12DataUri, smallFrameDataUris, strokes,
-  creatorName, sequenceNumber, seriesName, capturedAt, badgeDataUri,
+  creatorName, sequenceNumber, seriesName, seriesEdition, capturedAt, badgeDataUri,
 }) {
   const date = new Date(capturedAt).toLocaleDateString('en-US', {
     month: 'long', day: 'numeric', year: 'numeric',
@@ -420,6 +420,7 @@ function buildLayoutSvg({
     { text: `Captured on ${date}`,             fontSize: 52, opacity: 0.75, bold: false, letterSpacing: 1 },
     ...(sequenceNumber != null ? [{ text: `Moment #${sequenceNumber}`, fontSize: 46, opacity: 0.82, bold: false, letterSpacing: 1 }] : []),
     ...(seriesName ? [{ text: seriesName,      fontSize: 40, opacity: 0.64, bold: false, letterSpacing: 1 }] : []),
+    ...(seriesEdition ? [{ text: seriesEdition, fontSize: 36, opacity: 0.58, bold: false, letterSpacing: 1 }] : []),
   ];
   const lineH = 76;
   metaLines.forEach((line, i) => {
@@ -510,7 +511,7 @@ app.post('/render', async (req, res) => {
     // Fetch autograph
       const { data: autograph, error: autographError } = await supabase
         .from('autographs')
-        .select('id, owner_id, creator_id, status, strokes_json, stroke_color, preview_frame_urls, creator_sequence_number, series_id, created_at, verify_badge_url, print_layout_revision')
+        .select('id, owner_id, creator_id, status, strokes_json, stroke_color, preview_frame_urls, creator_sequence_number, series_id, series_sequence_number, created_at, verify_badge_url, print_layout_revision')
         .eq('id', autographId)
         .maybeSingle();
 
@@ -632,14 +633,21 @@ app.post('/render', async (req, res) => {
 
     // Series name
     let seriesName = null;
+    let seriesMaxSize = null;
     if (autograph.series_id) {
       const { data: series } = await supabase
         .from('series')
-        .select('name')
+        .select('name, max_size')
         .eq('id', autograph.series_id)
         .maybeSingle();
       seriesName = series?.name ?? null;
+      seriesMaxSize = series?.max_size ?? null;
     }
+    const seriesEdition = autograph.series_sequence_number != null
+      ? seriesMaxSize != null
+        ? `${autograph.series_sequence_number} of ${seriesMaxSize}`
+        : `#${autograph.series_sequence_number}`
+      : null;
 
     const frameUrls = (autograph.preview_frame_urls ?? []).filter(Boolean);
     if (frameUrls.length < 1) {
@@ -708,6 +716,7 @@ app.post('/render', async (req, res) => {
       creatorName,
       sequenceNumber: autograph.creator_sequence_number ?? null,
       seriesName,
+      seriesEdition,
       capturedAt: autograph.created_at,
       badgeDataUri,
     });
