@@ -15,6 +15,7 @@ import {
   stripe,
   supabaseAdmin,
 } from '../_shared/utils.ts';
+import { sendPrintOrderConfirmationEmail } from '../_shared/order-email.ts';
 
 // Prodigi REST API — https://www.prodigi.com/print-api/docs/reference/
 const PRODIGI_API_URL = Deno.env.get('PRODIGI_SANDBOX') === 'true'
@@ -399,10 +400,26 @@ Deno.serve((req) =>
     // Notify the collector
     const label = await getAutographDisplayLabel(autographId);
     const printWord = allPrintIds.length > 1 ? `${allPrintIds.length} prints` : 'print';
+    await sendPrintOrderConfirmationEmail({
+      to: user.email,
+      orderReference: printId,
+      momentLabel: label,
+      quantity: allPrintIds.length,
+      totalCents: paymentEvent?.amount_cents ?? null,
+      shipping: {
+        name: shippingName,
+        line1: shippingLine1,
+        line2: shippingLine2,
+        city: shippingCity,
+        state: shippingState,
+        zip: shippingZip,
+        country: 'US',
+      },
+    });
     await notifyUser(
       user.id,
       'Print Order Submitted',
-      `Your official ${printWord} of ${label} ${allPrintIds.length > 1 ? 'are' : 'is'} on the way! You'll receive a shipping confirmation from our print partner.`
+      `Your official ${printWord} of ${label} ${allPrintIds.length > 1 ? 'have' : 'has'} been submitted for production.`
     );
 
     return json({

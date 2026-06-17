@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createWebsiteAdminSupabaseClient } from '../../../lib/supabase';
+import { sendPrintOrderConfirmationEmail } from '../../../lib/order-email';
 
 export const runtime = 'nodejs';
 
@@ -136,6 +137,18 @@ async function getPrintLayoutUrl(autographId: string): Promise<string> {
   const url = data?.print_layout_url;
   if (!url || typeof url !== 'string') throw new Error('Print layout URL missing from renderer response.');
   return url;
+}
+
+async function getMomentLabel(supabase: ReturnType<typeof createWebsiteAdminSupabaseClient>, autographId: string) {
+  const { data } = await supabase
+    .from('autographs')
+    .select('creator_sequence_number, creator:creator_id(display_name)')
+    .eq('id', autographId)
+    .maybeSingle();
+
+  const creatorName = (data as any)?.creator?.display_name ?? 'an Ophinia moment';
+  const creatorSequenceNumber = (data as any)?.creator_sequence_number;
+  return creatorSequenceNumber != null ? `${creatorName} #${creatorSequenceNumber}` : creatorName;
 }
 
 async function submitProdigiOrder(params: {
@@ -305,6 +318,24 @@ export async function POST(request: NextRequest) {
       .from('web_print_orders')
       .update({ status: 'submitted', prodigi_order_id: vendorOrderId })
       .eq('id', orderId);
+
+    const momentLabel = await getMomentLabel(supabase, order.autograph_id);
+    await sendPrintOrderConfirmationEmail({
+      to: session.customer_details?.email ?? order.buyer_email,
+      orderReference: orderId,
+      momentLabel,
+      quantity: order.quantity,
+      totalCents: order.amount_cents,
+      shipping: {
+        name: shippingName,
+        line1: shipping.line1 ?? '',
+        line2: shipping.line2 ?? null,
+        city: shipping.city ?? '',
+        state: shipping.state ?? '',
+        zip: shipping.postal_code ?? '',
+        country: shipping.country ?? 'US',
+      },
+    });
 
     return NextResponse.json({ success: true, prodigi_order_id: vendorOrderId });
   } catch (err: any) {
