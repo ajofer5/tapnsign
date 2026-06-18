@@ -165,6 +165,8 @@ export default function ProfileScreen() {
   const [addressSheetVisible, setAddressSheetVisible] = useState(false);
   const [printSessionKey, setPrintSessionKey] = useState('');
   const [printQuantity, setPrintQuantity] = useState(1);
+  const [multiPrintMode, setMultiPrintMode] = useState(false);
+  const [selectedPrintIds, setSelectedPrintIds] = useState<string[]>([]);
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
 
   const isOwnProfile = user?.id === id;
@@ -286,6 +288,45 @@ export default function ProfileScreen() {
     }
   };
 
+  const selectedPrintItems = (profile?.public_videos ?? profile?.active_listings ?? [])
+    .filter((listing) => selectedPrintIds.includes(listing.id));
+
+  const toggleSelectedPrint = (item: Listing) => {
+    setSelectedPrintIds((current) => {
+      if (current.includes(item.id)) return current.filter((id) => id !== item.id);
+      if (current.length >= 5) return current;
+      return [...current, item.id];
+    });
+  };
+
+  const closeMultiPrintMode = () => {
+    setMultiPrintMode(false);
+    setSelectedPrintIds([]);
+  };
+
+  const openSelectedPrintPreview = async () => {
+    const firstItem = selectedPrintItems[0];
+    if (!firstItem) return;
+    setPreviewItem(null);
+    setPrintItem(firstItem);
+    setPrintPreview(null);
+    setLoadingPrintPreview(true);
+    setPrintQuantity(1);
+    setPrintSessionKey(`${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    try {
+      const preview = await callEdgeFunction<{ next_print_sequence_number: number; print_layout_url?: string | null; print_preview_url?: string | null }>(
+        'preview-autograph-print',
+        { autograph_id: firstItem.id }
+      );
+      setPrintPreview(preview);
+    } catch (error) {
+      setPrintItem(null);
+      Alert.alert('Print Autograph', error instanceof Error ? error.message : 'Could not load the print preview. Please try again.');
+    } finally {
+      setLoadingPrintPreview(false);
+    }
+  };
+
   const closePrintPreview = () => {
     if (creatingPrint) return;
     setPrintItem(null);
@@ -293,6 +334,7 @@ export default function ProfileScreen() {
     setPrintStep('preview');
     setAddressSheetVisible(false);
     setPrintQuantity(1);
+    closeMultiPrintMode();
   };
 
   const handleProceedToPrintPayment = () => {
@@ -303,6 +345,10 @@ export default function ProfileScreen() {
   const handlePrintAddressSubmit = async (addressDetails: import('@stripe/stripe-react-native').AddressDetails) => {
     setAddressSheetVisible(false);
     if (!printItem || !printPreview) return;
+    const bundleAutographIds = selectedPrintItems.length > 1
+      ? selectedPrintItems.map((item) => item.id)
+      : [printItem.id];
+    const orderQuantity = bundleAutographIds.length > 1 ? bundleAutographIds.length : printQuantity;
     const a = addressDetails.address;
     const addr = {
       name: addressDetails.name ?? '',
@@ -320,7 +366,12 @@ export default function ProfileScreen() {
         payment_intent_id: string;
         payment_event_id: string;
         amount_cents: number;
-      }>('create-print-payment-intent', { autograph_id: printItem.id, idempotency_key: `${printSessionKey}-qty${printQuantity}`, quantity: printQuantity });
+      }>('create-print-payment-intent', {
+        autograph_id: printItem.id,
+        autograph_ids: bundleAutographIds,
+        idempotency_key: `${printSessionKey}-qty${orderQuantity}`,
+        quantity: orderQuantity,
+      });
 
       const { error: initError } = await initPaymentSheet({
         paymentIntentClientSecret: paymentData.client_secret,
@@ -345,9 +396,10 @@ export default function ProfileScreen() {
 
       await callEdgeFunction('submit-print-order', {
         autograph_id: printItem.id,
+        autograph_ids: bundleAutographIds,
         payment_event_id: paymentData.payment_event_id,
-        image_url: printPreview.print_layout_url ?? null,
-        quantity: printQuantity,
+        image_url: bundleAutographIds.length === 1 ? printPreview.print_layout_url ?? null : null,
+        quantity: orderQuantity,
         shipping_name: addr.name,
         shipping_line1: addr.line1,
         shipping_line2: addr.line2 || null,
@@ -669,6 +721,40 @@ export default function ProfileScreen() {
         </View>
       ) : publicVideos.length > 0 ? (
         <View style={styles.listingsGrid}>
+          {publicVideos.length > 1 ? (
+            <View style={styles.multiPrintToolbar}>
+              <Text style={styles.multiPrintToolbarText}>
+                {multiPrintMode
+                  ? `${selectedPrintIds.length}/5 selected`
+                  : `${publicVideos.length} public prints`}
+              </Text>
+              <View style={styles.multiPrintToolbarActions}>
+                {multiPrintMode ? (
+                  <Pressable style={styles.multiPrintSecondaryButton} onPress={closeMultiPrintMode}>
+                    <Text style={styles.multiPrintSecondaryButtonText}>Cancel</Text>
+                  </Pressable>
+                ) : null}
+                <Pressable
+                  style={[
+                    styles.multiPrintPrimaryButton,
+                    multiPrintMode && selectedPrintIds.length === 0 && styles.multiPrintButtonDisabled,
+                  ]}
+                  onPress={() => {
+                    if (multiPrintMode) {
+                      void openSelectedPrintPreview();
+                    } else {
+                      setMultiPrintMode(true);
+                    }
+                  }}
+                  disabled={multiPrintMode && selectedPrintIds.length === 0}
+                >
+                  <Text style={styles.multiPrintPrimaryButtonText}>
+                    {multiPrintMode ? `Print ${selectedPrintIds.length}` : 'Select Prints'}
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : null}
           {visiblePublicVideos.reduce<Listing[][]>((rows, item, i) => {
             if (i % 2 === 0) rows.push([item]);
             else rows[rows.length - 1].push(item);
@@ -676,7 +762,14 @@ export default function ProfileScreen() {
           }, []).map((row, rowIndex) => (
             <View key={rowIndex} style={styles.listingsGridRow}>
               {row.map((listing) => (
-                <Pressable key={listing.id} style={styles.profileListingCard} onPress={() => openPreview(listing)}>
+                <Pressable
+                  key={listing.id}
+                  style={styles.profileListingCard}
+                  onPress={() => {
+                    if (multiPrintMode) toggleSelectedPrint(listing);
+                    else openPreview(listing);
+                  }}
+                >
                   <View style={styles.profileListingThumbWrap}>
                     {listing.thumbnail_url || listing.preview_frame_urls?.length || listing.video_url ? (
                       <PublicVideoThumbnail
@@ -696,6 +789,13 @@ export default function ProfileScreen() {
                         <Text style={styles.thumbnailFallbackText}>Ophinia</Text>
                       </View>
                     )}
+                    {multiPrintMode ? (
+                      <View style={[styles.multiPrintCheck, selectedPrintIds.includes(listing.id) && styles.multiPrintCheckSelected]}>
+                        {selectedPrintIds.includes(listing.id) ? (
+                          <FontAwesome name="check" size={14} color="#fff" />
+                        ) : null}
+                      </View>
+                    ) : null}
                   </View>
                   <View style={styles.profileListingBody}>
                     <View style={styles.profileListingBodyBottom}>
@@ -717,11 +817,21 @@ export default function ProfileScreen() {
                       {canBuyPrint(listing) && (
                         <View style={styles.profileListingActionRow}>
                           <Pressable
-                            style={[styles.profileCardBuyButton, loadingPrintPreview && { opacity: 0.6 }]}
-                            onPress={(e) => { e.stopPropagation(); void openPrintPreview(listing); }}
+                            style={[
+                              styles.profileCardBuyButton,
+                              loadingPrintPreview && { opacity: 0.6 },
+                              multiPrintMode && selectedPrintIds.includes(listing.id) && styles.profileCardSelectedButton,
+                            ]}
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              if (multiPrintMode) toggleSelectedPrint(listing);
+                              else void openPrintPreview(listing);
+                            }}
                             disabled={loadingPrintPreview}
                           >
-                            <Text style={styles.profileCardBuyButtonText}>Print Preview</Text>
+                            <Text style={styles.profileCardBuyButtonText}>
+                              {multiPrintMode ? (selectedPrintIds.includes(listing.id) ? 'Selected' : 'Select') : 'Print Preview'}
+                            </Text>
                           </Pressable>
                         </View>
                       )}
@@ -1071,6 +1181,12 @@ export default function ProfileScreen() {
           createdAt: printItem.created_at,
           seriesName: printItem.series_name ?? null,
         } : null}
+        printItems={selectedPrintItems.length > 1 ? selectedPrintItems.map((item) => ({
+          creatorName: item.creator_name,
+          creatorSequenceNumber: item.creator_sequence_number ?? null,
+          createdAt: item.created_at,
+          seriesName: item.series_name ?? null,
+        })) : undefined}
         printPreview={printPreview}
         printStep={printStep}
         addressSheetVisible={addressSheetVisible}
@@ -1492,6 +1608,54 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     marginBottom: 12,
   },
+  multiPrintToolbar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginBottom: 12,
+  },
+  multiPrintToolbarText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#666',
+    fontWeight: '700',
+    fontFamily: BrandFonts.primary,
+  },
+  multiPrintToolbarActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  multiPrintPrimaryButton: {
+    backgroundColor: BrandColors.primary,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  multiPrintPrimaryButtonText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
+    fontFamily: BrandFonts.primary,
+  },
+  multiPrintSecondaryButton: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#D6D6D6',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  multiPrintSecondaryButtonText: {
+    color: '#555',
+    fontSize: 13,
+    fontWeight: '700',
+    fontFamily: BrandFonts.primary,
+  },
+  multiPrintButtonDisabled: {
+    opacity: 0.45,
+  },
   listingsGridRow: {
     flexDirection: 'row',
     gap: 12,
@@ -1553,6 +1717,25 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontFamily: BrandFonts.primary,
     textAlign: 'center',
+  },
+  profileCardSelectedButton: {
+    backgroundColor: '#17427D',
+  },
+  multiPrintCheck: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: '#fff',
+    backgroundColor: 'rgba(255,255,255,0.86)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  multiPrintCheckSelected: {
+    backgroundColor: BrandColors.primary,
   },
   profileListingName: {
     fontSize: 13,

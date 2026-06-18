@@ -14,6 +14,8 @@ type PreviewData = {
 
 type Props = {
   autographId: string;
+  autographIds?: string[];
+  bundleTitle?: string;
   onClose: () => void;
 };
 
@@ -21,7 +23,9 @@ function formatMoney(cents: number) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
 }
 
-export function PrintCheckoutModal({ autographId, onClose }: Props) {
+export function PrintCheckoutModal({ autographId, autographIds, bundleTitle, onClose }: Props) {
+  const selectedAutographIds = autographIds?.length ? autographIds : [autographId];
+  const isBundle = selectedAutographIds.length > 1;
   const [preview, setPreview] = useState<PreviewData | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
@@ -49,7 +53,8 @@ export function PrintCheckoutModal({ autographId, onClose }: Props) {
     return () => window.removeEventListener('keydown', handler);
   }, [onClose]);
 
-  const itemTotal = preview ? preview.item_cents * quantity : 0;
+  const effectiveQuantity = isBundle ? selectedAutographIds.length : quantity;
+  const itemTotal = preview ? preview.item_cents * effectiveQuantity : 0;
   const shipping = preview?.shipping_cents ?? 0;
   const total = itemTotal + shipping;
 
@@ -61,7 +66,12 @@ export function PrintCheckoutModal({ autographId, onClose }: Props) {
       const response = await fetch('/api/print-checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ autograph_id: autographId, quantity, email: email.trim() }),
+        body: JSON.stringify({
+          autograph_id: autographId,
+          autograph_ids: selectedAutographIds,
+          quantity: effectiveQuantity,
+          email: email.trim(),
+        }),
       });
       const data = await response.json();
       if (!response.ok || !data.url) throw new Error(data.error ?? 'Could not create checkout session.');
@@ -126,11 +136,17 @@ export function PrintCheckoutModal({ autographId, onClose }: Props) {
               <div className="mt-4 flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400">Official Print</p>
-                  <p className="mt-0.5 text-sm font-black text-black">{preview.creator_name}</p>
-                  <p className="mt-1 text-xs text-gray-500">8×10 lustre photo print · ships from US</p>
+                  <p className="mt-0.5 text-sm font-black text-black">
+                    {isBundle ? (bundleTitle ?? `${selectedAutographIds.length} selected prints`) : preview.creator_name}
+                  </p>
+                  <p className="mt-1 text-xs text-gray-500">
+                    {isBundle
+                      ? `${selectedAutographIds.length} official 8×10 prints · ships together from US`
+                      : '8×10 lustre photo print · ships from US'}
+                  </p>
                 </div>
                 {/* Quantity */}
-                <div className="flex shrink-0 items-center gap-2">
+                <div className={`flex shrink-0 items-center gap-2 ${isBundle ? 'hidden' : ''}`}>
                   <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Qty</span>
                   <div className="flex items-center">
                     <button
@@ -165,7 +181,7 @@ export function PrintCheckoutModal({ autographId, onClose }: Props) {
                   </div>
                 )}
                 <div className="flex justify-between text-gray-600">
-                  <span>{formatMoney(preview.item_cents)} × {quantity}</span>
+                  <span>{formatMoney(preview.item_cents)} × {effectiveQuantity}</span>
                   <span>{formatMoney(itemTotal)}</span>
                 </div>
                 <div className="mt-1 flex justify-between text-gray-600">
@@ -178,7 +194,7 @@ export function PrintCheckoutModal({ autographId, onClose }: Props) {
                 </div>
                 {preview.item_cents < preview.original_price_cents && (
                   <div className="mt-1 text-right text-xs font-semibold text-green-600">
-                    You save {formatMoney((preview.original_price_cents - preview.item_cents) * quantity)}
+                    You save {formatMoney((preview.original_price_cents - preview.item_cents) * effectiveQuantity)}
                   </div>
                 )}
               </div>
@@ -225,8 +241,8 @@ export function PrintCheckoutModal({ autographId, onClose }: Props) {
               >
                 {submitting ? 'Redirecting to payment…' : (
                   preview && preview.item_cents < preview.original_price_cents
-                    ? <>Buy Print — {formatMoney(total)} <span className="opacity-60 line-through">{formatMoney((preview.original_price_cents * quantity) + shipping)}</span></>
-                    : `Buy Print — ${formatMoney(total)}`
+                    ? <>Buy Print — {formatMoney(total)} <span className="opacity-60 line-through">{formatMoney((preview.original_price_cents * effectiveQuantity) + shipping)}</span></>
+                    : `Buy Print${isBundle ? 's' : ''} — ${formatMoney(total)}`
                 )}
               </button>
 

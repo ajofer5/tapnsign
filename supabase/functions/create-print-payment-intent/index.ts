@@ -84,33 +84,65 @@ Deno.serve((req) =>
     );
     const body = await parseJson(request);
 
-    const autographId = requireString(body.autograph_id, 'autograph_id');
+    const requestedAutographIds = Array.isArray(body.autograph_ids)
+      ? body.autograph_ids
+      : [body.autograph_id];
+    const autographIds = Array.from(new Set(
+      requestedAutographIds
+        .filter((value): value is string => typeof value === 'string')
+        .map((value) => value.trim())
+        .filter(Boolean)
+    ));
+    assert(autographIds.length >= 1, 400, 'autograph_id required.');
+    assert(autographIds.length <= 5, 400, 'You can order up to 5 prints at a time.');
+    const autographId = autographIds[0];
+    const isBundle = autographIds.length > 1;
     const idempotencyKey = getIdempotencyKey(request, body, crypto.randomUUID());
     const quantity = typeof body.quantity === 'number' && body.quantity >= 1 && body.quantity <= 5
       ? Math.floor(body.quantity)
       : 1;
+    const printCount = isBundle ? autographIds.length : quantity;
 
     await assertPaymentIntentRateLimit(user.id);
 
-    const [autograph, profile] = await Promise.all([
-      getAutographForUpdate(autographId),
+    const [profile, autographRows] = await Promise.all([
       getProfile(user.id),
+      autographIds.length === 1
+        ? getAutographForUpdate(autographId).then((autograph) => [autograph])
+        : supabaseAdmin
+            .from('autographs')
+            .select('id, creator_id, owner_id, status, visibility, prints_enabled, print_limit')
+            .in('id', autographIds)
+            .then(({ data, error }) => {
+              if (error) throw new HttpError(500, error.message);
+              return data ?? [];
+            }),
     ]);
-    const printBundleCents = (RETAIL_PRINT_CENTS * quantity) + FLAT_SHIPPING_CENTS;
+    assert(autographRows.length === autographIds.length, 404, 'One or more autographs were not found.');
+    const autographById = new Map(autographRows.map((autograph: any) => [autograph.id, autograph]));
+    const autographs = autographIds.map((id) => autographById.get(id));
+    const autograph = autographs[0];
+    const ownerId = autograph.owner_id;
+    const creatorId = autograph.creator_id;
+    const printBundleCents = (RETAIL_PRINT_CENTS * printCount) + FLAT_SHIPPING_CENTS;
 
     assert(!profile.suspended_at, 403, 'Account is suspended.');
     assert(profile.is_creator === true, 403, 'You must be 18 or older to purchase prints.');
-    assert(autograph.status === 'active', 409, 'Autograph is not active.');
-    assert(autograph.visibility === 'public' || autograph.owner_id === user.id, 403, 'This autograph is not available for prints.');
-    assert(autograph.owner_id === user.id || autograph.prints_enabled === true, 409, 'Prints are not available for this autograph.');
-    await assertUsersNotBlocked(user.id, autograph.creator_id, 'You cannot purchase a print from this creator.');
-    await assertUsersNotBlocked(user.id, autograph.owner_id, 'You cannot purchase a print from this owner.');
+    for (const candidate of autographs) {
+      assert(candidate.creator_id === creatorId, 409, 'All selected prints must be from the same creator.');
+      assert(candidate.owner_id === ownerId, 409, 'All selected prints must be from the same creator.');
+      assert(candidate.status === 'active', 409, 'Autograph is not active.');
+      assert(candidate.visibility === 'public' || candidate.owner_id === user.id, 403, 'This autograph is not available for prints.');
+      assert(candidate.owner_id === user.id || candidate.prints_enabled === true, 409, 'Prints are not available for this autograph.');
+    }
+    await assertUsersNotBlocked(user.id, creatorId, 'You cannot purchase a print from this creator.');
+    await assertUsersNotBlocked(user.id, ownerId, 'You cannot purchase a print from this owner.');
 
     // Fetch owner's Stripe Connect account for real-time payout split
     const { data: ownerConnectData } = await supabaseAdmin
       .from('profiles')
       .select('stripe_connect_account_id, stripe_connect_charges_enabled, stripe_connect_payouts_enabled, stripe_connect_onboarding_complete')
-      .eq('id', autograph.owner_id)
+      .eq('id', ownerId)
       .single();
     const ownerConnectAccountId: string | null =
       ownerConnectData?.stripe_connect_onboarding_complete === true &&
@@ -119,15 +151,16 @@ Deno.serve((req) =>
         ? ownerConnectData.stripe_connect_account_id
         : null;
 
-    if (typeof autograph.print_limit === 'number') {
+    for (const candidate of autographs) {
+      if (typeof candidate.print_limit !== 'number') continue;
       const { count, error: printCountError } = await supabaseAdmin
         .from('autograph_prints')
         .select('id', { count: 'exact', head: true })
-        .eq('autograph_id', autographId)
+        .eq('autograph_id', candidate.id)
         .eq('status', 'created');
 
       if (printCountError) throw new HttpError(500, printCountError.message);
-      assert((count ?? 0) < autograph.print_limit, 409, 'This autograph has reached its print limit.');
+      assert((count ?? 0) < candidate.print_limit, 409, 'This autograph has reached its print limit.');
     }
 
     // Reuse an existing open payment intent for idempotency
@@ -163,7 +196,7 @@ Deno.serve((req) =>
     }
 
     const requestId = getRequestId();
-    const ownerPayoutCents = OWNER_PRINT_PAYOUT_CENTS * quantity;
+    const ownerPayoutCents = OWNER_PRINT_PAYOUT_CENTS * printCount;
     const { feeCents } = await getPlatformFee(printBundleCents);
     const paymentIntent = await stripe.paymentIntents.create({
       amount: printBundleCents,
@@ -173,8 +206,9 @@ Deno.serve((req) =>
         request_id: requestId,
         purpose: 'print_bundle',
         autograph_id: autographId,
+        autograph_ids: autographIds.join(','),
         user_id: user.id,
-        quantity: String(quantity),
+        quantity: String(printCount),
       },
       ...(ownerConnectAccountId
         ? { transfer_data: { amount: ownerPayoutCents, destination: ownerConnectAccountId } }
@@ -196,10 +230,13 @@ Deno.serve((req) =>
         platform_fee_cents: feeCents,
         provider_metadata: {
           request_id: requestId,
-          owner_id: autograph.owner_id,
+          owner_id: ownerId,
+          creator_id: creatorId,
+          autograph_ids: autographIds,
           owner_payout_cents: ownerPayoutCents,
           owner_connect_scheduled: ownerConnectAccountId !== null,
-          quantity,
+          quantity: printCount,
+          bundle: isBundle,
         },
       })
       .select('id')

@@ -60,14 +60,27 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const autographId = typeof body.autograph_id === 'string' ? body.autograph_id.trim() : '';
-    const quantity = typeof body.quantity === 'number' && body.quantity >= 1 && body.quantity <= 5
+    const requestedAutographIds: unknown[] = Array.isArray(body.autograph_ids)
+      ? body.autograph_ids
+      : [body.autograph_id];
+    const autographIds: string[] = Array.from(new Set(
+      requestedAutographIds
+        .filter((value: unknown): value is string => typeof value === 'string')
+        .map((value: string) => value.trim())
+        .filter(Boolean)
+    ));
+    const autographId = autographIds[0] ?? '';
+    const requestedQuantity = typeof body.quantity === 'number' && body.quantity >= 1 && body.quantity <= 5
       ? Math.floor(body.quantity)
       : 1;
+    const quantity = autographIds.length > 1 ? autographIds.length : requestedQuantity;
     const email = typeof body.email === 'string' ? body.email.trim() : '';
 
-    if (!autographId) {
+    if (!autographId || autographIds.length < 1) {
       return NextResponse.json({ error: 'autograph_id required' }, { status: 400 });
+    }
+    if (autographIds.length > 5) {
+      return NextResponse.json({ error: 'You can order up to 5 prints at a time.' }, { status: 400 });
     }
 
     const supabase = createWebsiteAdminSupabaseClient();
@@ -129,30 +142,45 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verify autograph exists and prints are enabled
-    const { data: autograph, error: autographError } = await supabase
+    // Verify selected autographs exist, share one creator, and prints are enabled.
+    const { data: autographs, error: autographError } = await supabase
       .from('autographs')
-      .select('id, prints_enabled, print_limit, creator_id, creator:creator_id ( display_name )')
-      .eq('id', autographId)
+      .select('id, prints_enabled, print_limit, creator_id, owner_id, creator_sequence_number, created_at, creator:creator_id ( display_name )')
+      .in('id', autographIds)
       .eq('status', 'active')
-      .maybeSingle();
+      .eq('visibility', 'public');
 
-    if (autographError || !autograph) {
+    if (autographError || !autographs || autographs.length !== autographIds.length) {
       return NextResponse.json({ error: 'Autograph not found' }, { status: 404 });
     }
-    if (!autograph.prints_enabled) {
-      return NextResponse.json({ error: 'Prints not available for this autograph' }, { status: 409 });
+    const autographById = new Map<string, any>(autographs.map((item: any) => [String(item.id), item]));
+    const orderedAutographs = autographIds.map((id) => autographById.get(id)).filter(Boolean);
+    const creatorId = String(orderedAutographs[0].creator_id);
+    const ownerId = String(orderedAutographs[0].owner_id);
+    for (const autograph of orderedAutographs) {
+      if (autograph.creator_id !== creatorId || autograph.owner_id !== ownerId) {
+        return NextResponse.json({ error: 'All selected prints must be from the same creator.' }, { status: 409 });
+      }
+      if (!autograph.prints_enabled) {
+        return NextResponse.json({ error: 'Prints not available for this autograph' }, { status: 409 });
+      }
     }
 
     const amountCents = PRINT_PRICE_CENTS * quantity + SHIPPING_CENTS;
-    const creatorName = (autograph.creator as any)?.display_name ?? 'Creator';
-    const creatorId = autograph.creator_id;
+    const creatorName = (orderedAutographs[0].creator as any)?.display_name ?? 'Creator';
+    const bundleItems = orderedAutographs.map((autograph) => ({
+      autograph_id: autograph.id,
+      creator_sequence_number: autograph.creator_sequence_number ?? null,
+      created_at: autograph.created_at,
+    }));
 
     // Create pending web_print_orders row for idempotency
     const { data: order, error: orderError } = await supabase
       .from('web_print_orders')
       .insert({
         autograph_id: autographId,
+        autograph_ids: autographIds,
+        bundle_items: bundleItems,
         quantity,
         buyer_email: email || null,
         amount_cents: amountCents,
@@ -175,7 +203,9 @@ export async function POST(request: NextRequest) {
       cancel_url: cancelUrl,
       'line_items[0][price_data][currency]': 'usd',
       'line_items[0][price_data][unit_amount]': String(PRINT_PRICE_CENTS),
-      'line_items[0][price_data][product_data][name]': `${creatorName} — 8×10 Official Print`,
+      'line_items[0][price_data][product_data][name]': autographIds.length > 1
+        ? `${creatorName} — ${autographIds.length} Official Prints`
+        : `${creatorName} — 8×10 Official Print`,
       'line_items[0][quantity]': String(quantity),
       'line_items[1][price_data][currency]': 'usd',
       'line_items[1][price_data][unit_amount]': String(SHIPPING_CENTS),
@@ -183,11 +213,13 @@ export async function POST(request: NextRequest) {
       'line_items[1][quantity]': '1',
       'shipping_address_collection[allowed_countries][0]': 'US',
       'metadata[autograph_id]': autographId,
+      'metadata[autograph_ids]': autographIds.join(','),
       'metadata[quantity]': String(quantity),
       'metadata[web_print_order_id]': order.id,
       'metadata[creator_id]': creatorId,
       'payment_intent_data[metadata][purpose]': 'web_print_order',
       'payment_intent_data[metadata][autograph_id]': autographId,
+      'payment_intent_data[metadata][autograph_ids]': autographIds.join(','),
       'payment_intent_data[metadata][web_print_order_id]': order.id,
     };
 

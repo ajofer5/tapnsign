@@ -14,11 +14,17 @@ export function WebListingCard({
   isSaved: _isSaved = false,
   savePath: _savePath = '/marketplace',
   showProfileButton = false,
+  selectionMode = false,
+  selected = false,
+  onToggleSelected,
 }: {
   listing: WebsiteListing;
   isSaved?: boolean;
   savePath?: string;
   showProfileButton?: boolean;
+  selectionMode?: boolean;
+  selected?: boolean;
+  onToggleSelected?: (listing: WebsiteListing) => void;
 }) {
   const [playing, setPlaying] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
@@ -29,7 +35,12 @@ export function WebListingCard({
     <>
       <article className="overflow-hidden rounded-none border border-gray-200 bg-white">
         {/* Media area — natural height so image ratio determines the card shape */}
-        <div className="relative w-full bg-[#1C1C1F] overflow-hidden">
+        <div
+          className="relative w-full bg-[#1C1C1F] overflow-hidden"
+          onClick={() => {
+            if (selectionMode) onToggleSelected?.(listing);
+          }}
+        >
           {playing && listing.video_url ? (
             <video
               src={listing.video_url}
@@ -64,7 +75,14 @@ export function WebListingCard({
           {/* Play / Pause overlay */}
           {listing.video_url ? (
             <button
-              onClick={() => setPlaying((p) => !p)}
+              onClick={(event) => {
+                event.stopPropagation();
+                if (selectionMode) {
+                  onToggleSelected?.(listing);
+                } else {
+                  setPlaying((p) => !p);
+                }
+              }}
               className="absolute inset-0 flex items-center justify-center"
               aria-label={playing ? 'Pause' : 'Play'}
             >
@@ -76,6 +94,11 @@ export function WebListingCard({
                 </span>
               )}
             </button>
+          ) : null}
+          {selectionMode ? (
+            <div className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-white/90 text-sm font-black text-[#001B5C] shadow">
+              {selected ? '✓' : ''}
+            </div>
           ) : null}
         </div>
 
@@ -107,10 +130,17 @@ export function WebListingCard({
               )}
               {listing.prints_enabled ? (
                 <button
-                  onClick={() => setCheckoutOpen(true)}
-                  className="rounded-[4px] bg-[#001B5C] px-2.5 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-[#00144A]"
+                  onClick={() => {
+                    if (selectionMode) onToggleSelected?.(listing);
+                    else setCheckoutOpen(true);
+                  }}
+                  className={`rounded-[4px] px-2.5 py-1.5 text-[11px] font-semibold transition-colors ${
+                    selectionMode && selected
+                      ? 'bg-[#E8EEF9] text-[#001B5C]'
+                      : 'bg-[#001B5C] text-white hover:bg-[#00144A]'
+                  }`}
                 >
-                  Print Moment
+                  {selectionMode ? (selected ? 'Selected' : 'Select') : 'Print Moment'}
                 </button>
               ) : (
                 <Link

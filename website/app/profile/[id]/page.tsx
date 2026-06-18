@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { WebListingCard } from '../../../components/web-listing-card';
+import { ProfilePrintGrid } from '../../../components/profile-print-grid';
 import { PublicNav } from '../../../components/public-nav';
 import { getWebsiteProfile } from '../../../lib/profile';
 import { getWebSessionUser } from '../../../lib/web-auth';
@@ -64,24 +64,14 @@ export default async function ProfilePage({
 
         {/* Official Prints */}
         <section className="mt-8">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-2xl font-black text-black">Official Prints</h2>
-            <span className="text-sm text-gray-500">
-              {profile.active_listings.length} public print{profile.active_listings.length !== 1 ? 's' : ''}
-            </span>
-          </div>
+          <h2 className="mb-4 text-2xl font-black text-black">Official Prints</h2>
 
           {profile.active_listings.length > 0 ? (
-            <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-              {profile.active_listings.map((listing) => (
-                <WebListingCard
-                  key={listing.id}
-                  listing={listing}
-                  isSaved={savedIds.has(listing.id)}
-                  savePath={webRouteToProfile(id)}
-                />
-              ))}
-            </div>
+            <ProfilePrintGrid
+              listings={profile.active_listings}
+              savedIds={Array.from(savedIds)}
+              savePath={webRouteToProfile(id)}
+            />
           ) : (
             <div className="web-panel p-10 text-center">
               <h3 className="text-2xl font-black text-black">No public prints yet</h3>
@@ -111,4 +101,3 @@ export default async function ProfilePage({
     </main>
   );
 }
-

@@ -21,6 +21,7 @@ const MAX_QUANTITY = 5;
 type Props = {
   visible: boolean;
   printItem: PrintItem | null;
+  printItems?: PrintItem[];
   printPreview: PrintPreview | null;
   printStep: 'preview' | 'processing';
   addressSheetVisible: boolean;
@@ -41,6 +42,7 @@ type Props = {
 export function AutographPrintModal({
   visible,
   printItem,
+  printItems,
   printPreview,
   printStep,
   addressSheetVisible,
@@ -57,8 +59,11 @@ export function AutographPrintModal({
   onAddressError,
   formatCardDate,
 }: Props) {
+  const selectedPrintItems = printItems?.length ? printItems : printItem ? [printItem] : [];
+  const isBundle = selectedPrintItems.length > 1;
+  const effectiveQuantity = isBundle ? selectedPrintItems.length : quantity;
   const isOnSale = unitPriceCents < originalPriceCents;
-  const totalCents = (unitPriceCents * quantity) + shippingCents;
+  const totalCents = (unitPriceCents * effectiveQuantity) + shippingCents;
   const totalDisplay = `$${(totalCents / 100).toFixed(2)}`;
   const unitDisplay = `$${(unitPriceCents / 100).toFixed(2)}`;
   const shippingDisplay = `$${(shippingCents / 100).toFixed(2)}`;
@@ -88,12 +93,12 @@ export function AutographPrintModal({
           style={{ width: '100%' }}
           contentContainerStyle={styles.printSheet}
         >
-          {printItem ? (
+          {selectedPrintItems.length > 0 ? (
             <>
               {printStep === 'preview' && (
                 <>
-                  <Text style={styles.certTitle}>Print Autograph</Text>
-                  <Text style={styles.previewLabel}>Print layout preview</Text>
+                  <Text style={styles.certTitle}>{isBundle ? 'Print Selected Moments' : 'Print Moment'}</Text>
+                  <Text style={styles.previewLabel}>{isBundle ? `${selectedPrintItems.length} selected prints` : 'Print layout preview'}</Text>
 
                   <View style={[styles.previewFrame, { width: previewCardWidth }]}>
                     {currentUrl ? (
@@ -119,28 +124,40 @@ export function AutographPrintModal({
                   <Text style={styles.printInfoText}>
                     {loadingPrintPreview
                       ? 'Preparing your official print preview.'
-                      : 'Official 8×10 memorabilia print.'}
+                      : isBundle
+                        ? 'Official 8×10 memorabilia prints. One copy of each selected moment ships together.'
+                        : 'Official 8×10 memorabilia print.'}
                   </Text>
                   {loadingPrintPreview ? (
                     <ActivityIndicator color="#111" style={{ marginTop: 12 }} />
                   ) : null}
 
-                  {/* Quantity stepper */}
-                  <View style={styles.quantityRow}>
-                    <Pressable
-                      style={[styles.qtyButton, quantity <= 1 && styles.qtyButtonDisabled]}
-                      onPress={() => { if (quantity > 1) onQuantityChange(quantity - 1); }}
-                    >
-                      <Text style={styles.qtyButtonText}>−</Text>
-                    </Pressable>
-                    <Text style={styles.qtyValue}>{quantity}</Text>
-                    <Pressable
-                      style={[styles.qtyButton, quantity >= MAX_QUANTITY && styles.qtyButtonDisabled]}
-                      onPress={() => { if (quantity < MAX_QUANTITY) onQuantityChange(quantity + 1); }}
-                    >
-                      <Text style={styles.qtyButtonText}>+</Text>
-                    </Pressable>
-                  </View>
+                  {isBundle ? (
+                    <View style={styles.bundleList}>
+                      {selectedPrintItems.map((item, index) => (
+                        <Text key={`${item.creatorSequenceNumber ?? index}-${item.createdAt}`} style={styles.bundleListItem} numberOfLines={1}>
+                          {item.creatorSequenceNumber != null ? `#${item.creatorSequenceNumber}` : `Print ${index + 1}`}
+                          {item.seriesName ? ` · ${item.seriesName}` : ''}
+                        </Text>
+                      ))}
+                    </View>
+                  ) : (
+                    <View style={styles.quantityRow}>
+                      <Pressable
+                        style={[styles.qtyButton, quantity <= 1 && styles.qtyButtonDisabled]}
+                        onPress={() => { if (quantity > 1) onQuantityChange(quantity - 1); }}
+                      >
+                        <Text style={styles.qtyButtonText}>−</Text>
+                      </Pressable>
+                      <Text style={styles.qtyValue}>{quantity}</Text>
+                      <Pressable
+                        style={[styles.qtyButton, quantity >= MAX_QUANTITY && styles.qtyButtonDisabled]}
+                        onPress={() => { if (quantity < MAX_QUANTITY) onQuantityChange(quantity + 1); }}
+                      >
+                        <Text style={styles.qtyButtonText}>+</Text>
+                      </Pressable>
+                    </View>
+                  )}
                   {isOnSale && (
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 }}>
                       <View style={{ backgroundColor: '#FEE2E2', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 }}>
@@ -154,13 +171,13 @@ export function AutographPrintModal({
                     </View>
                   )}
                   <Text style={styles.priceLine}>
-                    {quantity > 1
-                      ? `${unitDisplay} × ${quantity} + ${shippingDisplay} shipping = ${totalDisplay}`
+                    {effectiveQuantity > 1
+                      ? `${unitDisplay} × ${effectiveQuantity} + ${shippingDisplay} shipping = ${totalDisplay}`
                       : `${unitDisplay} + ${shippingDisplay} shipping = ${totalDisplay}`}
                   </Text>
                   {isOnSale && (
                     <Text style={{ color: '#16A34A', fontSize: 12, fontFamily: BrandFonts.primary, fontWeight: '600', marginTop: 2 }}>
-                      You save ${(((originalPriceCents - unitPriceCents) * quantity) / 100).toFixed(2)}
+                      You save ${(((originalPriceCents - unitPriceCents) * effectiveQuantity) / 100).toFixed(2)}
                     </Text>
                   )}
 
@@ -174,7 +191,7 @@ export function AutographPrintModal({
                     disabled={!printPreview || loadingPrintPreview || creatingPrint}
                   >
                     <Text style={styles.closeButtonText}>
-                      {loadingPrintPreview ? 'Preparing Preview…' : `Order Print${quantity > 1 ? 's' : ''}`}
+                      {loadingPrintPreview ? 'Preparing Preview…' : `Order Print${effectiveQuantity > 1 ? 's' : ''}`}
                     </Text>
                   </Pressable>
 
@@ -356,6 +373,24 @@ const styles = StyleSheet.create({
     fontFamily: BrandFonts.primary,
     minWidth: 24,
     textAlign: 'center',
+  },
+  bundleList: {
+    width: '100%',
+    maxWidth: 320,
+    marginTop: 18,
+    borderWidth: 1,
+    borderColor: '#E4E0D8',
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 4,
+  },
+  bundleListItem: {
+    fontSize: 13,
+    color: '#333',
+    fontWeight: '600',
+    fontFamily: BrandFonts.primary,
   },
   priceLine: {
     marginTop: 8,

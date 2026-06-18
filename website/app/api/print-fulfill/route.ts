@@ -171,8 +171,10 @@ async function getMomentLabel(supabase: ReturnType<typeof createWebsiteAdminSupa
 
 async function submitProdigiOrder(params: {
   orderId: string;
-  quantity: number;
-  imageUrl: string;
+  items: {
+    id: string;
+    imageUrl: string;
+  }[];
   shipping: {
     name: string;
     line1: string;
@@ -205,14 +207,14 @@ async function submitProdigiOrder(params: {
         },
       },
       items: [
-        {
-          merchantReference: `${params.orderId}-8x10`,
+        ...params.items.map((item) => ({
+          merchantReference: `${item.id}-8x10`,
           sku: SKU_8X10,
-          copies: params.quantity,
+          copies: 1,
           sizing: 'fillPrintArea',
           attributes: { finish: 'lustre' },
-          assets: [{ printArea: 'default', url: params.imageUrl }],
-        },
+          assets: [{ printArea: 'default', url: item.imageUrl }],
+        })),
       ],
     }),
   });
@@ -326,14 +328,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Generate print layout
-    const imageUrl = await getPrintLayoutUrl(order.autograph_id);
+    const orderAutographIds = Array.isArray(order.autograph_ids) && order.autograph_ids.length > 0
+      ? order.autograph_ids.filter((value: unknown): value is string => typeof value === 'string')
+      : [order.autograph_id].filter((value: unknown): value is string => typeof value === 'string');
+    if (orderAutographIds.length < 1 || orderAutographIds.length > 5) {
+      return NextResponse.json({ error: 'Invalid print order.' }, { status: 409 });
+    }
+
+    // Generate print layouts
+    const prodigiItems = await Promise.all(orderAutographIds.map(async (autographId: string, index: number) => ({
+      id: `${orderId}-${index + 1}`,
+      imageUrl: await getPrintLayoutUrl(autographId),
+    })));
 
     // Submit to Prodigi
     const vendorOrderId = await submitProdigiOrder({
       orderId,
-      quantity: order.quantity,
-      imageUrl,
+      items: prodigiItems,
       shipping: {
         name: shippingName,
         line1: shipping.line1 ?? '',
@@ -351,12 +362,14 @@ export async function POST(request: NextRequest) {
       .update({ status: 'submitted', prodigi_order_id: vendorOrderId })
       .eq('id', orderId);
 
-    const momentLabel = await getMomentLabel(supabase, order.autograph_id);
+    const momentLabel = orderAutographIds.length > 1
+      ? `${orderAutographIds.length} official Ophinia prints`
+      : await getMomentLabel(supabase, order.autograph_id);
     await sendPrintOrderConfirmationEmail({
       to: session.customer_details?.email ?? order.buyer_email,
       orderReference: orderId,
       momentLabel,
-      quantity: order.quantity,
+      quantity: orderAutographIds.length,
       totalCents: order.amount_cents,
       shipping: {
         name: shippingName,
