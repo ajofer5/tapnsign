@@ -59,14 +59,15 @@ export async function POST(request: NextRequest) {
   if (courtesyEvent) {
     paymentEventId = courtesyEvent.id;
   } else {
-    // Check for an existing uncaptured payment event (idempotency)
-    const idempotencyKey = `web-verification:${user.id}`;
+    // Reuse only a currently open checkout attempt. Completed or consumed
+    // verification attempts must not block a new payment event for the user.
+    const openAttemptKeyPrefix = `web-verification:${user.id}:`;
     const { data: existingEvent } = await supabase
       .from('payment_events')
       .select('id')
       .eq('user_id', user.id)
       .eq('purpose', 'verification_fee')
-      .eq('idempotency_key', idempotencyKey)
+      .like('idempotency_key', `${openAttemptKeyPrefix}%`)
       .in('status', ['created', 'requires_action', 'authorized'])
       .order('created_at', { ascending: false })
       .limit(1)
@@ -75,6 +76,7 @@ export async function POST(request: NextRequest) {
     if (existingEvent) {
       paymentEventId = existingEvent.id;
     } else {
+      const idempotencyKey = `${openAttemptKeyPrefix}${crypto.randomUUID()}`;
       const { data: inserted, error: insertError } = await supabase
         .from('payment_events')
         .insert({
@@ -91,6 +93,7 @@ export async function POST(request: NextRequest) {
         .single();
 
       if (insertError || !inserted) {
+        console.error('[identity/start] payment event insert failed', insertError?.message ?? 'No row returned');
         return redirectAfterPost(new URL('/identity?error=payment', request.url));
       }
       paymentEventId = inserted.id;
@@ -110,7 +113,8 @@ export async function POST(request: NextRequest) {
     }
 
     return redirectAfterPost(session.url);
-  } catch {
+  } catch (err) {
+    console.error('[identity/start] Stripe error:', err instanceof Error ? err.message : err);
     return redirectAfterPost(new URL('/identity?error=stripe', request.url));
   }
 }
