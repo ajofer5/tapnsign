@@ -43,7 +43,10 @@ const getCachedWebSessionUser = cache(async (): Promise<WebSessionUser | null> =
   const supabase = await createWebsiteServerSupabaseClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await supabase.auth.getUser().catch((error) => {
+    console.warn('[web-auth] Supabase session lookup failed; falling back to web handoff session.', error?.message ?? error);
+    return { data: { user: null } };
+  });
 
   if (user) {
     const fallbackUser: WebSessionUser = {
