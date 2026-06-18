@@ -455,15 +455,15 @@ Deno.serve((req) =>
     const meta = paymentEvent.provider_metadata ?? {};
     const ownerConnectScheduled = meta.owner_connect_scheduled === true;
     const ownerPayoutCents = typeof meta.owner_payout_cents === 'number' ? meta.owner_payout_cents : 0;
-    const ownerId = typeof meta.owner_id === 'string' ? meta.owner_id : null;
+    const payoutOwnerId = typeof meta.owner_id === 'string' ? meta.owner_id : null;
 
-    if (!ownerConnectScheduled && ownerPayoutCents > 0 && ownerId) {
+    if (!ownerConnectScheduled && ownerPayoutCents > 0 && payoutOwnerId) {
       const perPrintPayout = Math.round(ownerPayoutCents / allPrintIds.length);
       await supabaseAdmin
         .from('royalties_ledger')
         .upsert(
           allPrintIds.map((pid) => ({
-            creator_id: ownerId,
+            creator_id: payoutOwnerId,
             royalty_type: 'print_owner',
             print_id: pid,
             autograph_id: layoutRows.find((print) => print.id === pid)?.autograph_id ?? autographId,
