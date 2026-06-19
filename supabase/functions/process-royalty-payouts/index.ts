@@ -27,12 +27,40 @@ import {
   supabaseAdmin,
 } from '../_shared/utils.ts';
 
+async function sendAdminAlert(subject: string, body: string) {
+  const apiKey = Deno.env.get('RESEND_API_KEY') ?? '';
+  const adminEmail = Deno.env.get('ADMIN_ALERT_EMAIL') ?? '';
+  if (!apiKey || !adminEmail) return;
+  try {
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: Deno.env.get('ORDER_EMAIL_FROM') ?? 'Ophinia Alerts <noreply@ophinia.com>',
+        to: adminEmail,
+        subject: `[Ophinia Alert] ${subject}`,
+        text: body,
+      }),
+    });
+  } catch { /* best-effort */ }
+}
+
 const STRIPE_CONNECT_RATE = 0.0025;
 const STRIPE_CONNECT_FLAT = 25;
 const LARGE_PAYOUT_ALERT_CENTS = 50000;
 
 function computeStripeFee(amountCents: number): number {
   return Math.ceil(amountCents * STRIPE_CONNECT_RATE + STRIPE_CONNECT_FLAT);
+}
+
+async function createPayoutIdempotencyKey(creatorId: string, rowIds: string[]): Promise<string> {
+  const sortedRowIds = [...rowIds].sort();
+  const payload = new TextEncoder().encode(`${creatorId}:${sortedRowIds.join(',')}`);
+  const digest = await crypto.subtle.digest('SHA-256', payload);
+  const hash = Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+  return `payout-${creatorId}-${hash.slice(0, 32)}`;
 }
 
 type LedgerRow = {
@@ -114,12 +142,15 @@ Deno.serve((req) =>
     const dryRun = parseBoolean(body.dry_run, true);
     const allowFlagged = parseBoolean(body.allow_flagged, false);
     const payoutsEnabled = Deno.env.get('STRIPE_CONNECT_PAYOUTS_ENABLED') === 'true';
+    const runId = crypto.randomUUID();
+    const now = new Date().toISOString();
 
     const { data: unpaidRows, error: fetchError } = await supabaseAdmin
       .from('royalties_ledger')
       .select('id, creator_id, royalty_type, royalty_amount_cents, transfer_id, print_id, web_print_order_id, personalized_request_id, sale_amount_cents')
       .is('paid_at', null)
-      .is('excluded_at', null);
+      .is('excluded_at', null)
+      .or(`eligible_at.is.null,eligible_at.lte.${now}`);
 
     if (fetchError) throw new HttpError(500, fetchError.message);
 
@@ -445,6 +476,7 @@ Deno.serve((req) =>
           continue;
         }
 
+        const payoutIdempotencyKey = await createPayoutIdempotencyKey(creatorId, acc.payableRowIds);
         const transfer = await stripe.transfers.create({
           amount: netPayout,
           currency: 'usd',
@@ -452,8 +484,10 @@ Deno.serve((req) =>
           metadata: {
             creator_id: creatorId,
             royalty_row_count: String(acc.payableRowIds.length),
+            payout_run_id: runId,
+            payout_row_hash: payoutIdempotencyKey.replace(`payout-${creatorId}-`, ''),
           },
-        });
+        }, { idempotencyKey: payoutIdempotencyKey });
 
         const { data: batchId, error: finalizeError } = await supabaseAdmin.rpc(
           'rpc_finalize_royalty_payout_batch',
@@ -477,6 +511,10 @@ Deno.serve((req) =>
           result.stripe_transfer_id = transfer.id;
           skipped++;
           results.push(result);
+          await sendAdminAlert(
+            'Payout finalize failed after Stripe transfer',
+            `Run ID: ${runId}\nCreator: ${creatorId}\nStripe Transfer: ${transfer.id}\nNet Payout: $${(netPayout / 100).toFixed(2)}\n\nThe Stripe transfer succeeded but the DB finalize failed. Ledger rows are still marked unpaid and will be re-attempted on the next run, risking a double-payment. Manual review required.\n\nError: ${finalizeError?.message ?? 'No batch ID returned'}`
+          );
           continue;
         }
 

@@ -166,6 +166,16 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Prints not available for this autograph' }, { status: 409 });
       }
     }
+    const { data: participantProfiles, error: participantError } = await supabase
+      .from('profiles')
+      .select('id, suspended_at')
+      .in('id', Array.from(new Set([creatorId, ownerId])));
+    if (participantError) {
+      return NextResponse.json({ error: 'Could not verify creator status' }, { status: 500 });
+    }
+    if ((participantProfiles ?? []).some((participant: any) => participant.suspended_at)) {
+      return NextResponse.json({ error: 'Prints are not available for this creator.' }, { status: 403 });
+    }
 
     const amountCents = PRINT_PRICE_CENTS * quantity + SHIPPING_CENTS;
     const ownerPayoutCents = OWNER_PRINT_PAYOUT_CENTS * quantity;

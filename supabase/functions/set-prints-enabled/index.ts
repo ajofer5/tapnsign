@@ -62,7 +62,37 @@ Deno.serve((req) =>
     const profile = await getProfile(user.id);
     assert(!profile.suspended_at, 403, 'Account is suspended.');
 
+    if (printsEnabled) {
+      assert(profile.is_creator === true, 403, 'You must be 18 or older to enable public prints.');
+      const { data: payoutProfile, error: payoutError } = await supabaseAdmin
+        .from('profiles')
+        .select('stripe_connect_onboarding_complete, stripe_connect_charges_enabled, stripe_connect_payouts_enabled')
+        .eq('id', user.id)
+        .single();
+
+      assert(!payoutError && payoutProfile, 500, payoutError?.message ?? 'Could not verify payout status.');
+      assert(
+        payoutProfile.stripe_connect_onboarding_complete === true &&
+          payoutProfile.stripe_connect_charges_enabled === true &&
+          payoutProfile.stripe_connect_payouts_enabled === true,
+        403,
+        'Complete payout setup before enabling public prints.'
+      );
+    }
+
     await requireActiveOwnedAutograph(autographId, user.id);
+
+    const { data: announcementState, error: announcementStateError } = await supabaseAdmin
+      .from('autographs')
+      .select('public_print_announced_at')
+      .eq('id', autographId)
+      .single();
+    assert(
+      !announcementStateError && announcementState,
+      500,
+      announcementStateError?.message ?? 'Could not check announcement status.'
+    );
+    const shouldAnnounce = printsEnabled && !announcementState.public_print_announced_at;
 
     // Prints and visibility are coupled: enabling prints makes the autograph
     // public (required by marketplace/profile feeds); disabling makes it private.
@@ -70,6 +100,9 @@ Deno.serve((req) =>
       prints_enabled: printsEnabled,
       visibility: printsEnabled ? 'public' : 'private',
     };
+    if (shouldAnnounce) {
+      update.public_print_announced_at = new Date().toISOString();
+    }
 
     const { error } = await supabaseAdmin
       .from('autographs')
@@ -80,7 +113,7 @@ Deno.serve((req) =>
     assert(!error, 500, error?.message ?? 'Could not update prints_enabled.');
 
     // Fire-and-forget: notify followers when a moment becomes available for printing
-    if (printsEnabled) {
+    if (shouldAnnounce) {
       notifySavedCreatorFollowers(user.id);
     }
 

@@ -135,6 +135,14 @@ Deno.serve((req) =>
       assert(candidate.visibility === 'public' || candidate.owner_id === user.id, 403, 'This autograph is not available for prints.');
       assert(candidate.owner_id === user.id || candidate.prints_enabled === true, 409, 'Prints are not available for this autograph.');
     }
+    const { data: participantProfiles, error: participantError } = await supabaseAdmin
+      .from('profiles')
+      .select('id, suspended_at')
+      .in('id', Array.from(new Set([creatorId, ownerId])));
+    if (participantError) throw new HttpError(500, participantError.message);
+    const suspendedParticipant = (participantProfiles ?? []).find((participant) => participant.suspended_at);
+    assert(!suspendedParticipant, 403, 'Prints are not available for this creator.');
+
     await assertUsersNotBlocked(user.id, creatorId, 'You cannot purchase a print from this creator.');
     await assertUsersNotBlocked(user.id, ownerId, 'You cannot purchase a print from this owner.');
 
