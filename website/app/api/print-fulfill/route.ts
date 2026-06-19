@@ -362,6 +362,27 @@ export async function POST(request: NextRequest) {
       .update({ status: 'submitted', prodigi_order_id: vendorOrderId })
       .eq('id', orderId);
 
+    const ownerPayoutCents = typeof order.owner_payout_cents === 'number'
+      ? order.owner_payout_cents
+      : 250 * Math.max(1, orderAutographIds.length);
+    const payoutOwnerId = typeof order.owner_id === 'string' ? order.owner_id : null;
+    const primaryAutographId = orderAutographIds[0] ?? order.autograph_id;
+    if (ownerPayoutCents > 0 && payoutOwnerId && primaryAutographId) {
+      await supabase
+        .from('royalties_ledger')
+        .upsert(
+          {
+            creator_id: payoutOwnerId,
+            royalty_type: 'print_owner',
+            web_print_order_id: orderId,
+            autograph_id: primaryAutographId,
+            print_royalty_cents_snapshot: Math.round(ownerPayoutCents / Math.max(1, orderAutographIds.length)),
+            royalty_amount_cents: ownerPayoutCents,
+          },
+          { onConflict: 'web_print_order_id,creator_id,royalty_type', ignoreDuplicates: true }
+        );
+    }
+
     const momentLabel = orderAutographIds.length > 1
       ? `${orderAutographIds.length} official Ophinia prints`
       : await getMomentLabel(supabase, order.autograph_id);

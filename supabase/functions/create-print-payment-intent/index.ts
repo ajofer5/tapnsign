@@ -138,20 +138,6 @@ Deno.serve((req) =>
     await assertUsersNotBlocked(user.id, creatorId, 'You cannot purchase a print from this creator.');
     await assertUsersNotBlocked(user.id, ownerId, 'You cannot purchase a print from this owner.');
 
-    // Fetch owner's Stripe Connect account for real-time payout split
-    const { data: ownerConnectData } = await supabaseAdmin
-      .from('profiles')
-      .select('stripe_connect_account_id, stripe_connect_charges_enabled, stripe_connect_payouts_enabled, stripe_connect_onboarding_complete')
-      .eq('id', ownerId)
-      .single();
-    const ownerConnectAccountId: string | null =
-      ownerConnectData?.stripe_connect_onboarding_complete === true &&
-      ownerConnectData?.stripe_connect_charges_enabled === true &&
-      ownerConnectData?.stripe_connect_payouts_enabled === true &&
-      typeof ownerConnectData.stripe_connect_account_id === 'string'
-        ? ownerConnectData.stripe_connect_account_id
-        : null;
-
     for (const candidate of autographs) {
       if (typeof candidate.print_limit !== 'number') continue;
       const { count, error: printCountError } = await supabaseAdmin
@@ -211,9 +197,6 @@ Deno.serve((req) =>
         user_id: user.id,
         quantity: String(printCount),
       },
-      ...(ownerConnectAccountId
-        ? { transfer_data: { amount: ownerPayoutCents, destination: ownerConnectAccountId } }
-        : {}),
     }, { idempotencyKey });
 
     const { data: paymentEvent, error } = await supabaseAdmin
@@ -235,7 +218,8 @@ Deno.serve((req) =>
           creator_id: creatorId,
           autograph_ids: autographIds,
           owner_payout_cents: ownerPayoutCents,
-          owner_connect_scheduled: ownerConnectAccountId !== null,
+          owner_connect_scheduled: false,
+          payout_model: 'ledger',
           quantity: printCount,
           bundle: isBundle,
         },

@@ -14,6 +14,44 @@ async function updatePaymentEventByIntentId(
   }
 }
 
+async function updateWebPrintOrderByIntentId(
+  paymentIntentId: string,
+  updates: Record<string, unknown>,
+) {
+  const { data, error } = await supabaseAdmin
+    .from('web_print_orders')
+    .update(updates)
+    .eq('stripe_payment_intent_id', paymentIntentId)
+    .select('id');
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  if (data && data.length > 0) {
+    return;
+  }
+
+  const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+  const webPrintOrderId =
+    typeof paymentIntent.metadata?.web_print_order_id === 'string'
+      ? paymentIntent.metadata.web_print_order_id
+      : null;
+
+  if (!webPrintOrderId) {
+    return;
+  }
+
+  const { error: fallbackError } = await supabaseAdmin
+    .from('web_print_orders')
+    .update(updates)
+    .eq('id', webPrintOrderId);
+
+  if (fallbackError) {
+    throw new Error(fallbackError.message);
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -56,9 +94,9 @@ Deno.serve(async (req) => {
         typeof dispute.payment_intent === 'string' ? dispute.payment_intent : null;
 
       if (paymentIntentId) {
-        await updatePaymentEventByIntentId(paymentIntentId, {
-          disputed_at: new Date().toISOString(),
-        });
+        const updates = { disputed_at: new Date().toISOString() };
+        await updatePaymentEventByIntentId(paymentIntentId, updates);
+        await updateWebPrintOrderByIntentId(paymentIntentId, updates);
       }
     }
 
@@ -69,10 +107,12 @@ Deno.serve(async (req) => {
 
       if (paymentIntentId) {
         const amountRefunded = Number(charge.amount_refunded ?? 0);
-        await updatePaymentEventByIntentId(paymentIntentId, {
+        const updates = {
           refunded_at: amountRefunded > 0 ? new Date().toISOString() : null,
           refund_amount_cents: amountRefunded > 0 ? amountRefunded : null,
-        });
+        };
+        await updatePaymentEventByIntentId(paymentIntentId, updates);
+        await updateWebPrintOrderByIntentId(paymentIntentId, updates);
       }
     }
 

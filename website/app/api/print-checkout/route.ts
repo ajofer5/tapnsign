@@ -176,20 +176,6 @@ export async function POST(request: NextRequest) {
       created_at: autograph.created_at,
     }));
 
-    const { data: ownerConnectData } = await supabase
-      .from('profiles')
-      .select('stripe_connect_account_id, stripe_connect_charges_enabled, stripe_connect_payouts_enabled, stripe_connect_onboarding_complete')
-      .eq('id', ownerId)
-      .single();
-
-    const ownerConnectAccountId =
-      ownerConnectData?.stripe_connect_onboarding_complete === true &&
-      ownerConnectData?.stripe_connect_charges_enabled === true &&
-      ownerConnectData?.stripe_connect_payouts_enabled === true &&
-      typeof ownerConnectData.stripe_connect_account_id === 'string'
-        ? ownerConnectData.stripe_connect_account_id
-        : null;
-
     // Create pending web_print_orders row for idempotency
     const { data: order, error: orderError } = await supabase
       .from('web_print_orders')
@@ -203,8 +189,8 @@ export async function POST(request: NextRequest) {
         creator_id: creatorId,
         owner_id: ownerId,
         owner_payout_cents: ownerPayoutCents,
-        owner_connect_scheduled: ownerConnectAccountId !== null,
-        owner_connect_account_id: ownerConnectAccountId,
+        owner_connect_scheduled: false,
+        owner_connect_account_id: null,
         status: 'pending',
       })
       .select('id')
@@ -245,14 +231,11 @@ export async function POST(request: NextRequest) {
       'payment_intent_data[metadata][creator_id]': creatorId,
       'payment_intent_data[metadata][owner_id]': ownerId,
       'payment_intent_data[metadata][owner_payout_cents]': String(ownerPayoutCents),
-      'payment_intent_data[metadata][owner_connect_scheduled]': ownerConnectAccountId ? 'true' : 'false',
+      'payment_intent_data[metadata][owner_connect_scheduled]': 'false',
+      'payment_intent_data[metadata][payout_model]': 'ledger',
     };
 
     if (email) form.customer_email = email;
-    if (ownerConnectAccountId) {
-      form['payment_intent_data[transfer_data][amount]'] = String(ownerPayoutCents);
-      form['payment_intent_data[transfer_data][destination]'] = ownerConnectAccountId;
-    }
 
     const session = await stripePost<{ id: string; url: string | null }>('/checkout/sessions', form);
 
