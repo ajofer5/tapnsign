@@ -200,6 +200,11 @@ export async function POST(request: NextRequest) {
         quantity,
         buyer_email: email || null,
         amount_cents: amountCents,
+        creator_id: creatorId,
+        owner_id: ownerId,
+        owner_payout_cents: ownerPayoutCents,
+        owner_connect_scheduled: ownerConnectAccountId !== null,
+        owner_connect_account_id: ownerConnectAccountId,
         status: 'pending',
       })
       .select('id')

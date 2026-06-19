@@ -147,7 +147,8 @@ Deno.serve((req) =>
     const ownerConnectAccountId: string | null =
       ownerConnectData?.stripe_connect_onboarding_complete === true &&
       ownerConnectData?.stripe_connect_charges_enabled === true &&
-      ownerConnectData?.stripe_connect_payouts_enabled === true
+      ownerConnectData?.stripe_connect_payouts_enabled === true &&
+      typeof ownerConnectData.stripe_connect_account_id === 'string'
         ? ownerConnectData.stripe_connect_account_id
         : null;
 
