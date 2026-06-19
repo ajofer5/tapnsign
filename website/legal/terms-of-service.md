@@ -1,9 +1,9 @@
 # Terms of Service
 
 **Effective Date:** April 19, 2026
-**Last Updated:** June 2, 2026 (rev. 10)
+**Last Updated:** June 17, 2026 (rev. 10)
 
-These Terms of Service ("Terms") govern your use of the Ophinia mobile application (the "App") and related website experiences, including Ophinia.com (the "Website"), operated by Ophinia ("Ophinia," "we," "us," or "our"). By creating an account or using the App or Website, you agree to these Terms.
+These Terms of Service ("Terms") govern your use of the Ophinia mobile application (the "App") and related website experiences, including Ophinia.com (the "Website"), operated by TAPNSIGN LLC d/b/a Ophinia ("Ophinia," "we," "us," or "our"), an Indiana limited liability company. By creating an account or using the App or Website, you agree to these Terms.
 
 ---
 
@@ -13,9 +13,9 @@ You must be at least 13 years old to create an account and use collector-facing 
 
 The App and Website are not intended for children under 13. We do not knowingly permit children under 13 to register. If we become aware that a child under 13 has created an account, we may terminate that account.
 
-Certain features are restricted to adults age 18 or older. Users who are at least 13 but under 18 may browse, save, view, and share content, but may not mint or capture autographs, complete creator verification, sell, buy, make offers, order prints, or access other paid or payout-related activities.
+Certain features are restricted to adults age 18 or older. Users who are at least 13 but under 18 may browse, save, view, share, and report content where available, but may be restricted from capturing moments, enabling payouts, using creator monetization features, or accessing purchase and paid features.
 
-If we determine that a user has provided false age information, we may immediately terminate that account, reverse any transactions completed in violation of these eligibility requirements, and take any other action reasonably necessary to protect the platform and other users.
+If we determine that a user has provided false age information, we may terminate that account, reverse transactions completed in violation of these eligibility requirements where possible, and take other action reasonably necessary to protect the platform and other users.
 
 ---
 
@@ -32,83 +32,79 @@ If we determine that a user has provided false age information, we may immediate
 
 ## 3. The Ophinia Platform
 
-Ophinia is a platform that allows eligible adult users to capture and digitally sign autographs, and allows collectors to discover, purchase, own, offer on, and share those autographs. Some creators may also complete an optional identity-verification process offered by Ophinia. Autographs may include captured media, signature strokes, template styling, thumbnail imagery, and related metadata. Each autograph is associated with a Certificate of Authenticity ("CoA") and ownership history maintained on the platform.
+Ophinia is a platform that allows eligible users to capture authenticated moments, create related digital autograph records, share certificates of authenticity, and make official physical prints available where supported. Collectors can discover, save, share, request, and order official prints of eligible moments.
+
+Authenticated moments may include captured media, signature strokes, template styling, thumbnail imagery, print preview imagery, and related metadata. Each authenticated moment may be associated with a Certificate of Authenticity ("CoA") and provenance records maintained on the platform.
 
 ---
 
-## 4. Creator Verification
+## 4. Creator Eligibility and Payout Setup
 
-Creator verification is an optional identity-verification process that eligible adult users may complete to receive verified status on the platform. Creator verification currently requires:
+Adult users may be eligible to capture moments and use creator features. To enable public prints, receive creator earnings, or use payout-related features, creators may be required to complete payout setup through Stripe Connect. Stripe Connect may require identity, tax, business, bank account, and other compliance information.
 
-- A one-time identity verification fee charged via our Website, as shown at checkout. Promotional codes may be available at checkout
-- Identity verification through Stripe Identity, which requires a government-issued ID
+Ophinia may also require additional identity review, manual review, or documentation in limited cases, including high-profile accounts, impersonation concerns, fraud concerns, policy violations, or other trust and safety reasons.
 
-Creator verification is not required to create an account. However, only users who meet Ophinia's age and eligibility requirements may access creator and paid features. The verification fee is non-refundable except in cases of verified technical error. By submitting to verification, you consent to Stripe's collection and processing of your identity information under Stripe's terms and privacy policy.
-
-We may approve, deny, suspend, or revoke creator verification at our discretion, including for policy violations, fraud concerns, inaccurate information, or trust and safety reasons.
+We may approve, deny, suspend, or revoke access to creator, print, or payout features at our discretion, including for policy violations, fraud concerns, inaccurate information, or trust and safety reasons.
 
 ---
 
-## 5. Autograph Ownership and Transfers
+## 5. Authenticated Records and Provenance
 
-- When you purchase an autograph, ownership is recorded on the platform
-- Ownership transfers are final once payment is completed and the transfer is recorded
-- We maintain CoA and provenance records as the authoritative platform record of ownership
-- We are not responsible for off-platform transactions or promises made outside the App or Website
+- Ophinia may maintain records of captured moments, creator identity, timestamps, certificates, public profile information, print availability, and related provenance
+- A physical print purchase does not transfer copyright, trademark rights, publicity rights, digital ownership, commercial rights, or any right to reproduce the underlying content
+- Certificates of Authenticity and QR destinations are platform records intended to help verify the source and history of an authenticated moment or official print
+- We are not responsible for off-platform transactions, promises, reproductions, or claims made outside the App or Website
 
 ---
 
-## 6. Offers and Personalized Requests
+## 6. Feature Availability
 
-Ophinia allows users to make offers on eligible autographs and to purchase personalized-request experiences where available.
-
-- Submitting an offer is non-binding until the seller accepts it
-- If an offer is accepted, payment must be completed within the required timeframe or the transaction may be canceled
-- Sellers are not obligated to accept any offer
-- We may automatically cancel expired offers or offers that are not paid in time
-- Personalized-request purchases are subject to the creator's availability and the product details shown at checkout
+Some creator, print, checkout, payout, identity-review, and account features may be limited, unavailable, or changed from time to time. We may add, remove, pause, or modify features where needed for launch readiness, operational reasons, policy compliance, safety, fraud prevention, or product changes.
 
 ---
 
 ## 7. Payments and Fees
 
-- Purchases, creator verification fees, personalized-request payments, accepted-offer payments, and official print purchases are processed through Stripe on our Website
-- You may be directed from the App into a browser-based checkout or account flow to complete certain transactions
-- Prices are listed in U.S. dollars unless otherwise stated
-- Platform fees, shipping charges, taxes, and other charges may be shown separately at checkout
+- Purchases, official print purchases, shipping charges, taxes, and other charges are processed through Stripe or another payment provider
+- You may be directed from the App into a browser-based checkout, account, identity-review, or payout flow to complete certain transactions
+- Prices, fees, shipping charges, taxes, discounts, and payout terms are shown before purchase, submission, or payout setup and may change from time to time
 - Except where required by law or expressly stated in these Terms, payments are final
+
+### 7.1 Creator Earnings and Payouts
+
+Creators may be eligible to receive earnings from official print sales or other creator monetization features where supported. Creator earnings, payout timing, payout eligibility, payout minimums, payout methods, and related requirements are shown in the App, Website, or payout setup flow and may change from time to time.
+
+Creator earnings are subject to adjustment, withholding, reversal, or offset if an order is refunded, disputed, charged back, canceled, found to be fraudulent, not fulfilled, or otherwise violates Ophinia policies. Ophinia may deduct such amounts from current or future creator earnings where permitted by law.
+
+Creator payouts require an active and eligible payout account. If a creator has not completed payout setup, loses payout eligibility, is suspended, or has unresolved compliance requirements, Ophinia may hold eligible earnings until the issue is resolved or take other action permitted by these Terms and applicable law.
 
 ---
 
 ## 8. Official Prints
 
-Ophinia offers an official print product ("Official Print") that allows eligible users to order a physical print based on an autograph.
+Ophinia offers an official print product ("Official Print") that allows eligible users to order a physical print based on an authenticated moment.
 
 ### 8.1 Product Format
 
-Official Prints are currently offered in an **8×10** format. Pricing, shipping charges, and availability are shown at the time of order and may change from time to time.
+Official Print format, pricing, shipping charges, taxes, availability, and discounts are shown at the time of order and may change from time to time.
 
 ### 8.2 Print Records
 
-Each approved print order receives a platform print record and may receive an internal print sequence number for tracking, fulfillment, support, and marketplace analytics. Internal print numbering, availability, and ordering rules are controlled by Ophinia and may change as the product evolves.
+Each approved print order receives a platform print record and may receive an internal print sequence number for tracking, fulfillment, support, and analytics. Internal print numbering, availability, and ordering rules are controlled by Ophinia and may change as the product evolves.
 
 ### 8.3 Fulfillment
 
 Official Prints are fulfilled by third-party fulfillment partners. We are not responsible for carrier delays, shipping interruptions, customs issues, or production issues caused by third-party vendors, although we may assist in resolving them where reasonably possible. Availability may be limited by destination, fulfillment coverage, or operational constraints.
 
-### 8.4 No Digital Download
+### 8.4 Print Previews and No Digital Download
 
-Print files are not sold as downloadable assets. Official Prints are for personal display and collection only. Unauthorized reproduction, resale of print files, or other misuse of the print product is prohibited.
+Print previews are provided for review and may differ slightly from final production because of screen display, crop, printer, material, or fulfillment differences. Print files are not sold as downloadable assets. Official Prints are for personal display and collection only. Unauthorized reproduction, resale of print files, or other misuse of the print product is prohibited.
 
-### 8.5 Damage Claims and Reprints
+### 8.5 Damage, Lost Prints, and Reprints
 
-If your print arrives damaged, you may submit a damage claim through the App. The claim process may require:
+If your print arrives damaged or does not arrive, you may submit a claim through the App or by contacting support. The claim process may require photos, order information, shipping information, and, for damaged prints, proof that the damaged print has been destroyed before a replacement or reprint is authorized.
 
-1. A photo of the front of the damaged print, including the QR code where applicable
-2. A photo of the back of the damaged print, including any required production information
-3. If your claim is approved, a destruction confirmation photo before a replacement or reprint is authorized
-
-We may approve or deny damage claims at our discretion, including where a claim cannot be verified or appears fraudulent. Approved claims may result in a replacement, reprint authorization, refund, or other resolution determined by Ophinia.
+We may approve or deny claims at our discretion, including where a claim cannot be verified or appears fraudulent. Approved claims may result in a replacement, reprint authorization, refund, or other resolution determined by Ophinia.
 
 ### 8.6 Print Refunds
 
@@ -118,17 +114,17 @@ Official Print payments are generally non-refundable except where required by la
 
 ## 9. Content Standards
 
-All content uploaded to or displayed on Ophinia, including autograph content, profile photos, usernames, biographies, personalized-request text, and other associated materials, must be appropriate for a general audience. By uploading or submitting content, you represent and warrant that it:
+All content uploaded to, submitted through, or displayed on Ophinia, including captured moments, signature strokes, profile photos, usernames, biographies, support materials, and other associated materials, must be appropriate for a general audience. By uploading or submitting content, you represent and warrant that it:
 
 - Does not contain nudity, sexual content, or graphic violence
 - Does not depict, promote, or glorify illegal activity
 - Does not target, harass, threaten, or demean any individual or group
-- Does not infringe any third-party intellectual property or publicity rights
-- Does not contain defamatory, obscene, hateful, or misleading material
+- Does not infringe any third-party intellectual property, trademark, copyright, privacy, or publicity rights
+- Does not contain defamatory, obscene, hateful, exploitative, unsafe, or misleading material
 
-Public-facing content, including profile pages, certificate pages, QR destinations, shared links, and public listings, is subject to the same standards.
+Public-facing content, including profile pages, certificate pages, QR destinations, shared links, public moments, and print-enabled moments, is subject to the same standards.
 
-We may remove content or restrict accounts that violate these standards.
+We may remove content, deny print fulfillment, cancel requests, restrict accounts, or take other action that we determine is appropriate for violations of these standards.
 
 ---
 
@@ -140,9 +136,9 @@ You agree not to:
 - Impersonate any person or entity or misrepresent your affiliation
 - Attempt to gain unauthorized access to the App, Website, or supporting infrastructure
 - Scrape, crawl, extract, or use automated means to access the platform without permission
-- Manipulate prices, payments, recommendation systems, or platform signals
-- Engage in fraudulent transactions or submit false damage claims
-- Capture, upload, or sell autographs of another person without authorization
+- Manipulate prices, payments, checkout flows, recommendation systems, or platform signals
+- Engage in fraudulent transactions or submit false damage or lost-print claims
+- Capture, upload, or monetize content of another person without authorization
 - Misuse public certificate pages, profile links, or QR flows
 - Reproduce, distribute, or sell official print files or other Ophinia intellectual property without authorization
 
@@ -150,8 +146,8 @@ You agree not to:
 
 ## 11. Intellectual Property
 
-- **Your content:** You retain ownership of content you lawfully create and upload. By uploading content, you grant us a non-exclusive, worldwide, royalty-free license to host, store, display, reproduce, process, and deliver that content as necessary to operate, promote, secure, and improve the App and Website
-- **Our content:** The Ophinia name, brand assets, product design, software, and related materials are owned by Ophinia or its licensors
+- **Your content:** You retain ownership of content you lawfully create and upload. By uploading content, you grant us a non-exclusive, worldwide, royalty-free license to host, store, display, reproduce, process, print, fulfill, promote, secure, and improve the App and Website
+- **Our content:** The Ophinia name, brand assets, product design, software, and related materials are owned by TAPNSIGN LLC or its licensors
 - **Print content:** Official Prints are licensed for personal display and collection only unless we explicitly state otherwise
 
 ---
@@ -161,11 +157,11 @@ You agree not to:
 You may delete your account through the App. Upon deletion:
 
 - Your profile information may be deleted or anonymized
-- Your active listings may be removed
+- Public content may be removed, anonymized, or retained where needed to preserve authenticity records, transaction records, or platform integrity
 - Certain pending activity may be canceled
-- Some records, including completed transaction history, verification history, certificate records, print records, and fraud-prevention data, may be retained as described in our Privacy Policy
+- Some records, including completed transaction history, verification history, certificate records, print records, support records, and fraud-prevention data, may be retained as described in our Privacy Policy
 
-Deletion is irreversible except where restoration is legally required or technically necessary to resolve a security or fraud issue.
+Deletion is irreversible except where restoration is legally required or technically necessary to resolve a security, fraud, fulfillment, or support issue.
 
 ---
 
@@ -176,22 +172,22 @@ THE APP AND WEBSITE ARE PROVIDED "AS IS" AND "AS AVAILABLE" WITHOUT WARRANTIES O
 We do not guarantee that:
 - The App or Website will be uninterrupted, secure, or error-free
 - Any defects will be corrected
-- Any listing, offer, recommendation, or checkout experience will always be available
+- Any public profile, certificate, print preview, checkout experience, or creator feature will always be available
 - Any print order will be fulfilled within a specific timeframe
 
 ---
 
 ## 14. Limitation of Liability
 
-TO THE FULLEST EXTENT PERMITTED BY LAW, OPHINIA SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, EXEMPLARY, OR PUNITIVE DAMAGES, OR FOR ANY LOSS OF PROFITS, DATA, GOODWILL, OR OTHER INTANGIBLE LOSSES, ARISING OUT OF OR RELATED TO YOUR USE OF THE APP OR WEBSITE.
+TO THE FULLEST EXTENT PERMITTED BY LAW, TAPNSIGN LLC SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, EXEMPLARY, OR PUNITIVE DAMAGES, OR FOR ANY LOSS OF PROFITS, DATA, GOODWILL, OR OTHER INTANGIBLE LOSSES, ARISING OUT OF OR RELATED TO YOUR USE OF THE APP OR WEBSITE.
 
-TO THE FULLEST EXTENT PERMITTED BY LAW, OUR TOTAL LIABILITY TO YOU FOR ANY CLAIM ARISING OUT OF OR RELATING TO THE APP, WEBSITE, OR THESE TERMS WILL NOT EXCEED THE GREATER OF (A) THE AMOUNT YOU PAID TO OPHINIA IN THE 12 MONTHS BEFORE THE CLAIM AROSE OR (B) $100.
+TO THE FULLEST EXTENT PERMITTED BY LAW, OUR TOTAL LIABILITY TO YOU FOR ANY CLAIM ARISING OUT OF OR RELATING TO THE APP, WEBSITE, OR THESE TERMS WILL NOT EXCEED THE AMOUNT YOU PAID TO US FOR THE SERVICE GIVING RISE TO THE CLAIM DURING THE PERIOD BEFORE THE CLAIM AROSE, EXCEPT WHERE A DIFFERENT LIMIT IS REQUIRED BY LAW.
 
 ---
 
 ## 15. Indemnification
 
-You agree to indemnify, defend, and hold harmless Ophinia and its members, officers, employees, contractors, agents, and licensors from and against any claims, liabilities, damages, losses, costs, and expenses (including reasonable attorneys' fees) arising out of or related to your content, your use of the App or Website, your transactions, or your violation of these Terms or any third-party rights.
+You agree to indemnify, defend, and hold harmless TAPNSIGN LLC and its members, officers, employees, contractors, agents, and licensors from and against any claims, liabilities, damages, losses, costs, and expenses (including reasonable attorneys' fees) arising out of or related to your content, your use of the App or Website, your transactions, or your violation of these Terms or any third-party rights.
 
 ---
 
