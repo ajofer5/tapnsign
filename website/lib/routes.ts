@@ -13,6 +13,7 @@ export const webRoutes = {
   logout: '/logout',
   privacy: '/privacy',
   terms: '/terms',
+  support: '/support',
   identity: '/identity',
   identityStart: '/identity/start',
   identitySuccess: '/identity/success',

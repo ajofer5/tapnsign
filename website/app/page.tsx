@@ -58,8 +58,8 @@ export default function HomePage() {
             Create authenticated memorabilia, grow fan engagement, and earn from every print sold.
           </p>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <SquareCard text="Identity verification through Stripe Identity." />
-            <SquareCard text="Capture a personalized autograph in seconds." />
+            <SquareCard text="Payout setup through Stripe Connect." />
+            <SquareCard text="Capture authenticated moments in seconds." />
             <SquareCard text="Securely store the digital rights to your moments." />
             <SquareCard text="Certificate of authenticity tied to every moment." />
           </div>
@@ -89,7 +89,7 @@ export default function HomePage() {
           Ready to browse?
         </h2>
         <p className="mb-10 text-lg text-gray-600">
-          Explore verified autographs on the web, then use the app to create new autographs.
+          Explore official prints on the web, then use the app to capture new moments.
         </p>
         <div className="flex flex-wrap items-center justify-center gap-3">
           <Link
@@ -116,6 +116,9 @@ export default function HomePage() {
             </Link>
             <Link href={webRoutes.terms} className="transition-colors hover:text-black">
               Terms of Service
+            </Link>
+            <Link href={webRoutes.support} className="transition-colors hover:text-black">
+              Support
             </Link>
             <a href="mailto:hello@ophinia.com" className="transition-colors hover:text-black">
               Contact

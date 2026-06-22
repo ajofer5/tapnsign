@@ -30,6 +30,7 @@ export default function PrivacyPage() {
       </div>
       <footer className="border-t border-gray-200 py-8 px-6 text-center text-sm text-gray-500">
         <Link href="/terms" className="hover:underline mr-4">Terms of Service</Link>
+        <Link href="/support" className="hover:underline mr-4">Support</Link>
         <Link href="/" className="hover:underline">Home</Link>
       </footer>
     </main>
