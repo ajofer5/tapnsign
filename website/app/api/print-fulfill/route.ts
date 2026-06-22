@@ -36,6 +36,16 @@ function getProdigiUrl() {
     : 'https://api.prodigi.com/v4.0/Orders';
 }
 
+async function readJsonResponse(response: Response) {
+  const text = await response.text();
+  if (!text.trim()) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { raw: text };
+  }
+}
+
 async function retrieveStripeCheckoutSession(sessionId: string) {
   const response = await fetch(
     `https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(sessionId)}?expand[]=payment_intent&expand[]=payment_intent.latest_charge`,
@@ -44,8 +54,10 @@ async function retrieveStripeCheckoutSession(sessionId: string) {
       cache: 'no-store',
     }
   );
-  const data = await response.json();
-  if (!response.ok) throw new Error(data?.error?.message ?? 'Stripe session retrieval failed');
+  const data = await readJsonResponse(response);
+  if (!response.ok) {
+    throw new Error(data?.error?.message ?? data?.raw ?? `Stripe session retrieval failed (${response.status})`);
+  }
   return data;
 }
 
@@ -219,9 +231,9 @@ async function submitProdigiOrder(params: {
     }),
   });
 
-  const data = await response.json();
+  const data = await readJsonResponse(response);
   if (!response.ok) {
-    const msg = data?.detail ?? data?.title ?? JSON.stringify(data);
+    const msg = data?.detail ?? data?.title ?? data?.message ?? data?.raw ?? JSON.stringify(data);
     throw new Error(`Prodigi error (${response.status}): ${msg}`);
   }
 
@@ -368,7 +380,8 @@ export async function POST(request: NextRequest) {
     const payoutOwnerId = typeof order.owner_id === 'string' ? order.owner_id : null;
     const primaryAutographId = orderAutographIds[0] ?? order.autograph_id;
     if (ownerPayoutCents > 0 && payoutOwnerId && primaryAutographId) {
-      await supabase
+      const eligibleAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
+      const { error: ledgerError } = await supabase
         .from('royalties_ledger')
         .upsert(
           {
@@ -378,9 +391,16 @@ export async function POST(request: NextRequest) {
             autograph_id: primaryAutographId,
             print_royalty_cents_snapshot: Math.round(ownerPayoutCents / Math.max(1, orderAutographIds.length)),
             royalty_amount_cents: ownerPayoutCents,
+            eligible_at: eligibleAt,
           },
           { onConflict: 'web_print_order_id,creator_id,royalty_type', ignoreDuplicates: true }
         );
+      if (ledgerError) {
+        await sendAdminAlert(
+          'Royalty ledger insert failed — web print order',
+          `Order ID: ${orderId}\nOwner: ${payoutOwnerId}\nAmount: $${(ownerPayoutCents / 100).toFixed(2)}\nError: ${ledgerError.message}\n\nThe order was submitted to Prodigi successfully but the creator royalty was NOT recorded. Manual ledger entry required.`
+        );
+      }
     }
 
     const momentLabel = orderAutographIds.length > 1

@@ -31,6 +31,16 @@ function getStripeSecretKey() {
   return value;
 }
 
+async function readJsonResponse(response: Response) {
+  const text = await response.text();
+  if (!text.trim()) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { raw: text };
+  }
+}
+
 async function stripePost<T>(path: string, form: Record<string, string>): Promise<T> {
   const response = await fetch(`https://api.stripe.com/v1${path}`, {
     method: 'POST',
@@ -41,8 +51,8 @@ async function stripePost<T>(path: string, form: Record<string, string>): Promis
     body: new URLSearchParams(form).toString(),
     cache: 'no-store',
   });
-  const data = await response.json();
-  if (!response.ok) throw new Error(data?.error?.message ?? `Stripe error (${response.status})`);
+  const data = await readJsonResponse(response);
+  if (!response.ok) throw new Error(data?.error?.message ?? data?.raw ?? `Stripe error (${response.status})`);
   return data as T;
 }
 
