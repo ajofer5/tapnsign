@@ -314,9 +314,9 @@ const styles = StyleSheet.create({
     borderRadius: 21,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(0, 27, 92, 0.62)',
+    backgroundColor: 'rgba(0, 27, 92, 0.33)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.72)',
+    borderColor: 'rgba(255,255,255,0.33)',
   },
   playOverlayTriangle: {
     marginLeft: 3,
@@ -327,6 +327,6 @@ const styles = StyleSheet.create({
     borderLeftWidth: 12,
     borderTopColor: 'transparent',
     borderBottomColor: 'transparent',
-    borderLeftColor: '#fff',
+    borderLeftColor: 'rgba(255,255,255,0.72)',
   },
 });
