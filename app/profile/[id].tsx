@@ -52,6 +52,8 @@ type Listing = {
   is_for_sale: boolean;
   price_cents: number | null;
   thumbnail_url: string | null;
+  print_layout_url?: string | null;
+  print_preview_url?: string | null;
   video_url?: string | null;
   preview_frame_urls?: string[] | null;
   preview_frame_times_ms?: number[] | null;
@@ -408,7 +410,10 @@ export default function ProfileScreen() {
         shipping_zip: addr.zip,
       });
 
-      Alert.alert('Print Order Placed!', "Your official print is on its way. You'll receive a shipping confirmation from our print partner.");
+      Alert.alert(
+        'Print Order Placed!',
+        "Your official print order has been submitted for production. You'll receive an Ophinia shipping email with tracking once your order ships."
+      );
       closePrintPreview();
     } catch (error) {
       Alert.alert('Print Order Failed', error instanceof Error ? error.message : 'Could not place your print order. Please try again.');
@@ -1180,12 +1185,16 @@ export default function ProfileScreen() {
           creatorSequenceNumber: printItem.creator_sequence_number ?? null,
           createdAt: printItem.created_at,
           seriesName: printItem.series_name ?? null,
+          printPreviewUrl: printItem.print_preview_url ?? printItem.print_layout_url ?? null,
+          thumbnailUrl: printItem.thumbnail_url,
         } : null}
         printItems={selectedPrintItems.length > 1 ? selectedPrintItems.map((item) => ({
           creatorName: item.creator_name,
           creatorSequenceNumber: item.creator_sequence_number ?? null,
           createdAt: item.created_at,
           seriesName: item.series_name ?? null,
+          printPreviewUrl: item.print_preview_url ?? item.print_layout_url ?? null,
+          thumbnailUrl: item.thumbnail_url,
         })) : undefined}
         printPreview={printPreview}
         printStep={printStep}

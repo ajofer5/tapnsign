@@ -14,6 +14,8 @@ type PrintItem = {
   creatorSequenceNumber: number | null;
   createdAt: string;
   seriesName: string | null;
+  printPreviewUrl?: string | null;
+  thumbnailUrl?: string | null;
 };
 
 const MAX_QUANTITY = 5;
@@ -100,26 +102,68 @@ export function AutographPrintModal({
                   <Text style={styles.certTitle}>{isBundle ? 'Print Selected Moments' : 'Print Moment'}</Text>
                   <Text style={styles.previewLabel}>{isBundle ? `${selectedPrintItems.length} selected prints` : 'Print layout preview'}</Text>
 
-                  <View style={[styles.previewFrame, { width: previewCardWidth }]}>
-                    {currentUrl ? (
-                      <Image
-                        source={{ uri: currentUrl }}
-                        style={[styles.printPreviewImage, { width: previewImageWidth, aspectRatio: 5/4 }]}
-                        resizeMode="cover"
-                        onError={(event) => {
-                          console.warn('[AutographPrintModal] print preview image failed to load', {
-                            url: currentUrl,
-                            error: event.nativeEvent.error,
-                          });
-                          setUrlFallbackIndex(prev => prev + 1);
-                        }}
-                      />
-                    ) : (
-                      <View style={[styles.printPreviewLoadingPanel, { width: previewImageWidth, aspectRatio: 5/4 }]}>
-                        <ActivityIndicator color="#001B5C" />
-                      </View>
-                    )}
-                  </View>
+                  {isBundle ? (
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.bundlePreviewStrip}
+                    >
+                      {selectedPrintItems.map((item, index) => {
+                        const imageUrl = index === 0
+                          ? currentUrl ?? item.printPreviewUrl ?? item.thumbnailUrl ?? null
+                          : item.printPreviewUrl ?? item.thumbnailUrl ?? null;
+                        return (
+                          <View key={`${item.creatorSequenceNumber ?? index}-${item.createdAt}`} style={styles.bundlePreviewCard}>
+                            <View style={styles.bundlePreviewImageWrap}>
+                              {imageUrl ? (
+                                <Image
+                                  source={{ uri: imageUrl }}
+                                  style={styles.bundlePreviewImage}
+                                  resizeMode="contain"
+                                />
+                              ) : (
+                                <View style={styles.bundlePreviewFallback}>
+                                  <Text style={styles.bundlePreviewFallbackText}>Ophinia</Text>
+                                </View>
+                              )}
+                              <View style={styles.bundlePreviewBadge}>
+                                <Text style={styles.bundlePreviewBadgeText}>{index + 1}</Text>
+                              </View>
+                            </View>
+                            <Text style={styles.bundlePreviewTitle} numberOfLines={1}>
+                              {item.creatorSequenceNumber != null ? `#${item.creatorSequenceNumber}` : `Print ${index + 1}`}
+                            </Text>
+                            {item.seriesName ? (
+                              <Text style={styles.bundlePreviewSubtitle} numberOfLines={1}>{item.seriesName}</Text>
+                            ) : (
+                              <Text style={styles.bundlePreviewSubtitle} numberOfLines={1}> </Text>
+                            )}
+                          </View>
+                        );
+                      })}
+                    </ScrollView>
+                  ) : (
+                    <View style={[styles.previewFrame, { width: previewCardWidth }]}>
+                      {currentUrl ? (
+                        <Image
+                          source={{ uri: currentUrl }}
+                          style={[styles.printPreviewImage, { width: previewImageWidth, aspectRatio: 5/4 }]}
+                          resizeMode="cover"
+                          onError={(event) => {
+                            console.warn('[AutographPrintModal] print preview image failed to load', {
+                              url: currentUrl,
+                              error: event.nativeEvent.error,
+                            });
+                            setUrlFallbackIndex(prev => prev + 1);
+                          }}
+                        />
+                      ) : (
+                        <View style={[styles.printPreviewLoadingPanel, { width: previewImageWidth, aspectRatio: 5/4 }]}>
+                          <ActivityIndicator color="#001B5C" />
+                        </View>
+                      )}
+                    </View>
+                  )}
 
                   <Text style={styles.printInfoText}>
                     {loadingPrintPreview
@@ -132,16 +176,7 @@ export function AutographPrintModal({
                     <ActivityIndicator color="#111" style={{ marginTop: 12 }} />
                   ) : null}
 
-                  {isBundle ? (
-                    <View style={styles.bundleList}>
-                      {selectedPrintItems.map((item, index) => (
-                        <Text key={`${item.creatorSequenceNumber ?? index}-${item.createdAt}`} style={styles.bundleListItem} numberOfLines={1}>
-                          {item.creatorSequenceNumber != null ? `#${item.creatorSequenceNumber}` : `Print ${index + 1}`}
-                          {item.seriesName ? ` · ${item.seriesName}` : ''}
-                        </Text>
-                      ))}
-                    </View>
-                  ) : (
+                  {!isBundle ? (
                     <View style={styles.quantityRow}>
                       <Pressable
                         style={[styles.qtyButton, quantity <= 1 && styles.qtyButtonDisabled]}
@@ -157,7 +192,7 @@ export function AutographPrintModal({
                         <Text style={styles.qtyButtonText}>+</Text>
                       </Pressable>
                     </View>
-                  )}
+                  ) : null}
                   {isOnSale && (
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 }}>
                       <View style={{ backgroundColor: '#FEE2E2', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 }}>
@@ -374,22 +409,70 @@ const styles = StyleSheet.create({
     minWidth: 24,
     textAlign: 'center',
   },
-  bundleList: {
+  bundlePreviewStrip: {
     width: '100%',
-    maxWidth: 320,
-    marginTop: 18,
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+    gap: 10,
+  },
+  bundlePreviewCard: {
+    width: 112,
+  },
+  bundlePreviewImageWrap: {
+    width: 112,
+    aspectRatio: 4 / 5,
+    backgroundColor: '#fff',
     borderWidth: 1,
     borderColor: '#E4E0D8',
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    gap: 4,
+    overflow: 'hidden',
+    position: 'relative',
   },
-  bundleListItem: {
+  bundlePreviewImage: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#fff',
+  },
+  bundlePreviewFallback: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F4F1EA',
+  },
+  bundlePreviewFallbackText: {
+    color: BrandColors.primary,
+    fontSize: 12,
+    fontWeight: '700',
+    fontFamily: BrandFonts.primary,
+  },
+  bundlePreviewBadge: {
+    position: 'absolute',
+    top: 6,
+    left: 6,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0, 27, 92, 0.9)',
+  },
+  bundlePreviewBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '800',
+    fontFamily: BrandFonts.primary,
+  },
+  bundlePreviewTitle: {
+    marginTop: 7,
     fontSize: 13,
     color: '#333',
-    fontWeight: '600',
+    fontWeight: '700',
+    fontFamily: BrandFonts.primary,
+  },
+  bundlePreviewSubtitle: {
+    marginTop: 1,
+    fontSize: 11,
+    color: '#777',
+    fontWeight: '500',
     fontFamily: BrandFonts.primary,
   },
   priceLine: {
