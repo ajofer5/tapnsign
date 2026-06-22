@@ -15,6 +15,12 @@ type PreviewData = {
 type Props = {
   autographId: string;
   autographIds?: string[];
+  selectedPrints?: {
+    id: string;
+    imageUrl: string | null;
+    label: string;
+    subtitle?: string | null;
+  }[];
   bundleTitle?: string;
   onClose: () => void;
 };
@@ -23,9 +29,10 @@ function formatMoney(cents: number) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
 }
 
-export function PrintCheckoutModal({ autographId, autographIds, bundleTitle, onClose }: Props) {
+export function PrintCheckoutModal({ autographId, autographIds, selectedPrints, bundleTitle, onClose }: Props) {
   const selectedAutographIds = autographIds?.length ? autographIds : [autographId];
   const isBundle = selectedAutographIds.length > 1;
+  const selectedPrintPreviews = selectedPrints?.length ? selectedPrints : [];
   const [preview, setPreview] = useState<PreviewData | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
@@ -116,21 +123,58 @@ export function PrintCheckoutModal({ autographId, autographIds, bundleTitle, onC
 
           {preview && (
             <>
-              {/* Full-width print preview image with watermark */}
-              <div className="relative overflow-hidden rounded-lg bg-[#151718]">
-                {preview.thumbnail_url ? (
-                  <img
-                    src={preview.thumbnail_url}
-                    alt={preview.creator_name}
-                    className="block w-full h-auto"
-                    draggable={false}
-                  />
-                ) : (
-                  <div className="flex aspect-[4/5] items-center justify-center text-[9px] font-bold uppercase tracking-widest text-white/40">
-                    Ophinia
+              {isBundle && selectedPrintPreviews.length > 0 ? (
+                <div>
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400">
+                      Selected Prints
+                    </p>
+                    <p className="text-xs font-semibold text-gray-500">{selectedPrintPreviews.length} total</p>
                   </div>
-                )}
-              </div>
+                  <div className="flex gap-3 overflow-x-auto pb-1">
+                    {selectedPrintPreviews.map((item, index) => (
+                      <div key={item.id} className="w-28 shrink-0">
+                        <div className="relative overflow-hidden rounded-lg bg-[#151718]">
+                          {item.imageUrl ? (
+                            <img
+                              src={item.imageUrl}
+                              alt={item.label}
+                              className="block aspect-[4/5] w-full object-contain"
+                              draggable={false}
+                            />
+                          ) : (
+                            <div className="flex aspect-[4/5] items-center justify-center text-[8px] font-bold uppercase tracking-widest text-white/40">
+                              Ophinia
+                            </div>
+                          )}
+                          <div className="absolute left-2 top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-black/65 px-1.5 text-[10px] font-black text-white">
+                            {index + 1}
+                          </div>
+                        </div>
+                        <p className="mt-1 line-clamp-1 text-[11px] font-semibold text-black">{item.label}</p>
+                        {item.subtitle ? (
+                          <p className="line-clamp-1 text-[10px] text-gray-500">{item.subtitle}</p>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="relative overflow-hidden rounded-lg bg-[#151718]">
+                  {preview.thumbnail_url ? (
+                    <img
+                      src={preview.thumbnail_url}
+                      alt={preview.creator_name}
+                      className="block w-full h-auto"
+                      draggable={false}
+                    />
+                  ) : (
+                    <div className="flex aspect-[4/5] items-center justify-center text-[9px] font-bold uppercase tracking-widest text-white/40">
+                      Ophinia
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Creator info + quantity */}
               <div className="mt-4 flex items-start justify-between gap-3">

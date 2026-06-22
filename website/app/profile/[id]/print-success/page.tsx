@@ -57,7 +57,7 @@ export default async function PrintSuccessPage({
             </div>
             <h1 className="text-3xl font-black tracking-tight text-black">Order Confirmed</h1>
             <p className="mt-4 text-base leading-7 text-gray-600">
-              Your official 8×10 print is on its way. You'll receive a shipping confirmation from our print partner once your order ships.
+              Your official 8×10 print has been submitted for production. You’ll receive an Ophinia shipping email with tracking once your order ships.
             </p>
             <Link
               href={`/profile/${id}`}

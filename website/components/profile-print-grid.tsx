@@ -22,6 +22,22 @@ export function ProfilePrintGrid({
   const savedSet = useMemo(() => new Set(savedIds), [savedIds]);
   const selectedListings = listings.filter((listing) => selectedIds.includes(listing.id));
   const firstSelected = selectedListings[0] ?? null;
+  const selectedPrintPreviews = selectedListings.map((listing) => {
+    const sequenceLabel = listing.creator_sequence_number != null ? `#${listing.creator_sequence_number}` : 'Official Print';
+    const seriesLabel = [
+      listing.series_name,
+      listing.series_sequence_number != null && listing.series_max_size != null
+        ? `${listing.series_sequence_number} of ${listing.series_max_size}`
+        : null,
+    ].filter(Boolean).join(' · ');
+
+    return {
+      id: listing.id,
+      imageUrl: listing.print_preview_url ?? listing.thumbnail_url,
+      label: sequenceLabel,
+      subtitle: seriesLabel || null,
+    };
+  });
 
   function toggleSelection(listing: WebsiteListing) {
     setSelectedIds((current) => {
@@ -92,6 +108,7 @@ export function ProfilePrintGrid({
         <PrintCheckoutModal
           autographId={firstSelected.id}
           autographIds={selectedIds}
+          selectedPrints={selectedPrintPreviews}
           bundleTitle={`${selectedIds.length} selected prints`}
           onClose={() => setCheckoutOpen(false)}
         />
