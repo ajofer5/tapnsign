@@ -1,9 +1,9 @@
 # Privacy Policy
 
 **Effective Date:** April 19, 2026
-**Last Updated:** June 2, 2026 (rev. 5)
+**Last Updated:** June 22, 2026 (rev. 6)
 
-Ophinia ("Ophinia," "we," "us," or "our") operates the Ophinia mobile application (the "App") and related website experiences, including Ophinia.com (the "Website"). This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our App or Website.
+TAPNSIGN LLC d/b/a Ophinia ("Ophinia," "we," "us," or "our") operates the Ophinia mobile application (the "App") and related website experiences, including Ophinia.com (the "Website"). This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our App or Website.
 
 Please read this policy carefully. By using the App or Website, you agree to the collection and use of information in accordance with this policy.
 
@@ -12,29 +12,30 @@ Please read this policy carefully. By using the App or Website, you agree to the
 ## 1. Information We Collect
 
 ### Information You Provide
-- **Account information:** Display name, email address, password, sign-in credentials, date of birth information, and age-confirmation information when you register or connect a login method. If you create an account using a social sign-in method (Apple or Google), we collect your date of birth and age confirmation as part of completing your account setup before you can access the platform
-- **Profile information:** Profile photo, biography, personalized-request settings, and other optional profile fields
-- **Payment information:** Billing details processed through Stripe on our Website. We do not store your full card number
-- **Identity verification information:** If you apply for creator verification, identity information and government ID data are processed through Stripe Identity
-- **Shipping information:** If you order an official print, we collect your name and shipping address to fulfill that order
-- **Offer and request information:** Details you submit when making offers, accepting offers, or purchasing personalized requests
-- **Damage claim and reprint materials:** If you report shipping damage, we collect photos of the damaged print and, if applicable, a destruction confirmation photo
-- **Support communications:** Information you provide when contacting us for support or sending us questions or feedback
+- **Account information:** Display name, email address, password, sign-in credentials, date of birth information, and age-confirmation information when you register or connect a login method
+- **Profile information:** Profile photo, biography, and other optional profile fields
+- **Captured moment content:** Captured media, preview frames, thumbnails, digital signature strokes, template selections, and related metadata
+- **Payment information:** Billing details processed through Stripe. We do not store your full card number
+- **Payout and compliance information:** If you set up creator payouts, identity, tax, business, bank account, and payout information is processed through Stripe Connect
+- **Additional identity-review information:** If additional identity review is required, identity information or government ID data may be processed through Stripe Identity or another verification provider
+- **Shipping information:** If you order an official print, we collect your name, contact information, and shipping address to fulfill that order
+- **Damage claim and reprint materials:** If you report shipping damage or a lost print, we collect claim details, photos, and related support information
+- **Support, report, and moderation communications:** Information you provide when contacting us, reporting content, submitting feedback, or responding to a moderation request
 
 ### Information Collected Automatically
-- **Autograph content:** Captured autograph media, including preview frames, thumbnails, digital signature strokes, template selections, and related metadata. Some autographs may also include full video captures
-- **Usage data:** How you interact with the App or Website, including pages viewed, listings viewed, searches, watches, saves, offers, purchases, shares, and other engagement data. This includes interest events used to power marketplace recommendations
+- **Usage data:** How you interact with the App or Website, including pages viewed, public moments viewed, searches, saves, shares, print preview activity, purchases, and other engagement data
 - **Device and browser information:** Device type, operating system, browser type, app version, IP address, and unique device identifiers
 - **Push notification tokens:** If you enable notifications, we store a device token to deliver them
-- **Short-lived web handoff tokens:** When the App opens a Website session for checkout, account, or verification flows, a short-lived one-time token may be generated to authenticate that session
+- **Short-lived web handoff tokens:** When the App opens a Website session for checkout, account, identity-review, or payout flows, a short-lived one-time token may be generated to authenticate that session
 - **Public-link interactions:** We may collect technical and usage information relating to public certificate pages, QR scans, shared profile links, and other public Ophinia pages
 
 ### Information from Third Parties
-- **Stripe:** Payment, checkout, and identity verification data processed under Stripe's privacy policy
-- **Supabase:** Authentication, database, and storage services
-- **Expo:** Push notification delivery services
-- **Print fulfillment partners:** Shipping and fulfillment data required to produce and deliver official prints
-- **Social login providers:** If you sign in or connect Apple or Google, we receive the account information those providers make available to us
+- **Stripe:** Payment, checkout, Connect payout, and identity-review data processed under Stripe's terms and privacy policy
+- **Supabase:** Authentication, database, storage, and backend services
+- **Prodigi:** Print fulfillment and shipping information required to produce and deliver official prints
+- **Bunny.net:** CDN, media hosting, and print preview hosting services
+- **Resend:** Transactional email delivery services
+- **Expo, Apple, and Google:** App platform services, push notifications, and social login services where applicable
 
 ---
 
@@ -43,19 +44,18 @@ Please read this policy carefully. By using the App or Website, you agree to the
 We use the information we collect to:
 
 - Create and manage your account
-- Enforce age-based access restrictions and eligibility for creator, purchase, print, and other paid features
+- Enforce age-based access restrictions and eligibility for creator, purchase, print, payout, and other paid features
 - Authenticate you and support account recovery, login linking, and security
-- Process purchases, offers, creator verification fees, personalized requests, and official print orders
-- Capture, display, deliver, and transfer autograph ownership records
-- Fulfill official print orders and manage shipping, damage claims, and reprints
-- Generate and display Certificates of Authenticity and provenance records
-- Verify creator identity and maintain trust and safety on the platform
-- Operate public certificate pages, public profile pages, QR destinations, and shared links
-- Send push notifications, transactional emails, and account-related notices
-- Power marketplace recommendations and improve ranking, discovery, and personalization
+- Capture, process, display, and share authenticated moments
+- Generate and display Certificates of Authenticity, QR destinations, provenance records, and print previews
+- Process official print orders, damage claims, reprints, refunds, identity-review, and payouts
+- Fulfill official print orders and manage shipping and support
+- Maintain trust and safety on the platform, including age, payout, and identity-review eligibility where required
+- Operate public certificate pages, public profile pages, saved cards, saved creators, public moments, QR destinations, and shared links
+- Send push notifications, transactional emails, order updates, and account-related notices
 - Improve, maintain, monitor, and secure the App and Website
-- Respond to support requests
-- Detect, investigate, and prevent fraud, abuse, unauthorized access, and policy violations
+- Respond to support requests and reports
+- Detect, investigate, and prevent fraud, abuse, unauthorized access, unauthorized reproduction, and policy violations
 - Comply with legal obligations and enforce our agreements
 
 ---
@@ -64,24 +64,24 @@ We use the information we collect to:
 
 We do not sell your personal information. We may share your information in the following circumstances:
 
-- **Service providers:** Stripe, Supabase, Bunny CDN, Expo, print fulfillment partners, and other vendors who help us operate the App or Website
-- **Other users and the public:** Your display name, profile photo, public profile details, public autograph listings, creator verification status, and certificate pages may be visible to other users or the public depending on your settings and the product surface
-- **Transaction counterparties:** When needed to complete an autograph sale, offer, personalized request, or print order
-- **Legal requirements:** If required by law, court order, subpoena, or governmental authority
+- **Service providers:** Stripe, Supabase, Prodigi, Bunny.net, Resend, Expo, Apple, Google, and other vendors who help us operate the App or Website
+- **Other users and the public:** Your display name, profile photo, public profile details, public moments, saved or shared public content, and certificate pages may be visible to other users or the public depending on your settings and the product surface
+- **Print order counterparties:** When needed to complete or support an official print order
+- **Legal requirements:** If required by law, court order, subpoena, governmental authority, or to protect rights, safety, and security
 - **Business transfers:** In connection with a merger, acquisition, financing, reorganization, or sale of assets, with notice to you where required
 
 ---
 
 ## 4. Data Retention
 
-We retain your account information and autograph records for as long as your account remains active and for as long as needed to operate the platform, maintain authenticity records, resolve disputes, and prevent fraud.
+We retain your account information and authenticated moment records for as long as your account remains active and for as long as needed to operate the platform, maintain authenticity records, resolve disputes, and prevent fraud.
 
-If you delete your account, we will delete or anonymize personal information within a reasonable period, except where retention is required by law or for legitimate business purposes such as fraud prevention, transaction records, dispute resolution, chargeback defense, tax compliance, authenticity verification, or security.
+If you delete your account, we will delete or anonymize personal information within a reasonable period, except where retention is required by law or for legitimate business purposes such as fraud prevention, transaction records, dispute resolution, chargeback defense, tax compliance, authenticity verification, fulfillment support, or security.
 
 - **Date of birth information** is retained for the life of the account as part of your account record and for age eligibility enforcement purposes
 - **Print order records and damage claim photos** are retained for a minimum of 2 years
 - **Shipping addresses** are retained only as long as reasonably necessary to fulfill orders and resolve related disputes
-- **Interest and usage events used for recommendations** are generally retained for up to 12 months unless a longer period is reasonably required for security, fraud prevention, or service integrity
+- **Public certificates, authenticity records, and related provenance data** may be retained to preserve the integrity of authenticated records, even if certain profile information is deleted or anonymized
 
 ---
 
@@ -95,7 +95,7 @@ We use reasonable administrative, technical, and physical safeguards to protect 
 
 The App and Website are not directed to children under the age of 13, and we do not knowingly collect personal information from children under 13. If we learn that we have collected such information, we will delete it promptly. If you believe a child under 13 has provided us information, please contact us at hello@ophinia.com.
 
-Users who are at least 13 but under 18 may use collector-facing portions of Ophinia, such as browsing, saving, viewing, and sharing content, but certain features are restricted to adults. Users under 18 may not mint autographs, complete creator verification, sell, buy, make offers, order prints, or access other paid or payout-related activities.
+Users who are at least 13 but under 18 may use limited portions of Ophinia, such as browsing, saving, viewing, sharing, and reporting content, but certain features are restricted to adults. Identity review, payouts, creator monetization features, and some purchase or paid features may be limited to users who are 18 or older or who otherwise have appropriate legal authority or consent.
 
 ---
 
@@ -104,11 +104,10 @@ Users who are at least 13 but under 18 may use collector-facing portions of Ophi
 You may:
 
 - **Access or update** certain account and profile information through the App or Website
-- **Delete your account** through the App under Account → Delete Account or by contacting us
+- **Delete your account** through the App under Account -> Delete Account or by contacting us
 - **Opt out of push notifications** through your device settings
 - **Request a copy** of personal information we hold about you
 - **Request deletion of shipping information** after print fulfillment, subject to our retention obligations
-- **Request that we stop using interaction history for personalized recommendations** by contacting us
 
 To exercise these rights, contact us at hello@ophinia.com. We may need to verify your identity before completing certain requests.
 

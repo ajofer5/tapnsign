@@ -1,7 +1,7 @@
 # Terms of Service
 
 **Effective Date:** April 19, 2026
-**Last Updated:** June 17, 2026 (rev. 10)
+**Last Updated:** June 22, 2026 (rev. 12)
 
 These Terms of Service ("Terms") govern your use of the Ophinia mobile application (the "App") and related website experiences, including Ophinia.com (the "Website"), operated by TAPNSIGN LLC d/b/a Ophinia ("Ophinia," "we," "us," or "our"), an Indiana limited liability company. By creating an account or using the App or Website, you agree to these Terms.
 
@@ -32,7 +32,7 @@ If we determine that a user has provided false age information, we may terminate
 
 ## 3. The Ophinia Platform
 
-Ophinia is a platform that allows eligible users to capture authenticated moments, create related digital autograph records, share certificates of authenticity, and make official physical prints available where supported. Collectors can discover, save, share, request, and order official prints of eligible moments.
+Ophinia is a platform that allows eligible users to capture authenticated moments, create related digital autograph records, share certificates of authenticity, and make official physical prints available where supported. Collectors can discover, save, share, and order official prints of eligible moments where available.
 
 Authenticated moments may include captured media, signature strokes, template styling, thumbnail imagery, print preview imagery, and related metadata. Each authenticated moment may be associated with a Certificate of Authenticity ("CoA") and provenance records maintained on the platform.
 
@@ -65,7 +65,7 @@ Some creator, print, checkout, payout, identity-review, and account features may
 
 ## 7. Payments and Fees
 
-- Purchases, official print purchases, shipping charges, taxes, and other charges are processed through Stripe or another payment provider
+- Official print purchases, shipping charges, taxes, and other charges are processed through Stripe or another payment provider
 - You may be directed from the App into a browser-based checkout, account, identity-review, or payout flow to complete certain transactions
 - Prices, fees, shipping charges, taxes, discounts, and payout terms are shown before purchase, submission, or payout setup and may change from time to time
 - Except where required by law or expressly stated in these Terms, payments are final
@@ -104,7 +104,7 @@ Print previews are provided for review and may differ slightly from final produc
 
 If your print arrives damaged or does not arrive, you may submit a claim through the App or by contacting support. The claim process may require photos, order information, shipping information, and, for damaged prints, proof that the damaged print has been destroyed before a replacement or reprint is authorized.
 
-We may approve or deny claims at our discretion, including where a claim cannot be verified or appears fraudulent. Approved claims may result in a replacement, reprint authorization, refund, or other resolution determined by Ophinia.
+We may approve or deny claims at our discretion, including where a claim cannot be verified or appears fraudulent. Approved claims may result in a replacement, reprint authorization, refund, or other resolution determined by Ophinia. We may limit the number of active claims per account at any time to prevent abuse.
 
 ### 8.6 Print Refunds
 
@@ -124,7 +124,7 @@ All content uploaded to, submitted through, or displayed on Ophinia, including c
 
 Public-facing content, including profile pages, certificate pages, QR destinations, shared links, public moments, and print-enabled moments, is subject to the same standards.
 
-We may remove content, deny print fulfillment, cancel requests, restrict accounts, or take other action that we determine is appropriate for violations of these standards.
+We may remove content, deny print fulfillment, cancel orders, restrict accounts, or take other action that we determine is appropriate for violations of these standards.
 
 ---
 
@@ -159,7 +159,7 @@ You may delete your account through the App. Upon deletion:
 - Your profile information may be deleted or anonymized
 - Public content may be removed, anonymized, or retained where needed to preserve authenticity records, transaction records, or platform integrity
 - Certain pending activity may be canceled
-- Some records, including completed transaction history, verification history, certificate records, print records, support records, and fraud-prevention data, may be retained as described in our Privacy Policy
+- Some records, including completed transaction history, identity-review history, certificate records, print records, support records, and fraud-prevention data, may be retained as described in our Privacy Policy
 
 Deletion is irreversible except where restoration is legally required or technically necessary to resolve a security, fraud, fulfillment, or support issue.
 
