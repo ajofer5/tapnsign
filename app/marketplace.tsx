@@ -545,6 +545,7 @@ const feedListings = useMemo(() => activeListings, [activeListings]);
           captureHeight={item.captureHeight}
           strokeColor={item.strokeColor}
           shellStyle={styles.marketplaceThumbnail}
+          showPlayOverlay
         />
       </View>
         <View style={styles.marketplaceCardBody}>

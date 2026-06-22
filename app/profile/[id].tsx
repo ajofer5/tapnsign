@@ -788,6 +788,8 @@ export default function ProfileScreen() {
                         strokeColor={listing.stroke_color}
                         shellStyle={styles.profileListingThumbnail}
                         mode="flipbook-once"
+                        showPlayOverlay
+                        playOverlayTiming="after-playback"
                       />
                     ) : (
                       <View style={styles.thumbnailFallback}>

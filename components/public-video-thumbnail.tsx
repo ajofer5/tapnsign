@@ -103,6 +103,8 @@ type PublicVideoThumbnailProps = {
    */
   mode?: 'static' | 'flipbook-once' | 'flipbook-loop';
   overlayContent?: ReactNode;
+  showPlayOverlay?: boolean;
+  playOverlayTiming?: 'always' | 'after-playback';
   mediaBackgroundColor?: string;
 };
 
@@ -118,6 +120,8 @@ export function PublicVideoThumbnail({
   shellStyle,
   mode = 'static',
   overlayContent,
+  showPlayOverlay = false,
+  playOverlayTiming = 'always',
   mediaBackgroundColor = '#050505',
 }: PublicVideoThumbnailProps) {
   const [box, setBox] = useState({ width: 1, height: 1 });
@@ -209,6 +213,12 @@ export function PublicVideoThumbnail({
   const currentTimeSeconds = (mode !== 'static' && hasPreviewFrames && previewFrameUrls && previewFrameUrls.length > 1 && !flipbookDone && framesReady)
     ? getPreviewFrameTimeSeconds(frameIndex, previewFrameUrls.length, previewFrameTimesMs)
     : Infinity;
+  const shouldShowPlayOverlay = showPlayOverlay && (
+    playOverlayTiming === 'always' ||
+    flipbookDone ||
+    !hasPreviewFrames ||
+    mode === 'static'
+  );
 
   return (
     <View
@@ -262,6 +272,13 @@ export function PublicVideoThumbnail({
           {overlayContent}
         </View>
       ) : null}
+      {shouldShowPlayOverlay ? (
+        <View pointerEvents="none" style={[styles.thumbnailOverlay, styles.playOverlayCenter]}>
+          <View style={styles.playOverlayCircle}>
+            <View style={styles.playOverlayTriangle} />
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -286,5 +303,30 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     zIndex: 10,
     elevation: 10,
+  },
+  playOverlayCenter: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  playOverlayCircle: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0, 27, 92, 0.78)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.72)',
+  },
+  playOverlayTriangle: {
+    marginLeft: 3,
+    width: 0,
+    height: 0,
+    borderTopWidth: 8,
+    borderBottomWidth: 8,
+    borderLeftWidth: 12,
+    borderTopColor: 'transparent',
+    borderBottomColor: 'transparent',
+    borderLeftColor: '#fff',
   },
 });
