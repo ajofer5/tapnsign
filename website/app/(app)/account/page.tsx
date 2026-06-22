@@ -224,7 +224,7 @@ export default async function AccountPage({
         <span>·</span>
         <Link href="/terms" className="hover:text-black">Terms of Service</Link>
         <span>·</span>
-        <a href="mailto:hello@ophinia.com" className="hover:text-black">Contact Support</a>
+        <a href="mailto:support@ophinia.com" className="hover:text-black">Contact Support</a>
       </div>
     </div>
   );

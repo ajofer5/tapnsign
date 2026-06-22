@@ -93,5 +93,5 @@ Release thoughtfully. Enable prints on your best moments. Show up for your fans.
 
 ---
 
-Email: hello@ophinia.com
+Email: support@ophinia.com
 Website: Ophinia.com

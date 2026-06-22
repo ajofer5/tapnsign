@@ -120,7 +120,7 @@ export default function HomePage() {
             <Link href={webRoutes.support} className="transition-colors hover:text-black">
               Support
             </Link>
-            <a href="mailto:hello@ophinia.com" className="transition-colors hover:text-black">
+            <a href="mailto:support@ophinia.com" className="transition-colors hover:text-black">
               Contact
             </a>
           </div>

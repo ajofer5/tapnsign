@@ -213,5 +213,5 @@ We may update these Terms from time to time. We will notify you of material chan
 
 If you have questions about these Terms, please contact us:
 
-Email: hello@ophinia.com
+Email: support@ophinia.com
 Website: Ophinia.com

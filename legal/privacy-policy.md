@@ -93,7 +93,7 @@ We use reasonable administrative, technical, and physical safeguards to protect 
 
 ## 6. Children's Privacy
 
-The App and Website are not directed to children under the age of 13, and we do not knowingly collect personal information from children under 13. If we learn that we have collected such information, we will delete it promptly. If you believe a child under 13 has provided us information, please contact us at hello@ophinia.com.
+The App and Website are not directed to children under the age of 13, and we do not knowingly collect personal information from children under 13. If we learn that we have collected such information, we will delete it promptly. If you believe a child under 13 has provided us information, please contact us at support@ophinia.com.
 
 Users who are at least 13 but under 18 may use limited portions of Ophinia, such as browsing, saving, viewing, sharing, and reporting content, but certain features are restricted to adults. Identity review, payouts, creator monetization features, and some purchase or paid features may be limited to users who are 18 or older or who otherwise have appropriate legal authority or consent.
 
@@ -109,7 +109,7 @@ You may:
 - **Request a copy** of personal information we hold about you
 - **Request deletion of shipping information** after print fulfillment, subject to our retention obligations
 
-To exercise these rights, contact us at hello@ophinia.com. We may need to verify your identity before completing certain requests.
+To exercise these rights, contact us at support@ophinia.com. We may need to verify your identity before completing certain requests.
 
 ---
 
@@ -117,7 +117,7 @@ To exercise these rights, contact us at hello@ophinia.com. We may need to verify
 
 If you are a California resident, you may have additional rights under the California Consumer Privacy Act and related laws, including the right to know, access, correct, delete, and request information about how your personal information is used and disclosed, subject to applicable exceptions. We do not sell your personal information and do not share it for cross-context behavioral advertising as those terms are commonly used in California privacy law.
 
-To exercise applicable California rights, contact us at hello@ophinia.com. We will respond to verifiable requests within the time required by law.
+To exercise applicable California rights, contact us at support@ophinia.com. We will respond to verifiable requests within the time required by law.
 
 ---
 
@@ -137,5 +137,5 @@ We may update this Privacy Policy from time to time. We will notify you of mater
 
 If you have questions or concerns about this Privacy Policy, please contact us:
 
-Email: hello@ophinia.com
+Email: support@ophinia.com
 Website: Ophinia.com

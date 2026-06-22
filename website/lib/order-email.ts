@@ -50,7 +50,7 @@ export async function sendPrintOrderConfirmationEmail(params: PrintOrderEmailPar
   }
 
   const from = process.env.ORDER_EMAIL_FROM ?? 'Ophinia <noreply@ophinia.com>';
-  const replyTo = process.env.ORDER_EMAIL_REPLY_TO ?? 'hello@ophinia.com';
+  const replyTo = process.env.ORDER_EMAIL_REPLY_TO ?? 'support@ophinia.com';
   const total = formatMoney(params.totalCents);
   const addressLines = buildAddressLines(params.shipping);
   const escapedAddressHtml = addressLines.map((line) => escapeHtml(line)).join('<br>');
@@ -72,7 +72,7 @@ export async function sendPrintOrderConfirmationEmail(params: PrintOrderEmailPar
     '',
     'Your order has been submitted for production. If there are any fulfillment issues, we will contact you.',
     '',
-    'Questions? Email hello@ophinia.com.',
+    'Questions? Email support@ophinia.com.',
   ].filter(Boolean).join('\n');
 
   const html = `
@@ -88,7 +88,7 @@ export async function sendPrintOrderConfirmationEmail(params: PrintOrderEmailPar
       <p style="margin: 0 0 8px;"><strong>Shipping to</strong></p>
       <p style="margin: 0 0 18px;">${escapedAddressHtml}</p>
       <p style="margin: 0 0 18px;">If there are any fulfillment issues, we will contact you.</p>
-      <p style="margin: 0;">Questions? Email <a href="mailto:hello@ophinia.com" style="color: #0b1f3a;">hello@ophinia.com</a>.</p>
+      <p style="margin: 0;">Questions? Email <a href="mailto:support@ophinia.com" style="color: #0b1f3a;">support@ophinia.com</a>.</p>
     </div>
   `;
 

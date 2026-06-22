@@ -33,8 +33,8 @@ export default function SupportPage() {
             <h2 className="text-lg font-bold text-[#111111]">Email support</h2>
             <p className="mt-2 text-sm leading-6 text-gray-600">
               Send a message to{' '}
-              <a className="font-semibold text-[#001B5C] underline" href="mailto:hello@ophinia.com">
-                hello@ophinia.com
+              <a className="font-semibold text-[#001B5C] underline" href="mailto:support@ophinia.com">
+                support@ophinia.com
               </a>
               . Please include the email address on your account and any relevant order,
               profile, or certificate details.
