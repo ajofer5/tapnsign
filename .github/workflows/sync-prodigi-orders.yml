@@ -1,0 +1,19 @@
+name: Sync Prodigi Orders
+
+on:
+  schedule:
+    - cron: '0 */4 * * *'
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sync Prodigi order shipments
+        run: |
+          curl -s -X POST \
+            "${{ secrets.SUPABASE_URL }}/functions/v1/sync-prodigi-orders" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "x-internal-secret: ${{ secrets.INTERNAL_FUNCTION_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{}'
