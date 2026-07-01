@@ -1,21 +1,21 @@
 import { AutographPlayer } from '@/components/autograph-player';
-import { AutographFilterSheet } from '@/components/autograph-filter-sheet';
 import { AutographPrintModal } from '@/components/autograph-print-modal';
-import { CardMetadataBlock } from '@/components/card-metadata-block';
 import { CertificateSheet } from '@/components/certificate-sheet';
-import { NameWithSequence } from '@/components/public-video-card';
+import { ProfileAvatar } from '@/components/profile-avatar';
 import { PublicVideoThumbnail } from '@/components/public-video-thumbnail';
 import { BrandColors, BrandFonts } from '@/constants/theme';
 import { callEdgeFunction } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
+import { DIGITAL_TRADING_ENABLED } from '@/lib/digital-trading';
 import { buildAutographUrl } from '@/lib/public-links';
 import { supabase } from '@/lib/supabase';
 import { openAuthenticatedWebPath } from '@/lib/web-handoff';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import FontAwesome from '@expo/vector-icons/FontAwesome';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useStripe } from '@stripe/stripe-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -31,6 +31,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 type Point = {
   x: number;
   y: number;
@@ -42,28 +43,17 @@ type Stroke = {
   points: Point[];
 };
 
-type AutograpshFilters = {
-  creator: string;
-  series: string;
-  listed: boolean;
-  unlisted: boolean;
-  acceptsPersonalizedRequests: boolean;
-  verifiedUser: boolean;
-};
-
-const defaultAutographFilters: AutograpshFilters = {
-  creator: '',
-  series: '',
-  listed: false,
-  unlisted: false,
-  acceptsPersonalizedRequests: false,
-  verifiedUser: false,
-};
-
 type AutographSort = 'newest' | 'oldest';
+type CollectionSegment = 'created' | 'saved_cards' | 'saved_creators';
+const COLLECTION_SEGMENT_STORAGE_PREFIX = 'ophinia.collection.activeSegment';
+
+function isCollectionSegment(value: string | null): value is CollectionSegment {
+  return value === 'created' || value === 'saved_cards' || value === 'saved_creators';
+}
 
 type AutographItem = {
   id: string;
+  savedAt?: string | null;
   creatorId: string;
   certificateId: string;
   createdAt: string;
@@ -94,6 +84,8 @@ type AutographItem = {
   seriesMaxSize: number | null;
   seriesId: string | null;
   printCount: number | null;
+  printsEnabled: boolean;
+  printLimit: number | null;
 };
 
 type IncomingOfferItem = {
@@ -150,6 +142,7 @@ type OwnedListingRow = {
   series_name: string | null;
   series_sequence_number: number | null;
   series_max_size: number | null;
+  visibility: 'private' | 'public' | null;
   sale_state: 'not_for_sale' | 'fixed' | null;
   listing_mode: 'buy_now' | 'make_offer' | null;
   is_for_sale: boolean | null;
@@ -158,6 +151,8 @@ type OwnedListingRow = {
   auto_accept_above: boolean | null;
   offer_locked_until: string | null;
   print_count: number | null;
+  prints_enabled: boolean | null;
+  print_limit: number | null;
 };
 
 type OfferQueueRow = {
@@ -171,6 +166,52 @@ type OfferQueueRow = {
   creator_name: string | null;
   creator_sequence_number: number | null;
 };
+
+type SavedCreatorItem = {
+  savedAt: string;
+  creatorId: string;
+  displayName: string;
+  avatarUrl: string | null;
+  avatarAutograph: {
+    id: string;
+    thumbnail_url: string | null;
+    video_url: string | null;
+    strokes_json: Stroke[];
+    capture_width: number;
+    capture_height: number;
+    stroke_color: string | null;
+  } | null;
+  verified: boolean;
+  nameVerified: boolean;
+  bio: string | null;
+  personalizedRequestsEnabled: boolean;
+  printCount: number;
+};
+
+type SavedCreatorRow = {
+  saved_at: string;
+  creator_id: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  avatar_autograph: {
+    id: string;
+    thumbnail_url: string | null;
+    video_url: string | null;
+    strokes_json: Stroke[] | null;
+    capture_width: number | null;
+    capture_height: number | null;
+    stroke_color: string | null;
+  } | null;
+  verified: boolean | null;
+  name_verified: boolean | null;
+  bio: string | null;
+  personalized_requests_enabled: boolean | null;
+  print_count: number | string | null;
+};
+
+type CollectionListRow =
+  | { kind: 'autograph'; source: 'created' | 'saved_cards'; item: AutographItem }
+  | { kind: 'creator'; item: SavedCreatorItem };
 
 const COLLECTION_PAGE_SIZE = 24;
 
@@ -224,6 +265,7 @@ function getErrorMessage(error: unknown, fallback: string) {
 function mapOwnedListingRow(row: OwnedListingRow): AutographItem {
   return {
     id: row.id,
+    savedAt: null,
     creatorId: row.creator_id,
     certificateId: row.certificate_id,
     createdAt: row.created_at,
@@ -234,7 +276,7 @@ function mapOwnedListingRow(row: OwnedListingRow): AutographItem {
     strokes: row.strokes_json ?? [],
     captureWidth: row.capture_width ?? undefined,
     captureHeight: row.capture_height ?? undefined,
-    visibility: 'public',
+    visibility: row.visibility === 'public' ? 'public' : 'private',
     saleState: row.sale_state ?? (row.is_for_sale ? 'fixed' : 'not_for_sale'),
     listingMode: row.listing_mode === 'buy_now' ? 'buy_now' : 'make_offer',
     isForSale: !!row.is_for_sale,
@@ -254,6 +296,15 @@ function mapOwnedListingRow(row: OwnedListingRow): AutographItem {
     seriesMaxSize: row.series_max_size ?? null,
     seriesId: null,
     printCount: row.print_count ?? null,
+    printsEnabled: !!row.prints_enabled,
+    printLimit: row.print_limit ?? null,
+  };
+}
+
+function mapSavedListingRow(row: OwnedListingRow & { saved_at?: string | null }): AutographItem {
+  return {
+    ...mapOwnedListingRow(row),
+    savedAt: row.saved_at ?? null,
   };
 }
 
@@ -271,10 +322,38 @@ function mapOfferQueueRow(row: OfferQueueRow): IncomingOfferItem {
   };
 }
 
+function mapSavedCreatorRow(row: SavedCreatorRow): SavedCreatorItem {
+  return {
+    savedAt: row.saved_at,
+    creatorId: row.creator_id,
+    displayName: row.display_name ?? 'Creator',
+    avatarUrl: row.avatar_url ?? null,
+    avatarAutograph: row.avatar_autograph
+      ? {
+          id: row.avatar_autograph.id,
+          thumbnail_url: row.avatar_autograph.thumbnail_url ?? null,
+          video_url: row.avatar_autograph.video_url ?? null,
+          strokes_json: row.avatar_autograph.strokes_json ?? [],
+          capture_width: row.avatar_autograph.capture_width ?? 1,
+          capture_height: row.avatar_autograph.capture_height ?? 1,
+          stroke_color: row.avatar_autograph.stroke_color ?? null,
+        }
+      : null,
+    verified: !!row.verified,
+    nameVerified: !!row.name_verified,
+    bio: row.bio ?? null,
+    personalizedRequestsEnabled: !!row.personalized_requests_enabled,
+    printCount: Number(row.print_count ?? 0),
+  };
+}
+
 export default function AutographsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [data, setData] = useState<AutographItem[]>([]);
+  const [savedCards, setSavedCards] = useState<AutographItem[]>([]);
+  const [savedCreators, setSavedCreators] = useState<SavedCreatorItem[]>([]);
+  const [activeSegment, setActiveSegment] = useState<CollectionSegment>('created');
   const [incomingOffers, setIncomingOffers] = useState<IncomingOfferItem[]>([]);
   const [selectedItem, setSelectedItem] = useState<AutographItem | null>(null);
   const [certItem, setCertItem] = useState<AutographItem | null>(null);
@@ -293,11 +372,7 @@ export default function AutographsScreen() {
   };
   const handlePriceChange = (text: string) => setPriceInput(formatCentsInput(text));
   const [saving, setSaving] = useState(false);
-  const [filterVisible, setFilterVisible] = useState(false);
-  const [filters, setFilters] = useState<AutograpshFilters>(defaultAutographFilters);
-  const [draftFilters, setDraftFilters] = useState<AutograpshFilters>(defaultAutographFilters);
   const [sort, setSort] = useState<AutographSort>('newest');
-  const [draftSort, setDraftSort] = useState<AutographSort>('newest');
   const [seriesNameInput, setSeriesNameInput] = useState('');
   const [seriesSelectionMode, setSeriesSelectionMode] = useState(false);
   const [seriesSheetVisible, setSeriesSheetVisible] = useState(false);
@@ -310,6 +385,7 @@ export default function AutographsScreen() {
   const [loadingPrintPreview, setLoadingPrintPreview] = useState(false);
   const [creatingPrint, setCreatingPrint] = useState(false);
   const [printSessionKey, setPrintSessionKey] = useState('');
+  const [printQuantity, setPrintQuantity] = useState(1);
   const [loadingCollection, setLoadingCollection] = useState(false);
   const [loadingMoreCollection, setLoadingMoreCollection] = useState(false);
   const [hasMoreCollection, setHasMoreCollection] = useState(true);
@@ -322,8 +398,9 @@ export default function AutographsScreen() {
   const [damageClaim, setDamageClaim] = useState<{
     printId: string;
     autographId: string;
-    step: 'intro' | 'photos' | 'submitted' | 'destruction' | 'done';
-    claimId: string | null;
+    step: 'form' | 'submitted';
+    claimType: 'damaged' | 'lost';
+    reasonCode: 'damaged_in_shipping' | 'print_defect' | 'wrong_item' | 'other' | null;
     frontPhotoUri: string | null;
     backPhotoUri: string | null;
     destructionPhotoUri: string | null;
@@ -331,7 +408,35 @@ export default function AutographsScreen() {
   } | null>(null);
 
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
+  const collectionSegmentStorageKey = user?.id
+    ? `${COLLECTION_SEGMENT_STORAGE_PREFIX}.${user.id}`
+    : null;
+
+  useEffect(() => {
+    if (!collectionSegmentStorageKey) return;
+
+    let cancelled = false;
+    AsyncStorage.getItem(collectionSegmentStorageKey)
+      .then((storedSegment) => {
+        if (!cancelled && isCollectionSegment(storedSegment)) {
+          setActiveSegment(storedSegment);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [collectionSegmentStorageKey]);
+
+  const handleCollectionSegmentChange = useCallback((segment: CollectionSegment) => {
+    setActiveSegment(segment);
+    setHasMoreCollection(true);
+    if (collectionSegmentStorageKey) {
+      AsyncStorage.setItem(collectionSegmentStorageKey, segment).catch(() => {});
+    }
+  }, [collectionSegmentStorageKey]);
 
   const closeSellSheet = () => {
     setSellItems([]);
@@ -342,83 +447,18 @@ export default function AutographsScreen() {
   };
 
   const openSellSheet = (_items: AutographItem[]) => {
+    if (!DIGITAL_TRADING_ENABLED) return;
     void openAuthenticatedWebPath('/app/me/listings').catch(() => {
-      Alert.alert('Seller Workspace', 'Could not open the web seller workspace. Please try again.');
+      Alert.alert('Print Settings', 'Could not open print settings. Please try again.');
     });
   };
 
   const handleListForSale = async () => {
-    if (sellItems.length === 0) return;
-
-    const dollars = parseFloat(priceInput);
-    if (isNaN(dollars) || dollars < 5) {
-      Alert.alert('Invalid price', 'Estimated value must be at least $5.00.');
-      return;
-    }
-    setSaving(true);
-    const priceCents = Math.round(dollars * 100);
-    let failed = 0;
-    let firstError: string | null = null;
-    for (const item of sellItems) {
-      try {
-        await callEdgeFunction('create-listing', {
-          autograph_id: item.id,
-          price_cents: priceCents,
-          listing_mode: listingMode,
-          open_to_trade: false,
-          auto_decline_below: autoDeclineBelow,
-          auto_accept_above: autoAcceptAbove,
-        });
-        setData((prev) => prev.map((i) =>
-          i.id === item.id
-            ? { ...i, visibility: 'public', saleState: 'fixed', listingMode, isForSale: true, priceCents, openToTrade: false }
-            : i
-        ));
-      } catch (error) {
-        failed++;
-        if (!firstError) {
-          firstError = error instanceof Error ? error.message : 'Unknown error';
-        }
-      }
-    }
-    setSaving(false);
     closeSellSheet();
-    const succeeded = sellItems.length - failed;
-    if (failed > 0) {
-      const message = `${succeeded} listed, ${failed} failed.`;
-      Alert.alert('Partially listed', firstError ? `${message}\n\n${firstError}` : message);
-    } else {
-      const listingDescription = listingMode === 'buy_now'
-        ? `at a fixed price of $${dollars.toFixed(2)} each`
-        : `with an estimated value of $${dollars.toFixed(2)} each`;
-      Alert.alert('Listed!', `${succeeded} autograph${succeeded !== 1 ? 's' : ''} listed ${listingDescription}.`);
-    }
   };
 
   const handleRemoveFromSale = (item: AutographItem) => {
-    Alert.alert(
-      'Remove Listing',
-      'Remove this autograph from the marketplace and keep it in your collection?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove Listing',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await callEdgeFunction('remove-listing', { autograph_id: item.id });
-              setData((prev) => prev.map((i) =>
-                i.id === item.id
-                  ? { ...i, saleState: 'not_for_sale', listingMode: 'make_offer', isForSale: false, priceCents: null, openToTrade: false }
-                  : i
-              ));
-            } catch {
-              Alert.alert('Error', 'Could not unlist. Please try again.');
-            }
-          },
-        },
-      ]
-    );
+    void item;
   };
 
   const handleDelete = (item: AutographItem) => {
@@ -456,7 +496,54 @@ export default function AutographsScreen() {
     );
   };
 
+  const handleTogglePrintsEnabled = async (item: AutographItem) => {
+    const next = !item.printsEnabled;
+    const payoutConnected =
+      profile?.stripe_connect_onboarding_complete === true &&
+      profile?.stripe_connect_charges_enabled === true &&
+      profile?.stripe_connect_payouts_enabled === true;
+    if (next && !payoutConnected) {
+      Alert.alert(
+        'Payout Setup Required',
+        'Complete payout setup before enabling public prints.'
+      );
+      return;
+    }
+    const label = next ? 'Enable Prints' : 'Disable Prints';
+    const confirm = next
+      ? 'Allow anyone to order an official 8×10 print of this autograph?'
+      : 'Stop allowing new print orders for this autograph?';
+    Alert.alert(label, confirm, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: label,
+        onPress: async () => {
+          try {
+            await callEdgeFunction('set-prints-enabled', {
+              autograph_id: item.id,
+              prints_enabled: next,
+            });
+            const patch = {
+              printsEnabled: next,
+              visibility: (next ? 'public' : 'private') as 'public' | 'private',
+            };
+            setData((prev) =>
+              prev.map((i) => (i.id === item.id ? { ...i, ...patch } : i))
+            );
+            setSelectedItem((prev) =>
+              prev?.id === item.id ? { ...prev, ...patch } : prev
+            );
+          } catch (error) {
+            Alert.alert('Error', error instanceof Error ? error.message : 'Could not update print settings. Please try again.');
+          }
+        },
+      },
+    ]);
+  };
+
   const openPrintPreview = async (item: AutographItem) => {
+    setSelectedItem(null);
+    setContextMenuVisible(false);
     setPrintItem(item);
     setPrintPreview(null);
     setLoadingPrintPreview(true);
@@ -483,6 +570,7 @@ export default function AutographsScreen() {
     setPrintPreview(null);
     setPrintStep('preview');
     setAddressSheetVisible(false);
+    setPrintQuantity(1);
   };
 
   const handleProceedToPayment = () => {
@@ -513,7 +601,7 @@ export default function AutographsScreen() {
         payment_intent_id: string;
         payment_event_id: string;
         amount_cents: number;
-      }>('create-print-payment-intent', { autograph_id: printItem.id, idempotency_key: printSessionKey });
+      }>('create-print-payment-intent', { autograph_id: printItem.id, idempotency_key: `${printSessionKey}-qty${printQuantity}`, quantity: printQuantity });
 
       // Step 2: present Stripe payment sheet
       const { error: initError } = await initPaymentSheet({
@@ -543,6 +631,7 @@ export default function AutographsScreen() {
         autograph_id: printItem.id,
         payment_event_id: paymentData.payment_event_id,
         image_url: printPreview.print_layout_url ?? null,
+        quantity: printQuantity,
         shipping_name: addr.name,
         shipping_line1: addr.line1,
         shipping_line2: addr.line2 || null,
@@ -608,55 +697,48 @@ export default function AutographsScreen() {
     return urlData.publicUrl;
   };
 
-  const handleSubmitDamageEvidence = async () => {
-    if (!damageClaim?.frontPhotoUri || !damageClaim?.backPhotoUri) {
-      Alert.alert('Missing Photos', 'Please provide both the front and back photos of your print.');
-      return;
+  const handleSubmitClaim = async () => {
+    if (!damageClaim) return;
+
+    if (damageClaim.claimType === 'damaged') {
+      if (!damageClaim.frontPhotoUri || !damageClaim.backPhotoUri || !damageClaim.destructionPhotoUri) {
+        Alert.alert('Missing Photos', 'All three photos are required to submit a damage claim.');
+        return;
+      }
+      if (!damageClaim.reasonCode) {
+        Alert.alert('Missing Reason', 'Please select a reason for your claim.');
+        return;
+      }
     }
 
     setDamageClaim((prev) => prev ? ({ ...prev, submitting: true }) : prev);
     try {
-      const [frontUrl, backUrl] = await Promise.all([
-        uploadDamagePhoto(damageClaim.frontPhotoUri),
-        uploadDamagePhoto(damageClaim.backPhotoUri),
-      ]);
+      let frontUrl: string | null = null;
+      let backUrl: string | null = null;
+      let destructionUrl: string | null = null;
 
-      const result = await callEdgeFunction<{ claim: { id: string; status: string } }>(
-        'create-print-damage-claim',
-        {
-          print_id: damageClaim.printId,
+      if (damageClaim.claimType === 'damaged') {
+        [frontUrl, backUrl, destructionUrl] = await Promise.all([
+          uploadDamagePhoto(damageClaim.frontPhotoUri!),
+          uploadDamagePhoto(damageClaim.backPhotoUri!),
+          uploadDamagePhoto(damageClaim.destructionPhotoUri!),
+        ]);
+      }
+
+      await callEdgeFunction('create-print-damage-claim', {
+        print_id: damageClaim.printId,
+        claim_type: damageClaim.claimType,
+        reason_code: damageClaim.claimType === 'lost' ? 'never_arrived' : damageClaim.reasonCode,
+        ...(damageClaim.claimType === 'damaged' && {
           damage_front_photo_url: frontUrl,
           damage_back_photo_url: backUrl,
-        }
-      );
-
-      setDamageClaim((prev) => prev ? ({
-        ...prev,
-        claimId: result.claim.id,
-        step: 'submitted',
-        submitting: false,
-      }) : prev);
-    } catch {
-      Alert.alert('Submission Failed', 'Could not submit your damage claim. Please try again.');
-      setDamageClaim((prev) => prev ? ({ ...prev, submitting: false }) : prev);
-    }
-  };
-
-  const handleSubmitDestructionPhoto = async () => {
-    if (!damageClaim?.destructionPhotoUri || !damageClaim?.claimId) return;
-
-    setDamageClaim((prev) => prev ? ({ ...prev, submitting: true }) : prev);
-    try {
-      const destructionUrl = await uploadDamagePhoto(damageClaim.destructionPhotoUri);
-
-      await callEdgeFunction('submit-destruction-photo', {
-        claim_id: damageClaim.claimId,
-        destruction_photo_url: destructionUrl,
+          destruction_photo_url: destructionUrl,
+        }),
       });
 
-      setDamageClaim((prev) => prev ? ({ ...prev, step: 'done', submitting: false }) : prev);
-    } catch {
-      Alert.alert('Submission Failed', 'Could not submit your destruction photo. Please try again.');
+      setDamageClaim((prev) => prev ? ({ ...prev, step: 'submitted', submitting: false }) : prev);
+    } catch (e) {
+      Alert.alert('Submission Failed', e instanceof Error ? e.message : 'Could not submit your claim. Please try again.');
       setDamageClaim((prev) => prev ? ({ ...prev, submitting: false }) : prev);
     }
   };
@@ -667,7 +749,7 @@ export default function AutographsScreen() {
   const startSeriesSelection = () => {
     const eligibleCount = data.filter(canCreateSeriesWithItem).length;
     if (eligibleCount === 0) {
-      Alert.alert('No Eligible Videos', 'You can only create a series from videos you created and have not already assigned to a series.');
+      Alert.alert('No Eligible Moments', 'You can only create a series from moments you captured and have not already assigned to a series.');
       return;
     }
 
@@ -693,7 +775,7 @@ export default function AutographsScreen() {
       return;
     }
     if (selectedSeriesItems.length === 0) {
-      Alert.alert('Select Videos', 'Choose at least one video for this series.');
+      Alert.alert('Select Moments', 'Choose at least one moment for this series.');
       return;
     }
 
@@ -738,7 +820,7 @@ export default function AutographsScreen() {
       closeSeriesFlow();
       Alert.alert(
         'Series Created',
-        `"${result.series.name}" is now locked at ${result.series.max_size} videos, ordered oldest to newest.`
+        `"${result.series.name}" is now locked at ${result.series.max_size} moments, ordered oldest to newest.`
       );
     } catch (e: any) {
       Alert.alert('Error', e.message ?? 'Could not create series.');
@@ -771,12 +853,88 @@ export default function AutographsScreen() {
     } catch {}
   };
 
+  const handleUnsaveCard = async (item: AutographItem) => {
+    if (!user) return;
+    const previous = savedCards;
+    setSavedCards((current) => current.filter((saved) => saved.id !== item.id));
+
+    const { error } = await supabase
+      .from('watchlist')
+      .delete()
+      .eq('user_id', user.id)
+      .eq('autograph_id', item.id);
+
+    if (error) {
+      setSavedCards(previous);
+      Alert.alert('Saved Cards', 'Could not unsave this card. Please try again.');
+    }
+  };
+
+  const handleUnsaveCreator = async (creator: SavedCreatorItem) => {
+    if (!user) return;
+    const previous = savedCreators;
+    setSavedCreators((current) => current.filter((saved) => saved.creatorId !== creator.creatorId));
+
+    const { error } = await supabase
+      .from('saved_creators')
+      .delete()
+      .eq('user_id', user.id)
+      .eq('creator_id', creator.creatorId);
+
+    if (error) {
+      setSavedCreators(previous);
+      Alert.alert('Saved Creators', 'Could not unsave this creator. Please try again.');
+    }
+  };
+
   const handleModalShow = () => {};
 
   const loadInitialCollection = useCallback(async () => {
     if (!user) return;
     setLoadingCollection(true);
     try {
+      if (activeSegment === 'saved_cards') {
+        const response = await supabase.rpc('get_saved_listing_feed', {
+          p_user_id: user.id,
+          p_limit: COLLECTION_PAGE_SIZE,
+          p_before_saved_at: null,
+          p_before_autograph_id: null,
+        });
+
+        if (response.error) {
+          console.log('Load saved cards error:', response.error);
+          setSavedCards([]);
+          setHasMoreCollection(false);
+          return;
+        }
+
+        const nextItems = (response.data as (OwnedListingRow & { saved_at?: string | null })[] ?? []).map(mapSavedListingRow);
+        setHasMoreCollection(nextItems.length === COLLECTION_PAGE_SIZE);
+        setSavedCards(nextItems);
+        return;
+      }
+
+      if (activeSegment === 'saved_creators') {
+        const response = await supabase.rpc('get_saved_creators_feed', {
+          p_user_id: user.id,
+          p_limit: COLLECTION_PAGE_SIZE,
+          p_before_saved_at: null,
+          p_before_creator_id: null,
+        });
+
+        if (response.error) {
+          console.log('Load saved creators error:', response.error);
+          setSavedCreators([]);
+          setHasMoreCollection(false);
+          return;
+        }
+
+        const nextItems = (response.data as SavedCreatorRow[] ?? []).map(mapSavedCreatorRow);
+        setHasMoreCollection(nextItems.length === COLLECTION_PAGE_SIZE);
+        setSavedCreators(nextItems);
+        return;
+      }
+
       const response = await supabase.rpc('get_owned_listing_feed', {
         p_owner_id: user.id,
         p_limit: COLLECTION_PAGE_SIZE,
@@ -797,12 +955,55 @@ export default function AutographsScreen() {
     } finally {
       setLoadingCollection(false);
     }
-  }, [user]);
+  }, [activeSegment, user]);
 
   const loadMoreCollectionPage = useCallback(async (cursorItem?: AutographItem | null) => {
-    if (!user || loadingMoreCollection || !hasMoreCollection || !cursorItem) return;
+    if (!user || loadingMoreCollection || !hasMoreCollection) return;
     setLoadingMoreCollection(true);
     try {
+      if (activeSegment === 'saved_cards') {
+        const cursor = cursorItem;
+        if (!cursor?.savedAt) return;
+        const response = await supabase.rpc('get_saved_listing_feed', {
+          p_user_id: user.id,
+          p_limit: COLLECTION_PAGE_SIZE,
+          p_before_saved_at: cursor.savedAt,
+          p_before_autograph_id: cursor.id,
+        });
+
+        if (response.error) {
+          console.log('Load more saved cards error:', response.error);
+          return;
+        }
+
+        const nextItems = (response.data as (OwnedListingRow & { saved_at?: string | null })[] ?? []).map(mapSavedListingRow);
+        setHasMoreCollection(nextItems.length === COLLECTION_PAGE_SIZE);
+        setSavedCards((prev) => [...prev, ...nextItems]);
+        return;
+      }
+
+      if (activeSegment === 'saved_creators') {
+        const cursor = savedCreators[savedCreators.length - 1];
+        if (!cursor) return;
+        const response = await supabase.rpc('get_saved_creators_feed', {
+          p_user_id: user.id,
+          p_limit: COLLECTION_PAGE_SIZE,
+          p_before_saved_at: cursor.savedAt,
+          p_before_creator_id: cursor.creatorId,
+        });
+
+        if (response.error) {
+          console.log('Load more saved creators error:', response.error);
+          return;
+        }
+
+        const nextItems = (response.data as SavedCreatorRow[] ?? []).map(mapSavedCreatorRow);
+        setHasMoreCollection(nextItems.length === COLLECTION_PAGE_SIZE);
+        setSavedCreators((prev) => [...prev, ...nextItems]);
+        return;
+      }
+
+      if (!cursorItem) return;
       const response = await supabase.rpc('get_owned_listing_feed', {
         p_owner_id: user.id,
         p_limit: COLLECTION_PAGE_SIZE,
@@ -821,10 +1022,13 @@ export default function AutographsScreen() {
     } finally {
       setLoadingMoreCollection(false);
     }
-  }, [hasMoreCollection, loadingMoreCollection, user]);
+  }, [activeSegment, hasMoreCollection, loadingMoreCollection, savedCreators, user]);
 
   const loadOfferQueue = useCallback(async () => {
-    if (!user) return;
+    if (!user || !DIGITAL_TRADING_ENABLED) {
+      setIncomingOffers([]);
+      return;
+    }
     const offersRes = await supabase.rpc('get_offer_queue_feed', {
       p_owner_id: user.id,
       p_limit: 100,
@@ -851,7 +1055,7 @@ export default function AutographsScreen() {
       void (async () => {
         if (cancelled) return;
         await loadInitialCollection();
-        if (!cancelled) {
+        if (!cancelled && DIGITAL_TRADING_ENABLED) {
           void loadOfferQueue();
         }
       })();
@@ -863,60 +1067,32 @@ export default function AutographsScreen() {
   );
 
   const handleIncomingOffer = async (offerId: string, action: 'accept' | 'decline') => {
-    setOfferActioningId(offerId);
-    try {
-      await callEdgeFunction('respond-autograph-offer', {
-        offer_id: offerId,
-        action,
-      });
-      setIncomingOffers((prev) => prev.filter((offer) => offer.id !== offerId));
-      Alert.alert(
-        action === 'accept' ? 'Offer Accepted' : 'Offer Declined',
-        action === 'accept'
-          ? 'The buyer now has 24 hours to complete the purchase.'
-          : 'The offer was declined.'
-      );
-    } catch (error) {
-      Alert.alert(
-        'Offer Error',
-        error instanceof Error ? error.message : 'Could not update offer. Please try again.'
-      );
-    } finally {
-      setOfferActioningId(null);
-    }
+    void offerId;
+    void action;
   };
 
   const filteredData = useMemo(() => {
-    let items = data;
-    if (filters.creator.trim()) {
-      const q = filters.creator.trim().toLowerCase();
-      items = items.filter((i) => i.creatorName?.toLowerCase().includes(q));
+    if (activeSegment === 'saved_cards') return savedCards;
+    if (activeSegment === 'saved_creators') return [];
+    if (sort === 'newest') return [...data].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return [...data].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  }, [activeSegment, data, savedCards, sort]);
+
+  const collectionRows = useMemo<CollectionListRow[]>(() => {
+    if (activeSegment === 'saved_creators') {
+      return savedCreators.map((item) => ({ kind: 'creator', item }));
     }
-    if (filters.series.trim()) {
-      const q = filters.series.trim().toLowerCase();
-      items = items.filter((i) => i.seriesName?.toLowerCase().includes(q));
-    }
-    if (filters.listed && !filters.unlisted) items = items.filter((i) => i.saleState !== 'not_for_sale');
-    if (filters.unlisted && !filters.listed) items = items.filter((i) => i.saleState === 'not_for_sale');
-    if (filters.acceptsPersonalizedRequests) items = items.filter((i) => i.creatorPersonalizedRequestsEnabled);
-    if (filters.verifiedUser) items = items.filter((i) => i.creatorVerified);
-    if (sort === 'newest') items = [...items].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    if (sort === 'oldest') items = [...items].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-    return items;
-  }, [data, filters, sort]);
+    return filteredData.map((item) => ({
+      kind: 'autograph',
+      source: activeSegment === 'saved_cards' ? 'saved_cards' : 'created',
+      item,
+    }));
+  }, [activeSegment, filteredData, savedCreators]);
 
   const selectedSeriesItems = useMemo(
     () => filteredData.filter((item) => selectedIds.has(item.id)),
     [filteredData, selectedIds]
   );
-
-  const isFiltered =
-    filters.creator.trim() !== '' ||
-    filters.series.trim() !== '' ||
-    filters.listed ||
-    filters.unlisted ||
-    filters.acceptsPersonalizedRequests ||
-    filters.verifiedUser;
 
   const emptyComponent = useMemo(
     () => (
@@ -926,10 +1102,16 @@ export default function AutographsScreen() {
           <Text style={styles.loadingStateText}>Loading collection…</Text>
         </View>
       ) : (
-        <Text style={styles.emptyText}>No autograph captures saved yet.</Text>
+        <Text style={styles.emptyText}>
+          {activeSegment === 'saved_cards'
+            ? 'No saved moments yet.'
+            : activeSegment === 'saved_creators'
+              ? 'No saved creators yet.'
+              : 'No autograph captures saved yet.'}
+        </Text>
       )
     ),
-    [loadingCollection]
+    [activeSegment, loadingCollection]
   );
 
   const listFooter = useMemo(
@@ -958,6 +1140,7 @@ export default function AutographsScreen() {
   );
 
   const offersByAutograph = useMemo(() => {
+    if (!DIGITAL_TRADING_ENABLED) return [];
     const grouped = new Map<string, IncomingOfferItem[]>();
 
     for (const offer of incomingOffers) {
@@ -985,8 +1168,44 @@ export default function AutographsScreen() {
     });
   }, [incomingOffers, autographMap]);
 
+  const segmentLabels: { key: CollectionSegment; label: string }[] = [
+    { key: 'created', label: 'Captured' },
+    { key: 'saved_cards', label: 'Saved Moments' },
+    { key: 'saved_creators', label: 'Saved Creators' },
+  ];
+
+  const activeCount =
+    activeSegment === 'saved_creators'
+      ? savedCreators.length
+      : activeSegment === 'saved_cards'
+        ? savedCards.length
+        : filteredData.length;
+  const activeCountLabel =
+    activeSegment === 'saved_creators'
+      ? `${activeCount} creator${activeCount !== 1 ? 's' : ''}`
+      : activeSegment === 'saved_cards'
+        ? `${activeCount} saved moment${activeCount !== 1 ? 's' : ''}`
+        : `${activeCount} moment${activeCount !== 1 ? 's' : ''}`;
+
   const listHeader = (
     <>
+      {!seriesSelectionMode && (
+        <View style={styles.collectionSegmentedControl}>
+          {segmentLabels.map((segment) => (
+            <Pressable
+              key={segment.key}
+              style={[styles.collectionSegmentOption, activeSegment === segment.key && styles.collectionSegmentOptionActive]}
+              onPress={() => {
+                handleCollectionSegmentChange(segment.key);
+              }}
+            >
+              <Text style={[styles.collectionSegmentText, activeSegment === segment.key && styles.collectionSegmentTextActive]}>
+                {segment.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
       <View style={styles.filterHeaderRow}>
         {seriesSelectionMode ? (
           <>
@@ -1009,164 +1228,123 @@ export default function AutographsScreen() {
           </>
         ) : (
           <>
-            <Text style={styles.filterResultCount}>{filteredData.length} autograph{filteredData.length !== 1 ? 's' : ''}</Text>
+            <Text style={styles.filterResultCount}>{activeCountLabel}</Text>
             <View style={styles.headerButtons}>
-              <Pressable
-                style={[styles.filterButton, { borderWidth: 0 }]}
-                onPress={startSeriesSelection}
-              >
-                <Text style={styles.filterButtonText}>Create Series</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.filterButton, isFiltered && styles.filterButtonActive]}
-                onPress={() => { setDraftFilters(filters); setDraftSort(sort); setFilterVisible(true); }}
-              >
-                <Text style={[styles.filterButtonText, isFiltered && styles.filterButtonTextActive]}>
-                  {isFiltered ? 'Filtered ✕' : 'Filter/Sort'}
-                </Text>
-              </Pressable>
+              {activeSegment === 'created' ? (
+                <>
+                  <Pressable
+                    style={[styles.filterButton, { borderWidth: 0 }]}
+                    onPress={startSeriesSelection}
+                  >
+                    <Text style={styles.filterButtonText}>Create Series</Text>
+                  </Pressable>
+                  <View style={styles.sortToggle}>
+                    <Pressable
+                      style={[styles.sortOption, sort === 'newest' && styles.sortOptionActive]}
+                      onPress={() => setSort('newest')}
+                    >
+                      <Text style={[styles.sortOptionText, sort === 'newest' && styles.sortOptionTextActive]}>Newest</Text>
+                    </Pressable>
+                    <Pressable
+                      style={[styles.sortOption, sort === 'oldest' && styles.sortOptionActive]}
+                      onPress={() => setSort('oldest')}
+                    >
+                      <Text style={[styles.sortOptionText, sort === 'oldest' && styles.sortOptionTextActive]}>Oldest</Text>
+                    </Pressable>
+                  </View>
+                </>
+              ) : null}
             </View>
           </>
         )}
       </View>
-      {offersByAutograph.length > 0 && !seriesSelectionMode && (
-        <View style={styles.offerSection}>
-          <Text style={styles.offerSectionTitle}>Offer Queue</Text>
-          {offersByAutograph.map((group) => {
-            const autograph = group.autograph;
-            const headlineOffer = group.accepted ?? group.pending[0] ?? group.onHold[0] ?? null;
-            if (!headlineOffer) return null;
-
-            return (
-              <Pressable
-                key={group.autographId}
-                style={styles.offerCard}
-                onPress={() => {
-                  if (autograph) openVideo(autograph);
-                }}
-              >
-                <View style={styles.offerCardTop}>
-                  {autograph ? (
-                    <PublicVideoThumbnail
-                      videoUrl={autograph.videoUri}
-                      thumbnailUrl={autograph.thumbnailUrl}
-                      previewFrameUrls={autograph.previewFrameUrls}
-                      previewFrameTimesMs={autograph.previewFrameTimesMs}
-                      strokes={autograph.strokes ?? []}
-                      captureWidth={autograph.captureWidth || 1}
-                      captureHeight={autograph.captureHeight || 1}
-                      strokeColor={autograph.strokeColor}
-                      shellStyle={styles.offerThumbnail}
-                    />
-                  ) : (
-                    <View style={styles.offerThumbnail}>
-                      <Text style={styles.thumbnailText}>Video</Text>
-                    </View>
-                  )}
-                  <View style={{ flex: 1 }}>
-                    <NameWithSequence name={headlineOffer.creatorName ?? ''} sequenceNumber={headlineOffer.creatorSequenceNumber} style={styles.offerCardTitle} />
-                    {autograph ? (
-                      <CardMetadataBlock
-                        compact
-                        sequenceNumber={autograph.creatorSequenceNumber}
-                        capturedAt={autograph.createdAt}
-                        printCount={autograph.printCount}
-                        seriesName={autograph.seriesName}
-                        seriesEdition={formatSeriesEdition(autograph)}
-                      />
-                    ) : null}
-                    {group.accepted ? (
-                      <Text style={styles.offerCardMeta}>
-                        1 awaiting payment · due {formatDateTimeWithClock(group.accepted.paymentDueAt ?? '')}
-                      </Text>
-                    ) : null}
-                    {group.pending.length > 0 ? (
-                      <Text style={styles.offerCardMeta}>
-                        {group.pending.length} active offer{group.pending.length !== 1 ? 's' : ''} · highest ${(group.pending[0].amountCents / 100).toFixed(2)}
-                      </Text>
-                    ) : null}
-                    {!group.accepted && group.pending[0]?.expiresAt ? (
-                      <Text style={styles.offerCardMeta}>
-                        Offer expires {formatDateTimeWithClock(group.pending[0].expiresAt)}
-                      </Text>
-                    ) : null}
-                    {group.onHold.length > 0 ? (
-                      <Text style={styles.offerCardMeta}>
-                        {group.onHold.length} backup offer{group.onHold.length !== 1 ? 's' : ''} on hold
-                      </Text>
-                    ) : null}
-                    <Text style={styles.offerCardHint}>Tap card to preview video</Text>
-                  </View>
-                  <Text style={styles.offerCardAmount}>${(headlineOffer.amountCents / 100).toFixed(2)}</Text>
-                </View>
-                {group.accepted ? (
-                  <View style={styles.offerStatusPanel}>
-                    <Text style={styles.offerStatusLabel}>Awaiting Buyer Payment</Text>
-                    <Text style={styles.offerStatusDetail}>
-                      Backup offers are preserved and will reactivate if payment is not completed.
-                    </Text>
-                    <Pressable
-                      style={[styles.offerPrimaryButton, styles.offerRetryButton, offerActioningId === group.accepted.id && styles.offerButtonDisabled]}
-                      onPress={() => handleIncomingOffer(group.accepted!.id, 'accept')}
-                      disabled={offerActioningId === group.accepted.id}
-                    >
-                      <Text style={styles.offerPrimaryButtonText}>{offerActioningId === group.accepted.id ? '...' : 'Retry Transfer'}</Text>
-                    </Pressable>
-                  </View>
-                ) : group.pending[0] ? (
-                  <View style={styles.offerCardActions}>
-                    <Pressable
-                      style={[styles.offerPrimaryButton, offerActioningId === group.pending[0].id && styles.offerButtonDisabled]}
-                      onPress={() => handleIncomingOffer(group.pending[0].id, 'accept')}
-                      disabled={offerActioningId === group.pending[0].id}
-                    >
-                      <Text style={styles.offerPrimaryButtonText}>{offerActioningId === group.pending[0].id ? '...' : 'Accept'}</Text>
-                    </Pressable>
-                    <Pressable
-                      style={[styles.offerSecondaryButton, offerActioningId === group.pending[0].id && styles.offerButtonDisabled]}
-                      onPress={() => handleIncomingOffer(group.pending[0].id, 'decline')}
-                      disabled={offerActioningId === group.pending[0].id}
-                    >
-                      <Text style={styles.offerSecondaryButtonText}>Decline</Text>
-                    </Pressable>
-                  </View>
-                ) : null}
-              </Pressable>
-            );
-          })}
-        </View>
-      )}
     </>
   );
 
   return (
     <View style={styles.container}>
       <FlatList
-        data={filteredData}
-        keyExtractor={(item) => item.id}
-        numColumns={2}
-        columnWrapperStyle={styles.gridRow}
+        data={collectionRows}
+        keyExtractor={(row) => row.kind === 'creator' ? `creator-${row.item.creatorId}` : `${row.source}-${row.item.id}`}
         ListHeaderComponent={listHeader}
         ListEmptyComponent={emptyComponent}
         ListFooterComponent={listFooter}
         contentContainerStyle={listContentStyle}
-        initialNumToRender={8}
-        maxToRenderPerBatch={8}
+        initialNumToRender={12}
+        maxToRenderPerBatch={12}
         updateCellsBatchingPeriod={50}
         windowSize={5}
         removeClippedSubviews={Platform.OS !== 'web'}
         onEndReachedThreshold={0.35}
         onEndReached={() => {
-          if (!isFiltered && !seriesSelectionMode) {
-            void loadMoreCollectionPage(data[data.length - 1] ?? null);
+          if (!seriesSelectionMode) {
+            const cursor =
+              activeSegment === 'saved_cards'
+                ? savedCards[savedCards.length - 1] ?? null
+                : activeSegment === 'created'
+                  ? data[data.length - 1] ?? null
+                  : null;
+            void loadMoreCollectionPage(cursor);
           }
         }}
-        renderItem={({ item }) => {
+        renderItem={({ item: row }) => {
+          if (row.kind === 'creator') {
+            const creator = row.item;
+            return (
+              <Pressable
+                style={styles.listRow}
+                onPress={() => router.push(`/profile/${creator.creatorId}`)}
+              >
+                <View style={styles.listThumbWrap}>
+                  <ProfileAvatar
+                    name={creator.displayName}
+                    uri={creator.avatarUrl}
+                    videoUrl={creator.avatarAutograph?.video_url}
+                    strokes={creator.avatarAutograph?.strokes_json ?? []}
+                    captureWidth={creator.avatarAutograph?.capture_width ?? 1}
+                    captureHeight={creator.avatarAutograph?.capture_height ?? 1}
+                    strokeColor={creator.avatarAutograph?.stroke_color}
+                    size={56}
+                  />
+                </View>
+                <View style={styles.listRowInfo}>
+                  <View style={styles.listRowTextBlock}>
+                    <Text style={styles.listRowMeta} numberOfLines={1}>
+                      {creator.displayName}
+                    </Text>
+                    <Text style={styles.listRowSeries} numberOfLines={1}>
+                      Creator
+                      {creator.printCount > 0 ? ` · ${creator.printCount} public print${creator.printCount !== 1 ? 's' : ''}` : ''}
+                    </Text>
+                    {creator.bio ? (
+                      <Text style={styles.listRowSeries} numberOfLines={1}>
+                        {creator.bio}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <View style={styles.listRowBottom}>
+                    <Pressable
+                      style={styles.savedRowBookmarkButton}
+                      onPress={(event) => {
+                        event.stopPropagation();
+                        void handleUnsaveCreator(creator);
+                      }}
+                      hitSlop={10}
+                    >
+                      <FontAwesome name="bookmark" size={18} color={BrandColors.primary} />
+                    </Pressable>
+                    <Text style={styles.savedMetaText}>Saved {formatDateTime(creator.savedAt)}</Text>
+                  </View>
+                </View>
+              </Pressable>
+            );
+          }
+          const item = row.item;
           const isSelectable = seriesSelectionMode && canCreateSeriesWithItem(item);
           const isSelected = selectedIds.has(item.id);
           return (
             <Pressable
-              style={[styles.gridCard, seriesSelectionMode && !isSelectable && styles.rowDisabled]}
+              style={[styles.listRow, seriesSelectionMode && !isSelectable && styles.rowDisabled]}
               onPress={() => {
                 if (seriesSelectionMode) {
                   if (!isSelectable) return;
@@ -1177,7 +1355,7 @@ export default function AutographsScreen() {
                       return next;
                     }
                     if (next.size >= 50) {
-                      Alert.alert('Series Limit', 'A series can include at most 50 videos.');
+                      Alert.alert('Series Limit', 'A series can include at most 50 moments.');
                       return prev;
                     }
                     next.add(item.id);
@@ -1188,7 +1366,7 @@ export default function AutographsScreen() {
                 }
               }}
             >
-              <View style={styles.thumbnailWrap}>
+              <View style={styles.listThumbWrap}>
                 <PublicVideoThumbnail
                   videoUrl={item.videoUri}
                   thumbnailUrl={item.thumbnailUrl}
@@ -1198,35 +1376,75 @@ export default function AutographsScreen() {
                   captureWidth={item.captureWidth || 1}
                   captureHeight={item.captureHeight || 1}
                   strokeColor={item.strokeColor}
-                  shellStyle={styles.thumbnail}
+                  shellStyle={styles.listThumbnail}
                 />
-                {item.isForSale && (
-                  <Pressable
-                    style={styles.listedBadge}
-                    onPress={(event) => {
-                      event.stopPropagation();
-                      openSellSheet([item]);
-                    }}
-                  >
-                    <Text style={styles.listedBadgeText}>Web Listing</Text>
-                  </Pressable>
-                )}
                 {seriesSelectionMode && (
                   <View style={[styles.selectionCheckCircle, isSelected && styles.selectionCheckCircleSelected, !isSelectable && styles.selectionCheckCircleDisabled]}>
                     {isSelected && <Text style={styles.selectionCheckTick}>✓</Text>}
                   </View>
                 )}
               </View>
-              <View style={styles.gridCardInfo}>
-                <NameWithSequence name={item.creatorName ?? ''} sequenceNumber={item.creatorSequenceNumber} style={styles.gridCardName} />
-                <CardMetadataBlock
-                  compact
-                  sequenceNumber={item.creatorSequenceNumber}
-                  capturedAt={item.createdAt}
-                  printCount={item.printCount}
-                  seriesName={item.seriesName}
-                  seriesEdition={formatSeriesEdition(item)}
-                />
+              <View style={styles.listRowInfo}>
+                <View style={styles.listRowTextBlock}>
+                  <Text style={styles.listRowMeta} numberOfLines={1}>
+                    {[
+                      item.creatorSequenceNumber != null ? `#${item.creatorSequenceNumber}` : null,
+                      formatCardDate(item.createdAt),
+                    ].filter(Boolean).join(' · ')}
+                  </Text>
+                  {(item.seriesName || formatSeriesEdition(item)) ? (
+                    <Text style={styles.listRowSeries} numberOfLines={1}>
+                      {[item.seriesName, formatSeriesEdition(item)].filter(Boolean).join(' · ')}
+                    </Text>
+                  ) : null}
+                  {row.source === 'created' ? (
+                    <Text style={styles.listRowSeries} numberOfLines={1}>
+                      Printed {item.printCount ?? 0} {(item.printCount ?? 0) === 1 ? 'time' : 'times'}
+                    </Text>
+                  ) : null}
+                </View>
+                <View style={styles.listRowBottom}>
+                  {row.source === 'created' ? (
+                    <>
+                      <View style={styles.listRowBottomSpacer} />
+                      <Pressable
+                        style={[styles.publicPrintsButton, item.printsEnabled ? styles.publicPrintsButtonOn : styles.publicPrintsButtonOff]}
+                        onPress={(event) => {
+                          event.stopPropagation();
+                          void handleTogglePrintsEnabled(item);
+                        }}
+                      >
+                        <Text style={[styles.publicPrintsButtonText, item.printsEnabled ? styles.publicPrintsButtonTextOn : styles.publicPrintsButtonTextOff]}>
+                          {item.printsEnabled ? 'Public Prints On' : 'Public Prints Off'}
+                        </Text>
+                      </Pressable>
+                    </>
+                  ) : (
+                    <>
+                      <Pressable
+                        style={styles.savedRowBookmarkButton}
+                        onPress={(event) => {
+                          event.stopPropagation();
+                          void handleUnsaveCard(item);
+                        }}
+                        hitSlop={10}
+                      >
+                        <FontAwesome name="bookmark" size={18} color={BrandColors.primary} />
+                      </Pressable>
+                      <Pressable
+                        style={[styles.publicPrintsButton, styles.buyPrintButton]}
+                        onPress={(event) => {
+                          event.stopPropagation();
+                          void openPrintPreview(item);
+                        }}
+                      >
+                        <Text style={[styles.publicPrintsButtonText, styles.buyPrintButtonText]}>
+                          Print Preview
+                        </Text>
+                      </Pressable>
+                    </>
+                  )}
+                </View>
               </View>
             </Pressable>
           );
@@ -1267,26 +1485,26 @@ export default function AutographsScreen() {
                 />
               </View>
               <View style={styles.modalMetadataBlock}>
-                <View style={styles.modalNameRow}>
-                  <NameWithSequence name={selectedItem.creatorName ?? ''} sequenceNumber={selectedItem.creatorSequenceNumber} style={styles.modalNameText} />
-                  {selectedItem.creatorNameVerified && (
-                    <Image source={require('../assets/images/Ophinia_badge_navy background.png')} style={styles.nameBadge} resizeMode="contain" />
-                  )}
-                </View>
-                <Text style={styles.modalMetaLine}>
+                <Text style={[styles.modalMetaLine, styles.modalMetaCentered]}>
                   {[
+                    selectedItem.creatorSequenceNumber != null ? `#${selectedItem.creatorSequenceNumber}` : null,
                     formatCardDate(selectedItem.createdAt),
-                    selectedItem.printCount != null ? `Print #${selectedItem.printCount + 1}` : null,
                   ].filter(Boolean).join(' · ')}
                 </Text>
                 {selectedItem.seriesName || formatSeriesEdition(selectedItem) ? (
-                  <Text style={styles.modalMetaLine} numberOfLines={1}>
+                  <Text style={[styles.modalMetaLine, styles.modalMetaCentered]} numberOfLines={1}>
                     {[selectedItem.seriesName, formatSeriesEdition(selectedItem)].filter(Boolean).join(' · ')}
                   </Text>
                 ) : null}
                 <View style={styles.modalUtilityRow}>
                   <Pressable style={styles.modalUtilityButton} onPress={() => { void shareAutograph(selectedItem); }}>
                     <Text style={styles.modalUtilityButtonText}>Share</Text>
+                  </Pressable>
+                  <Pressable
+                    style={styles.modalUtilityButton}
+                    onPress={() => { void openPrintPreview(selectedItem); }}
+                  >
+                    <Text style={styles.modalUtilityButtonText}>Print Preview</Text>
                   </Pressable>
                 </View>
               </View>
@@ -1302,34 +1520,6 @@ export default function AutographsScreen() {
                 <Pressable style={styles.contextMenuItem} onPress={() => { setContextMenuVisible(false); void shareAutograph(selectedItem); }}>
                   <Text style={styles.contextMenuItemText}>Share</Text>
                 </Pressable>
-
-                {selectedItem.isForSale || selectedItem.openToTrade ? (
-                  <>
-                    <Pressable
-                      style={styles.contextMenuItem}
-                      onPress={() => {
-                        const item = selectedItem;
-                        setContextMenuVisible(false);
-                        closeModal();
-                        openSellSheet([item]);
-                      }}
-                    >
-                      <Text style={styles.contextMenuItemText}>Manage Listing on Web</Text>
-                    </Pressable>
-                  </>
-                ) : (
-                  <Pressable
-                    style={styles.contextMenuItem}
-                    onPress={() => {
-                      const item = selectedItem;
-                      setContextMenuVisible(false);
-                      closeModal();
-                      openSellSheet([item]);
-                    }}
-                  >
-                    <Text style={styles.contextMenuItemText}>List on Web</Text>
-                  </Pressable>
-                )}
 
                 {selectedItem.creatorId !== user?.id && (
                   <Pressable
@@ -1360,9 +1550,60 @@ export default function AutographsScreen() {
                   disabled={loadingPrintPreview}
                 >
                   <Text style={styles.contextMenuItemText}>
-                    {loadingPrintPreview ? 'Loading Print Preview…' : 'Print Autograph'}
+                    {loadingPrintPreview ? 'Loading Print Preview…' : 'Print Preview'}
                   </Text>
                 </Pressable>
+
+                <Pressable
+                  style={styles.contextMenuItem}
+                  onPress={() => {
+                    const item = selectedItem;
+                    setContextMenuVisible(false);
+                    void handleTogglePrintsEnabled(item);
+                  }}
+                >
+                  <Text style={styles.contextMenuItemText}>
+                    {selectedItem.printsEnabled ? 'Disable Prints' : 'Enable Prints'}
+                  </Text>
+                </Pressable>
+
+                {(selectedItem.printCount ?? 0) > 0 && (
+                  <Pressable
+                    style={styles.contextMenuItem}
+                    onPress={async () => {
+                      const item = selectedItem;
+                      setContextMenuVisible(false);
+                      closeModal();
+                      // Fetch the user's active print for this autograph
+                      const { data: print } = await supabase
+                        .from('autograph_prints')
+                        .select('id')
+                        .eq('autograph_id', item.id)
+                        .eq('owner_id_at_print', user?.id)
+                        .eq('status', 'created')
+                        .order('created_at', { ascending: false })
+                        .limit(1)
+                        .maybeSingle();
+                      if (!print) {
+                        Alert.alert('No Print Found', 'We could not find an active print for this autograph.');
+                        return;
+                      }
+                      setDamageClaim({
+                        printId: print.id,
+                        autographId: item.id,
+                        step: 'form',
+                        claimType: 'damaged',
+                        reasonCode: null,
+                        frontPhotoUri: null,
+                        backPhotoUri: null,
+                        destructionPhotoUri: null,
+                        submitting: false,
+                      });
+                    }}
+                  >
+                    <Text style={styles.contextMenuItemText}>Report Print Issue</Text>
+                  </Pressable>
+                )}
 
                 <Pressable style={[styles.contextMenuItem, styles.contextMenuItemDestructive]} onPress={() => { setContextMenuVisible(false); handleDelete(selectedItem); }}>
                   <Text style={[styles.contextMenuItemText, styles.contextMenuItemTextDestructive]}>Delete</Text>
@@ -1411,7 +1652,7 @@ export default function AutographsScreen() {
           >
             <Text style={styles.certTitle}>Create Series</Text>
             <Text style={styles.certDate}>
-              {selectedSeriesItems.length} video{selectedSeriesItems.length !== 1 ? 's' : ''} · oldest to newest
+              {selectedSeriesItems.length} moment{selectedSeriesItems.length !== 1 ? 's' : ''} · oldest to newest
             </Text>
 
             <Text style={[styles.certIdLabel, { marginTop: 16, marginBottom: 6 }]}>Series Name</Text>
@@ -1428,7 +1669,7 @@ export default function AutographsScreen() {
               {seriesNameInput.length}/20
             </Text>
             <Text style={styles.seriesLockedCopy}>
-              This will create a locked series of {selectedSeriesItems.length} videos ordered oldest to newest. The videos and order cannot be changed later.
+              This will create a locked series of {selectedSeriesItems.length} moments ordered oldest to newest. The moments and order cannot be changed later.
             </Text>
 
             <Pressable
@@ -1458,6 +1699,8 @@ export default function AutographsScreen() {
         addressSheetVisible={addressSheetVisible}
         creatingPrint={creatingPrint}
         loadingPrintPreview={loadingPrintPreview}
+        quantity={printQuantity}
+        onQuantityChange={setPrintQuantity}
         onClose={closePrintPreview}
         onProceedToPayment={handleProceedToPayment}
         onAddressSubmit={handleAddressSubmit}
@@ -1481,76 +1724,102 @@ export default function AutographsScreen() {
             contentContainerStyle={styles.printSheet}
             onStartShouldSetResponder={() => true}
           >
-            {damageClaim?.step === 'intro' && (
+            {damageClaim?.step === 'form' && (
               <>
-                <Text style={styles.certTitle}>Report Print Damage</Text>
-                <Text style={styles.printInfoText}>
-                  If your print arrived damaged, you can submit a damage claim. Ophinia will review your evidence and, if approved, authorize a reprint.
-                </Text>
-                <Text style={[styles.printInfoText, { marginTop: 12 }]}>
-                  You will need to provide:
-                  {'\n'}• A photo of the front of your print (showing QR code)
-                  {'\n'}• A photo of the back of your print (showing print date)
-                </Text>
-                <Text style={[styles.printInfoText, { marginTop: 12 }]}>
-                  If approved, you will be asked to cut the damaged print in half and submit a photo before a reprint is authorized.
-                </Text>
+                <Text style={styles.certTitle}>Report Print Issue</Text>
 
-                <Pressable
-                  style={[styles.certCloseButton, { marginTop: 20 }]}
-                  onPress={() => setDamageClaim((prev) => prev ? ({ ...prev, step: 'photos' }) : prev)}
-                >
-                  <Text style={styles.closeButtonText}>Continue</Text>
-                </Pressable>
-                <Pressable onPress={() => setDamageClaim(null)} style={{ marginTop: 12 }}>
-                  <Text style={styles.certDate}>Cancel</Text>
-                </Pressable>
-              </>
-            )}
+                {/* Claim type selector */}
+                <Text style={[styles.printInfoText, { textAlign: 'left', marginBottom: 8 }]}>What happened?</Text>
+                <View style={styles.claimTypeRow}>
+                  <Pressable
+                    style={[styles.claimTypeButton, damageClaim.claimType === 'damaged' && styles.claimTypeButtonSelected]}
+                    onPress={() => setDamageClaim((prev) => prev ? ({ ...prev, claimType: 'damaged' }) : prev)}
+                  >
+                    <Text style={[styles.claimTypeButtonText, damageClaim.claimType === 'damaged' && styles.claimTypeButtonTextSelected]}>
+                      Arrived Damaged
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.claimTypeButton, damageClaim.claimType === 'lost' && styles.claimTypeButtonSelected]}
+                    onPress={() => setDamageClaim((prev) => prev ? ({ ...prev, claimType: 'lost' }) : prev)}
+                  >
+                    <Text style={[styles.claimTypeButtonText, damageClaim.claimType === 'lost' && styles.claimTypeButtonTextSelected]}>
+                      Never Arrived
+                    </Text>
+                  </Pressable>
+                </View>
 
-            {damageClaim?.step === 'photos' && (
-              <>
-                <Text style={styles.certTitle}>Damage Photos</Text>
-                <Text style={styles.certDate}>Both photos are required to submit your claim.</Text>
+                {/* Reason selector — damaged only */}
+                {damageClaim.claimType === 'damaged' && (
+                  <>
+                    <Text style={[styles.printInfoText, { textAlign: 'left', marginBottom: 8, marginTop: 16 }]}>Reason</Text>
+                    {(
+                      [
+                        { code: 'damaged_in_shipping', label: 'Damaged in shipping' },
+                        { code: 'print_defect', label: 'Print defect' },
+                        { code: 'wrong_item', label: 'Wrong item received' },
+                        { code: 'other', label: 'Other' },
+                      ] as const
+                    ).map(({ code, label }) => (
+                      <Pressable
+                        key={code}
+                        style={styles.reasonOption}
+                        onPress={() => setDamageClaim((prev) => prev ? ({ ...prev, reasonCode: code }) : prev)}
+                      >
+                        <View style={[styles.reasonRadio, damageClaim.reasonCode === code && styles.reasonRadioSelected]} />
+                        <Text style={styles.reasonLabel}>{label}</Text>
+                      </Pressable>
+                    ))}
+                  </>
+                )}
 
-                <Text style={[styles.printInfoText, { textAlign: 'left', marginBottom: 8 }]}>Front of print (QR code visible)</Text>
-                <Pressable
-                  style={styles.photoPickerBox}
-                  onPress={() => pickDamagePhoto('front')}
-                >
-                  {damageClaim.frontPhotoUri ? (
-                    <Image source={{ uri: damageClaim.frontPhotoUri }} style={styles.photoPickerPreview} />
-                  ) : (
-                    <Text style={styles.photoPickerLabel}>Tap to select photo</Text>
-                  )}
-                </Pressable>
+                {/* Photos — damaged only */}
+                {damageClaim.claimType === 'damaged' && (
+                  <>
+                    <Text style={[styles.printInfoText, { textAlign: 'left', marginBottom: 8, marginTop: 20 }]}>Front of print (QR code visible)</Text>
+                    <Pressable style={styles.photoPickerBox} onPress={() => pickDamagePhoto('front')}>
+                      {damageClaim.frontPhotoUri
+                        ? <Image source={{ uri: damageClaim.frontPhotoUri }} style={styles.photoPickerPreview} />
+                        : <Text style={styles.photoPickerLabel}>Tap to select photo</Text>}
+                    </Pressable>
 
-                <Text style={[styles.printInfoText, { textAlign: 'left', marginBottom: 8, marginTop: 16 }]}>Back of print (date &amp; time visible)</Text>
-                <Pressable
-                  style={styles.photoPickerBox}
-                  onPress={() => pickDamagePhoto('back')}
-                >
-                  {damageClaim.backPhotoUri ? (
-                    <Image source={{ uri: damageClaim.backPhotoUri }} style={styles.photoPickerPreview} />
-                  ) : (
-                    <Text style={styles.photoPickerLabel}>Tap to select photo</Text>
-                  )}
-                </Pressable>
+                    <Text style={[styles.printInfoText, { textAlign: 'left', marginBottom: 8, marginTop: 16 }]}>Back of print (date visible)</Text>
+                    <Pressable style={styles.photoPickerBox} onPress={() => pickDamagePhoto('back')}>
+                      {damageClaim.backPhotoUri
+                        ? <Image source={{ uri: damageClaim.backPhotoUri }} style={styles.photoPickerPreview} />
+                        : <Text style={styles.photoPickerLabel}>Tap to select photo</Text>}
+                    </Pressable>
+
+                    <Text style={[styles.printInfoText, { textAlign: 'left', marginBottom: 4, marginTop: 16 }]}>Print cut in half (QR code visible)</Text>
+                    <Text style={[styles.certDate, { textAlign: 'left', marginBottom: 8, fontSize: 11 }]}>
+                      To protect collectible authenticity, only one physical print may exist per autograph. Please cut the damaged print in half before submitting.
+                    </Text>
+                    <Pressable style={styles.photoPickerBox} onPress={() => pickDamagePhoto('destruction')}>
+                      {damageClaim.destructionPhotoUri
+                        ? <Image source={{ uri: damageClaim.destructionPhotoUri }} style={styles.photoPickerPreview} />
+                        : <Text style={styles.photoPickerLabel}>Tap to select photo</Text>}
+                    </Pressable>
+                  </>
+                )}
+
+                {/* Lost — explanatory note */}
+                {damageClaim.claimType === 'lost' && (
+                  <Text style={[styles.printInfoText, { marginTop: 16 }]}>
+                    We will review your order with our print partner. This typically resolves within 5 business days. You will be notified through the app with an update.
+                  </Text>
+                )}
 
                 <Pressable
                   style={[styles.certCloseButton, { marginTop: 20 }, damageClaim.submitting && { opacity: 0.5 }]}
-                  onPress={handleSubmitDamageEvidence}
+                  onPress={handleSubmitClaim}
                   disabled={damageClaim.submitting}
                 >
                   <Text style={styles.closeButtonText}>
-                    {damageClaim.submitting ? 'Submitting…' : 'Submit Damage Claim'}
+                    {damageClaim.submitting ? 'Submitting…' : 'Submit Claim'}
                   </Text>
                 </Pressable>
-                <Pressable
-                  onPress={() => setDamageClaim((prev) => prev ? ({ ...prev, step: 'intro' }) : prev)}
-                  style={{ marginTop: 12 }}
-                >
-                  <Text style={styles.certDate}>Back</Text>
+                <Pressable onPress={() => setDamageClaim(null)} style={{ marginTop: 12 }} disabled={damageClaim.submitting}>
+                  <Text style={styles.certDate}>Cancel</Text>
                 </Pressable>
               </>
             )}
@@ -1559,56 +1828,9 @@ export default function AutographsScreen() {
               <>
                 <Text style={styles.certTitle}>Claim Submitted</Text>
                 <Text style={styles.printInfoText}>
-                  Your damage claim has been received. Ophinia will review your photos and contact you through the app within a few business days.
-                </Text>
-                <Text style={[styles.printInfoText, { marginTop: 12 }]}>
-                  If your claim is approved, you will be asked to cut the damaged print in half and submit a photo to confirm destruction before a reprint is authorized.
-                </Text>
-                <Pressable
-                  style={[styles.certCloseButton, { marginTop: 20 }]}
-                  onPress={() => setDamageClaim(null)}
-                >
-                  <Text style={styles.closeButtonText}>Done</Text>
-                </Pressable>
-              </>
-            )}
-
-            {damageClaim?.step === 'destruction' && (
-              <>
-                <Text style={styles.certTitle}>Confirm Destruction</Text>
-                <Text style={styles.printInfoText}>
-                  Your damage claim has been approved. To protect print authenticity and ensure only one physical print exists per autograph, please cut your damaged print in half and submit a photo of the front showing the QR code.
-                </Text>
-
-                <Text style={[styles.printInfoText, { textAlign: 'left', marginBottom: 8, marginTop: 16 }]}>Photo of print cut in half (QR code visible)</Text>
-                <Pressable
-                  style={styles.photoPickerBox}
-                  onPress={() => pickDamagePhoto('destruction')}
-                >
-                  {damageClaim.destructionPhotoUri ? (
-                    <Image source={{ uri: damageClaim.destructionPhotoUri }} style={styles.photoPickerPreview} />
-                  ) : (
-                    <Text style={styles.photoPickerLabel}>Tap to select photo</Text>
-                  )}
-                </Pressable>
-
-                <Pressable
-                  style={[styles.certCloseButton, { marginTop: 20 }, damageClaim.submitting && { opacity: 0.5 }]}
-                  onPress={handleSubmitDestructionPhoto}
-                  disabled={damageClaim.submitting}
-                >
-                  <Text style={styles.closeButtonText}>
-                    {damageClaim.submitting ? 'Submitting…' : 'Submit Destruction Photo'}
-                  </Text>
-                </Pressable>
-              </>
-            )}
-
-            {damageClaim?.step === 'done' && (
-              <>
-                <Text style={styles.certTitle}>Reprint Authorized</Text>
-                <Text style={styles.printInfoText}>
-                  Your destruction photo has been received. Ophinia will confirm and authorize your reprint shortly. You&apos;ll receive a notification when it&apos;s ready to order.
+                  {damageClaim.claimType === 'lost'
+                    ? 'Your lost print report has been received. We will review your order with our print partner and contact you within a few business days.'
+                    : 'Your damage claim has been received. Ophinia will review your photos and contact you within a few business days.'}
                 </Text>
                 <Pressable
                   style={[styles.certCloseButton, { marginTop: 20 }]}
@@ -1622,130 +1844,7 @@ export default function AutographsScreen() {
         </Pressable>
       </Modal>
 
-      <AutographFilterSheet
-        visible={filterVisible}
-        draftFilters={draftFilters}
-        draftSort={draftSort}
-        onToggleFilter={(key) =>
-          setDraftFilters((prev) => ({ ...prev, [key]: !prev[key] }))
-        }
-        onCreatorChange={(value) => setDraftFilters((prev) => ({ ...prev, creator: value }))}
-        onSeriesChange={(value) => setDraftFilters((prev) => ({ ...prev, series: value }))}
-        onSortChange={setDraftSort}
-        onApply={() => {
-          setFilters(draftFilters);
-          setSort(draftSort);
-          setFilterVisible(false);
-        }}
-        onClear={() => {
-          setFilters(defaultAutographFilters);
-          setDraftFilters(defaultAutographFilters);
-          setSort('newest');
-          setDraftSort('newest');
-          setFilterVisible(false);
-        }}
-        onClose={() => setFilterVisible(false)}
-      />
 
-      {/* Sale-state sheet — top-level Modal, launched from the header action */}
-      <Modal
-        visible={sellItems.length > 0}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={closeSellSheet}
-      >
-        <Pressable style={styles.sellSheetOverlay} onPress={closeSellSheet}>
-          <ScrollView
-            style={{ width: '100%' }}
-            contentContainerStyle={styles.certSheet}
-            keyboardShouldPersistTaps="handled"
-            onStartShouldSetResponder={() => true}
-          >
-            <Text style={styles.certTitle}>
-              {sellItems.length === 1 && sellItems[0].isForSale ? 'Edit Listing' : 'List for Sale'}
-            </Text>
-            <Text style={styles.certDate}>
-              {sellItems.length === 1
-                ? (sellItems[0].creatorName ?? formatDateTime(sellItems[0].createdAt))
-                : `${sellItems.length} autographs`}
-            </Text>
-
-            <View style={styles.listingModeRow}>
-              <Pressable
-                style={[styles.listingModeOption, listingMode === 'buy_now' && styles.listingModeOptionActive]}
-                onPress={() => setListingMode('buy_now')}
-              >
-                <Text style={[styles.listingModeOptionText, listingMode === 'buy_now' && styles.listingModeOptionTextActive]}>
-                  Fixed Price
-                </Text>
-              </Pressable>
-              <Pressable
-                style={[styles.listingModeOption, listingMode === 'make_offer' && styles.listingModeOptionActive]}
-                onPress={() => setListingMode('make_offer')}
-              >
-                <Text style={[styles.listingModeOptionText, listingMode === 'make_offer' && styles.listingModeOptionTextActive]}>
-                  Estimated Value
-                </Text>
-              </Pressable>
-            </View>
-
-            <Text style={[styles.certDate, { marginTop: 16, marginBottom: 4, fontWeight: '600', color: '#444' }]}>
-              {listingMode === 'buy_now' ? 'Fixed Price (min $5.00)' : 'Estimated Value (min $5.00)'}
-            </Text>
-            <TextInput
-              style={styles.priceInput}
-              placeholder="e.g. 25.00"
-              placeholderTextColor="#999"
-              keyboardType="decimal-pad"
-              returnKeyType="done"
-              value={priceInput}
-              onChangeText={handlePriceChange}
-            />
-
-            {listingMode === 'make_offer' && (
-              <>
-                <Pressable
-                  style={styles.checkboxRow}
-                  onPress={() => setAutoDeclineBelow((v) => !v)}
-                >
-                  <View style={[styles.checkbox, autoDeclineBelow && styles.checkboxChecked]}>
-                    {autoDeclineBelow && <Text style={styles.checkboxTick}>✓</Text>}
-                  </View>
-                  <Text style={styles.checkboxLabel}>Auto-decline offers below estimated value</Text>
-                </Pressable>
-
-                <Pressable
-                  style={styles.checkboxRow}
-                  onPress={() => setAutoAcceptAbove((v) => !v)}
-                >
-                  <View style={[styles.checkbox, autoAcceptAbove && styles.checkboxChecked]}>
-                    {autoAcceptAbove && <Text style={styles.checkboxTick}>✓</Text>}
-                  </View>
-                  <Text style={styles.checkboxLabel}>Auto-accept first offer at or above estimated value</Text>
-                </Pressable>
-              </>
-            )}
-
-            <Pressable
-              style={[styles.certCloseButton, saving && { opacity: 0.6 }]}
-              onPress={handleListForSale}
-              disabled={saving}
-            >
-              <Text style={styles.closeButtonText}>
-                {saving
-                  ? 'Saving…'
-                  : sellItems.length === 1 && sellItems[0].isForSale
-                    ? 'Update Listing'
-                    : `List ${sellItems.length > 1 ? `${sellItems.length} autographs` : '1 autograph'}`}
-              </Text>
-            </Pressable>
-
-            <Pressable onPress={closeSellSheet} style={{ marginTop: 12 }}>
-              <Text style={styles.certDate}>Cancel</Text>
-            </Pressable>
-          </ScrollView>
-        </Pressable>
-      </Modal>
     </View>
   );
 }
@@ -1781,19 +1880,84 @@ const styles = StyleSheet.create({
     color: '#666',
     fontFamily: BrandFonts.primary,
   },
-  gridRow: {
-    paddingHorizontal: 12,
-    gap: 12,
-    marginBottom: 12,
-  },
-  gridCard: {
-    flex: 1,
-    borderRadius: 0,
+  sortToggle: {
+    flexDirection: 'row',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#D0D0D0',
     overflow: 'hidden',
-    backgroundColor: '#fff',
   },
-  thumbnailWrap: {
+  sortOption: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+  },
+  sortOptionActive: {
+    backgroundColor: BrandColors.primary,
+  },
+  sortOptionText: {
+    fontSize: 13,
+    fontFamily: BrandFonts.primary,
+    fontWeight: '600',
+    color: '#555',
+  },
+  sortOptionTextActive: {
+    color: '#fff',
+  },
+  listRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EBEBEB',
+  },
+  listThumbWrap: {
     position: 'relative',
+  },
+  listThumbnail: {
+    width: 56,
+    height: 93,
+    borderRadius: 0,
+    backgroundColor: '#d9d9d9',
+    overflow: 'hidden',
+  },
+  listRowInfo: {
+    flex: 1,
+    marginLeft: 14,
+    flexDirection: 'column',
+    justifyContent: 'space-between',
+    alignSelf: 'stretch',
+    paddingBottom: 10,
+  },
+  listRowTextBlock: {
+    gap: 3,
+  },
+  listRowMeta: {
+    fontSize: 14,
+    fontWeight: '600',
+    fontFamily: BrandFonts.primary,
+    color: '#111',
+  },
+  listRowSeries: {
+    fontSize: 13,
+    fontFamily: BrandFonts.primary,
+    color: '#666',
+  },
+  listRowBottom: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 2,
+  },
+  listRowBottomSpacer: {
+    width: 24,
+    height: 24,
+  },
+  savedRowBookmarkButton: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   listedBadge: {
     position: 'absolute',
@@ -1810,20 +1974,41 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontFamily: BrandFonts.primary,
   },
-  gridCardInfo: {
-    paddingHorizontal: 8,
-    paddingVertical: 8,
+  publicPrintsButton: {
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+    paddingVertical: 7,
   },
-  gridCardName: {
-    fontSize: 13,
+  publicPrintsButtonOn: {
+    backgroundColor: '#1A7F37',
+  },
+  publicPrintsButtonOff: {
+    backgroundColor: '#D7DADF',
+  },
+  publicPrintsButtonText: {
+    fontSize: 12,
+    lineHeight: 14,
     fontWeight: '700',
-    color: '#111',
     fontFamily: BrandFonts.primary,
+    textAlign: 'center',
   },
-  gridCardSeries: {
-    fontSize: 11,
+  publicPrintsButtonTextOn: {
+    color: '#fff',
+  },
+  publicPrintsButtonTextOff: {
+    color: '#4B5563',
+  },
+  buyPrintButton: {
+    backgroundColor: BrandColors.primary,
+  },
+  buyPrintButtonText: {
+    color: '#fff',
+  },
+  savedMetaText: {
     color: '#777',
-    marginTop: 2,
+    fontSize: 12,
     fontFamily: BrandFonts.primary,
   },
   row: {
@@ -2165,6 +2350,10 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textAlign: 'center',
   },
+  modalMetaCentered: {
+    textAlign: 'center',
+    width: '100%',
+  },
   modalMetaLine: {
     fontSize: 12,
     lineHeight: 17,
@@ -2175,7 +2364,10 @@ const styles = StyleSheet.create({
   },
   modalUtilityRow: {
     width: '100%',
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
     marginTop: 8,
   },
   modalUtilityButton: {
@@ -2184,6 +2376,10 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 18,
     paddingVertical: 8,
+  },
+  modalUtilityButtonNavy: {
+    backgroundColor: BrandColors.primary,
+    borderColor: BrandColors.primary,
   },
   modalUtilityButtonText: {
     color: '#fff',
@@ -2404,6 +2600,35 @@ const styles = StyleSheet.create({
     marginTop: 16,
     marginBottom: 12,
   },
+  collectionSegmentedControl: {
+    flexDirection: 'row',
+    marginTop: 8,
+    marginBottom: 2,
+    borderRadius: 999,
+    backgroundColor: '#EDEFF3',
+    padding: 3,
+  },
+  collectionSegmentOption: {
+    flex: 1,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 7,
+  },
+  collectionSegmentOptionActive: {
+    backgroundColor: BrandColors.primary,
+  },
+  collectionSegmentText: {
+    color: '#555',
+    fontSize: 12,
+    fontWeight: '700',
+    fontFamily: BrandFonts.primary,
+    textAlign: 'center',
+  },
+  collectionSegmentTextActive: {
+    color: '#fff',
+  },
   headerButtons: {
     flexDirection: 'row',
     gap: 8,
@@ -2465,17 +2690,11 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#666',
   },
-  filterButtonActive: {
-    backgroundColor: '#666',
-  },
   filterButtonText: {
     fontSize: 14,
     fontWeight: '600',
     fontFamily: BrandFonts.primary,
     color: '#666',
-  },
-  filterButtonTextActive: {
-    color: '#fff',
   },
   seriesLockedCopy: {
     width: '100%',
@@ -2520,5 +2739,52 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#999',
     fontFamily: BrandFonts.primary,
+  },
+  claimTypeRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  claimTypeButton: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#ccc',
+    alignItems: 'center',
+  },
+  claimTypeButtonSelected: {
+    borderColor: BrandColors.primary,
+    backgroundColor: `${BrandColors.primary}15`,
+  },
+  claimTypeButtonText: {
+    fontSize: 14,
+    fontFamily: BrandFonts.primary,
+    color: '#555',
+  },
+  claimTypeButtonTextSelected: {
+    color: BrandColors.primary,
+    fontWeight: '700',
+  },
+  reasonOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 8,
+  },
+  reasonRadio: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 2,
+    borderColor: '#ccc',
+  },
+  reasonRadioSelected: {
+    borderColor: BrandColors.primary,
+    backgroundColor: BrandColors.primary,
+  },
+  reasonLabel: {
+    fontSize: 14,
+    fontFamily: BrandFonts.primary,
+    color: '#333',
   },
 });

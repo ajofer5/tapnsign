@@ -1,13 +1,15 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { SaveCreatorButton } from '../../../components/save-creator-button';
 import { ProfilePrintGrid } from '../../../components/profile-print-grid';
 import { PublicNav } from '../../../components/public-nav';
 import { getWebsiteProfile } from '../../../lib/profile';
 import { getWebSessionUser } from '../../../lib/web-auth';
-import { getSavedAutographIds } from '../../../lib/watchlist';
+import { getSavedAutographIds, getIsCreatorSaved } from '../../../lib/watchlist';
 import {
   webRouteToProfile,
   webRoutes,
+  withNext,
 } from '../../../lib/routes';
 
 export default async function ProfilePage({
@@ -19,9 +21,11 @@ export default async function ProfilePage({
   const profile = await getWebsiteProfile(id);
   if (!profile) notFound();
   const user = await getWebSessionUser();
-  const savedIds = user
-    ? await getSavedAutographIds(user.id, profile.active_listings.map((listing) => listing.id))
-    : new Set<string>();
+  const isOwnProfile = user?.id === id;
+  const [savedIds, isCreatorSaved] = await Promise.all([
+    user ? getSavedAutographIds(user.id, profile.active_listings.map((l) => l.id)) : Promise.resolve(new Set<string>()),
+    user && !isOwnProfile ? getIsCreatorSaved(user.id, id) : Promise.resolve(false),
+  ]);
 
   return (
     <main className="min-h-screen bg-[#F2F2F4]">
@@ -43,11 +47,6 @@ export default async function ProfilePage({
                   {profile.display_name.slice(0, 1).toUpperCase()}
                 </div>
               )}
-              {profile.verified ? (
-                <span className="rounded-[4px] bg-[#EFF6EC] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#2B6A1C]">
-                  Verified
-                </span>
-              ) : null}
             </div>
             <div className="min-w-0 flex-1">
               <h1 className="break-words text-2xl font-black tracking-tight text-black">
@@ -58,6 +57,13 @@ export default async function ProfilePage({
                   {profile.bio}
                 </p>
               ) : null}
+              {!isOwnProfile && (
+                <SaveCreatorButton
+                  creatorId={id}
+                  initialSaved={isCreatorSaved}
+                  loginPath={withNext(webRoutes.login, webRouteToProfile(id))}
+                />
+              )}
             </div>
           </div>
         </section>
@@ -87,7 +93,7 @@ export default async function ProfilePage({
           <div>
             <p className="text-base font-black text-white">Get the Ophinia app</p>
             <p className="mt-1 text-sm text-blue-200">
-              Collect verified digital autographs and order official 8×10 prints.
+              Collect official moments and order 8×10 prints.
             </p>
           </div>
           <Link

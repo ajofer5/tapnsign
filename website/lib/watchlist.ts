@@ -33,6 +33,17 @@ export type WebsiteSavedCreatorsPage = {
   nextCursor: WebsiteSavedCreatorsCursor | null;
 };
 
+export async function getIsCreatorSaved(userId: string, creatorId: string): Promise<boolean> {
+  const supabase = createWebsiteAdminSupabaseClient();
+  const { data } = await supabase
+    .from('saved_creators')
+    .select('creator_id')
+    .eq('user_id', userId)
+    .eq('creator_id', creatorId)
+    .maybeSingle();
+  return !!data;
+}
+
 export async function getSavedAutographIds(userId: string, autographIds: string[]) {
   if (autographIds.length === 0) {
     return new Set<string>();

@@ -27,12 +27,36 @@ function octPath(x: number, y: number, w: number, h: number, c: number): string 
   ].join(' ');
 }
 
-export function DisplayCardFrame({ frameId = 'classic' }: { frameId?: 'blur' | 'classic' | 'ophinia_o' }) {
+export function DisplayCardFrame({ frameId = 'classic' }: { frameId?: 'blank' | 'blur' | 'classic' | 'ophinia_o' | 'no_name_frame' }) {
+  if (frameId === 'blank') {
+    return (
+      <View style={[StyleSheet.absoluteFill, { zIndex: 15, elevation: 15 }]} pointerEvents="none">
+        <Image
+          source={require('../assets/images/blank-card-frame.png')}
+          style={{ width: '100%', height: '100%' }}
+          resizeMode="stretch"
+        />
+      </View>
+    );
+  }
+
   if (frameId === 'blur') {
     return (
       <View style={[StyleSheet.absoluteFill, { zIndex: 15, elevation: 15 }]} pointerEvents="none">
         <Image
           source={require('../assets/images/blur-card-frame.png')}
+          style={{ width: '100%', height: '100%' }}
+          resizeMode="stretch"
+        />
+      </View>
+    );
+  }
+
+  if (frameId === 'no_name_frame') {
+    return (
+      <View style={[StyleSheet.absoluteFill, { zIndex: 15, elevation: 15 }]} pointerEvents="none">
+        <Image
+          source={require('../assets/images/no-name-frame@x3.png')}
           style={{ width: '100%', height: '100%' }}
           resizeMode="stretch"
         />

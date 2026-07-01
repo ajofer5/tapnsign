@@ -11,8 +11,8 @@ function formatDate(value: string) {
 
 export function WebListingCard({
   listing,
-  isSaved: _isSaved = false,
-  savePath: _savePath = '/marketplace',
+  isSaved = false,
+  savePath = '/marketplace',
   showProfileButton = false,
   selectionMode = false,
   selected = false,
@@ -28,7 +28,29 @@ export function WebListingCard({
 }) {
   const [playing, setPlaying] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [saved, setSaved] = useState(isSaved);
+  const [savingMoment, setSavingMoment] = useState(false);
   const creatorName = listing.creator?.display_name ?? 'Creator';
+
+  const toggleSaveMoment = async () => {
+    if (savingMoment) return;
+    setSavingMoment(true);
+    const method = saved ? 'DELETE' : 'POST';
+    try {
+      const res = await fetch('/api/save-moment', {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ autograph_id: listing.id }),
+      });
+      if (res.status === 401) {
+        window.location.href = `/login?next=${encodeURIComponent(savePath)}`;
+        return;
+      }
+      if (res.ok) setSaved((prev) => !prev);
+    } finally {
+      setSavingMoment(false);
+    }
+  };
   const cardImageUrl = listing.print_preview_url ?? listing.thumbnail_url;
 
   return (
@@ -127,6 +149,15 @@ export function WebListingCard({
                 >
                   View Profile
                 </Link>
+              )}
+              {!selectionMode && (
+                <button
+                  onClick={toggleSaveMoment}
+                  disabled={savingMoment}
+                  className="rounded-[4px] bg-[#001B5C] px-2.5 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-[#00144A] disabled:opacity-50"
+                >
+                  {saved ? 'Saved' : 'Save Moment'}
+                </button>
               )}
               {listing.prints_enabled ? (
                 <button

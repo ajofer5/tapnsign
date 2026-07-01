@@ -78,7 +78,7 @@ export function ProfilePrintGrid({
               disabled={selectionMode && selectedIds.length === 0}
               className="rounded-[4px] bg-[#001B5C] px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#00144A] disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {selectionMode ? `Print ${selectedIds.length || ''}`.trim() : 'Select Prints'}
+              {selectionMode ? `Print ${selectedIds.length || ''}`.trim() : 'Print Multiple'}
             </button>
           </div>
         ) : null}

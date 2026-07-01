@@ -13,7 +13,7 @@ type CollectionTab = 'captured' | 'saved_cards' | 'saved_creators';
 
 const COLLECTION_TABS: { key: CollectionTab; label: string }[] = [
   { key: 'captured', label: 'Captured' },
-  { key: 'saved_cards', label: 'Saved Cards' },
+  { key: 'saved_cards', label: 'Saved Moments' },
   { key: 'saved_creators', label: 'Saved Creators' },
 ];
 
@@ -132,7 +132,7 @@ export default async function CollectionPage({ searchParams }: CollectionPagePro
               key={tab.key}
               href={tab.key === 'captured' ? '/collection' : `/collection?tab=${tab.key}`}
               className={[
-                'rounded-[4px] px-2 py-2 text-center text-[11px] font-black uppercase tracking-[0.12em] transition-colors',
+                'rounded-[4px] px-2 py-2 text-center text-[11px] font-black transition-colors',
                 active ? 'bg-[#001B5C] text-white' : 'text-gray-500 hover:bg-gray-50 hover:text-black',
               ].join(' ')}
             >
@@ -185,16 +185,16 @@ export default async function CollectionPage({ searchParams }: CollectionPagePro
         <div className="rounded-[6px] border border-gray-200 bg-white p-10 text-center">
           <h2 className="text-xl font-black text-black">
             {activeTab === 'captured'
-              ? 'No captured autographs yet'
+              ? 'No captured moments yet'
               : activeTab === 'saved_cards'
-                ? 'No saved cards yet'
+                ? 'No saved moments yet'
                 : 'No saved creators yet'}
           </h2>
           <p className="mt-3 text-sm text-gray-600">
             {activeTab === 'captured'
-              ? 'Capture autographs and they will appear here.'
+              ? 'Capture moments and they will appear here.'
               : activeTab === 'saved_cards'
-                ? 'Saved cards will appear here.'
+                ? 'Saved moments will appear here.'
                 : 'Saved creators will appear here.'}
           </p>
         </div>

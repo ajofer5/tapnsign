@@ -1,9 +1,12 @@
 import { createClient } from '@supabase/supabase-js';
 import Link from 'next/link';
 import type { Metadata } from 'next';
+import { PrintPreviewButton } from '../../../components/print-preview-button';
 
 type Certificate = {
   certificate_id: string;
+  autograph_id: string | null;
+  prints_enabled: boolean;
   created_at: string;
   content_hash: string;
   video_url: string;
@@ -35,7 +38,24 @@ async function getCertificate(id: string): Promise<Certificate | null> {
   const { data } = await supabase
     .rpc('get_public_certificate', { p_certificate_id: id })
     .single();
-  return (data as Certificate) ?? null;
+  if (!data) return null;
+
+  // Fetch autograph UUID and prints_enabled via service role
+  const admin = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+  const { data: autograph } = await admin
+    .from('autographs')
+    .select('id, prints_enabled')
+    .eq('certificate_id', id)
+    .maybeSingle();
+
+  return {
+    ...(data as Certificate),
+    autograph_id: autograph?.id ?? null,
+    prints_enabled: !!autograph?.prints_enabled,
+  };
 }
 
 export default async function VerifyPage({ params }: { params: Promise<{ id: string }> }) {
@@ -88,10 +108,6 @@ export default async function VerifyPage({ params }: { params: Promise<{ id: str
                   label="Creator"
                   value={cert.creator_name}
                 />
-                <CertRow
-                  label="Creator Identity"
-                  value={cert.creator_verified ? 'Identity Verified' : 'Unverified'}
-                />
                 <CertRow label="Owner" value={cert.owner_name} />
                 <CertRow
                   label="Captured"
@@ -118,9 +134,14 @@ export default async function VerifyPage({ params }: { params: Promise<{ id: str
               </div>
             </div>
 
+            {cert.autograph_id && cert.prints_enabled && (
+              <div className="mt-4">
+                <PrintPreviewButton autographId={cert.autograph_id} />
+              </div>
+            )}
+
             <p className="text-center text-xs text-gray-400 mt-6 leading-relaxed">
-              This Certificate of Authenticity is maintained by Ophinia and cannot be altered.<br />
-              Ownership transfers are permanently recorded on the Ophinia platform.
+              This Certificate of Authenticity is maintained by Ophinia. Unauthorized reproduction is prohibited.
             </p>
           </>
         ) : (

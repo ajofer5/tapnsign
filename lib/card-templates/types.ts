@@ -15,7 +15,7 @@ export type CardTemplate = {
     height: number;
   };
   strokeColor: string;
-  frameId: 'blur' | 'classic' | 'ophinia_o';
+  frameId: 'blank' | 'blur' | 'classic' | 'ophinia_o' | 'no_name_frame';
   nameColor?: string;
   showNameLines?: boolean;
   zones: {

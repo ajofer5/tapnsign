@@ -4,9 +4,10 @@ import {
 } from '@/components/autograph-card-canvas';
 import { BrandColors, BrandFonts } from '@/constants/theme';
 import { callEdgeFunction } from '@/lib/api';
+import { rejectPendingMint, resolvePendingMint, startPendingMint } from '@/lib/pending-mint';
 import { useAuth } from '@/lib/auth-context';
 import { CAPTURE_COUNTDOWN_START, CAPTURE_DURATION_MS, PREVIEW_FRAME_TIMES_MS } from '@/lib/capture-timing';
-import { CardTemplate, DISPLAY_CARD_TEMPLATES, getCardTemplate, OPHINIA_O_CARD_TEMPLATE } from '@/lib/card-templates';
+import { CardTemplate, CLASSIC_CARD_TEMPLATE, DISPLAY_CARD_TEMPLATES, getCardTemplate } from '@/lib/card-templates';
 import { supabase } from '@/lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -42,6 +43,10 @@ const STROKE_OPTIONS = [
 ] as const;
 
 const CAPTURE_SETTINGS_KEY = 'capture:last-settings:v1';
+const STYLE_PICK_OPTION_WIDTH = 224;
+const STYLE_PICK_SCREEN_HORIZONTAL_PADDING = 24;
+const STYLE_PICK_OPTION_GAP = 20;
+const STYLE_PICK_CAROUSEL_SNAP_INTERVAL = STYLE_PICK_OPTION_WIDTH + STYLE_PICK_OPTION_GAP;
 
 type PersonalizedRequestContext = {
   id: string;
@@ -55,7 +60,6 @@ type Stroke = CardStroke;
 type CapturedFrame = { uri: string; t: number };
 
 const FLATTENED_PREVIEW_FRAME_EXPORT_WIDTH = 1200;
-const FLATTENED_HERO_FRAME_EXPORT_WIDTH = 1200;
 
 function normalizeCapturedFrames(rawFrames: CapturedFrame[]): CapturedFrame[] {
   if (!rawFrames.length) return [];
@@ -95,7 +99,7 @@ export default function CaptureScreen() {
   const cardW = Math.min(screenW, (screenH * 0.92) * (3 / 5));
   const cardH = cardW * (5 / 3);
 
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string>(OPHINIA_O_CARD_TEMPLATE.id);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>(CLASSIC_CARD_TEMPLATE.id);
   const captureTemplate = getCardTemplate(selectedTemplateId);
 
   const [capturePhase, setCapturePhase] = useState<CapturePhase>('idle');
@@ -140,7 +144,9 @@ export default function CaptureScreen() {
         try {
           const parsed = JSON.parse(raw) as { templateId?: string; strokeColor?: string };
           if (parsed.templateId) {
-            setSelectedTemplateId(getCardTemplate(parsed.templateId).id);
+            const savedTemplateId = getCardTemplate(parsed.templateId).id;
+            const visibleTemplate = DISPLAY_CARD_TEMPLATES.some((template) => template.id === savedTemplateId);
+            setSelectedTemplateId(visibleTemplate ? savedTemplateId : CLASSIC_CARD_TEMPLATE.id);
           }
           if (parsed.strokeColor && STROKE_OPTIONS.some((option) => option.color === parsed.strokeColor)) {
             setStrokeColor(parsed.strokeColor);
@@ -322,7 +328,7 @@ export default function CaptureScreen() {
     }
 
     if (!profile?.is_creator) {
-      Alert.alert('Age Requirement', 'You must be 18 or older to create autographs.');
+      Alert.alert('Age Requirement', 'You must be 18 or older to capture moments.');
       return;
     }
 
@@ -396,9 +402,7 @@ export default function CaptureScreen() {
             throw new Error('Could not prepare the autograph card preview frames.');
           }
 
-          const exportWidth = index === capturedFrames.length - 1
-            ? FLATTENED_HERO_FRAME_EXPORT_WIDTH
-            : FLATTENED_PREVIEW_FRAME_EXPORT_WIDTH;
+          const exportWidth = FLATTENED_PREVIEW_FRAME_EXPORT_WIDTH;
           const exportHeight = Math.round(
             exportWidth * (captureTemplate.aspectRatio.height / captureTemplate.aspectRatio.width)
           );
@@ -409,7 +413,6 @@ export default function CaptureScreen() {
             result: 'tmpfile',
             width: exportWidth,
             height: exportHeight,
-            pixelRatio: index === capturedFrames.length - 1 ? 3 : 1,
             useRenderInContext: true,
           });
         })
@@ -440,34 +443,53 @@ export default function CaptureScreen() {
         })
       );
 
-      await uploadPreviewFramesPromise;
-
-      const insertedAutograph = await callEdgeFunction<{
-        autograph: {
-          id: string;
-          certificate_id: string;
-          visibility: 'private' | 'public';
-          sale_state: 'not_for_sale' | 'fixed';
-          is_for_sale: boolean;
-          content_hash: string;
-          creator_sequence_number: number | null;
-        };
-      }>('mint-autograph', {
-        video_path: null,
-        thumbnail_path: null,
-        preview_frame_paths: (uploadTargets.preview_frames ?? []).map((frame: { path: string }) => frame.path),
-        preview_frame_times_ms: PREVIEW_FRAME_TIMES_MS,
-        strokes_json: finalizedStrokes,
-        capture_width: Math.max(1, Math.round(captureSize.width)),
-        capture_height: Math.max(1, Math.round(captureSize.height)),
-        stroke_color: strokeColor,
-        template_id: captureTemplate.id,
-        personalized_request_id: personalizedRequest?.id ?? null,
-      });
-
-      console.log('Autograph mint succeeded', insertedAutograph);
+      // Navigate immediately so the user doesn't wait on the upload
       resetState();
-      router.replace(personalizedRequest ? '/personalized-requests' : '/autographs');
+      if (personalizedRequest) {
+        router.replace('/personalized-requests');
+        // Finish upload + mint in the background (personalized flow doesn't need the autograph_id)
+        uploadPreviewFramesPromise.then(() =>
+          callEdgeFunction('mint-autograph', {
+            video_path: null,
+            thumbnail_path: null,
+            preview_frame_paths: (uploadTargets.preview_frames ?? []).map((frame: { path: string }) => frame.path),
+            preview_frame_times_ms: PREVIEW_FRAME_TIMES_MS,
+            strokes_json: finalizedStrokes,
+            capture_width: Math.max(1, Math.round(captureSize.width)),
+            capture_height: Math.max(1, Math.round(captureSize.height)),
+            stroke_color: strokeColor,
+            template_id: captureTemplate.id,
+            personalized_request_id: personalizedRequest.id,
+          })
+        ).catch((error: any) => {
+          console.log('Background mint error:', error?.message);
+        });
+      } else {
+        startPendingMint();
+        router.replace('/thankyou');
+        uploadPreviewFramesPromise.then(() =>
+          callEdgeFunction<{
+            autograph: { id: string };
+          }>('mint-autograph', {
+            video_path: null,
+            thumbnail_path: null,
+            preview_frame_paths: (uploadTargets.preview_frames ?? []).map((frame: { path: string }) => frame.path),
+            preview_frame_times_ms: PREVIEW_FRAME_TIMES_MS,
+            strokes_json: finalizedStrokes,
+            capture_width: Math.max(1, Math.round(captureSize.width)),
+            capture_height: Math.max(1, Math.round(captureSize.height)),
+            stroke_color: strokeColor,
+            template_id: captureTemplate.id,
+            personalized_request_id: null,
+          })
+        ).then((insertedAutograph) => {
+          console.log('Autograph mint succeeded', insertedAutograph);
+          resolvePendingMint(insertedAutograph.autograph.id);
+        }).catch((error: any) => {
+          console.log('Background mint error:', error?.message);
+          rejectPendingMint(error instanceof Error ? error : new Error(error?.message ?? 'Mint failed'));
+        });
+      }
     } catch (error: any) {
       console.log('Capture error:', { message: error?.message, details: error?.details, hint: error?.hint, code: error?.code });
       const detail = error?.message || error?.details || error?.hint || 'Something went wrong while saving your autograph. Please try again.';
@@ -641,16 +663,40 @@ function StylePickScreen({
   onSelectStrokeColor: (color: string) => void;
   onContinue: () => void;
 }) {
+  const carouselRef = useRef<ScrollView>(null);
+  const { width: screenWidth } = useWindowDimensions();
+  const carouselViewportWidth = screenWidth - STYLE_PICK_SCREEN_HORIZONTAL_PADDING * 2;
+  const carouselSidePadding = Math.max(0, (carouselViewportWidth - STYLE_PICK_OPTION_WIDTH) / 2);
+
+  useEffect(() => {
+    const selectedIndex = Math.max(
+      0,
+      DISPLAY_CARD_TEMPLATES.findIndex((template) => template.id === selectedTemplateId)
+    );
+    const timeout = setTimeout(() => {
+      const centeredOffset = selectedIndex * STYLE_PICK_CAROUSEL_SNAP_INTERVAL;
+      carouselRef.current?.scrollTo({
+        x: centeredOffset,
+        animated: false,
+      });
+    }, 0);
+
+    return () => clearTimeout(timeout);
+  }, [selectedTemplateId]);
 
   return (
     <View style={stylePickStyles.container}>
       <Text style={stylePickStyles.heading}>Choose your card template</Text>
 
       <ScrollView
+        ref={carouselRef}
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={stylePickStyles.carouselContent}
-        snapToInterval={244}
+        contentContainerStyle={[
+          stylePickStyles.carouselContent,
+          { paddingHorizontal: carouselSidePadding },
+        ]}
+        snapToInterval={STYLE_PICK_CAROUSEL_SNAP_INTERVAL}
         decelerationRate="fast"
         style={stylePickStyles.carousel}
       >
@@ -682,17 +728,17 @@ function StylePickScreen({
         })}
       </ScrollView>
 
-      <Text style={stylePickStyles.subheading}>Choose your stroke color</Text>
+      <Text style={stylePickStyles.subheading}>Choose your signature color</Text>
       <View style={stylePickStyles.swatchRow}>
         {STROKE_OPTIONS.map((option) => {
           const isSelected = selectedStrokeColor === option.color;
           return (
             <Pressable
               key={option.id}
-              style={stylePickStyles.swatchOption}
+              style={[stylePickStyles.swatchOption, isSelected && stylePickStyles.swatchOptionSelected]}
               onPress={() => onSelectStrokeColor(option.color)}
             >
-              <View style={[stylePickStyles.swatchCircle, { backgroundColor: option.color }, isSelected && stylePickStyles.swatchCircleSelected]} />
+              <View style={[stylePickStyles.swatchCircle, { backgroundColor: option.color }]} />
               <Text style={[stylePickStyles.swatchLabel, isSelected && stylePickStyles.swatchLabelSelected]}>{option.label}</Text>
             </Pressable>
           );
@@ -709,15 +755,15 @@ function StylePickScreen({
 const stylePickStyles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0C132B',
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'flex-start',
-    paddingHorizontal: 24,
+    paddingHorizontal: STYLE_PICK_SCREEN_HORIZONTAL_PADDING,
     paddingTop: 140,
     paddingBottom: 40,
   },
   heading: {
-    color: '#F6F6F2',
+    color: '#111111',
     fontFamily: BrandFonts.primary,
     fontSize: 20,
     fontWeight: '600',
@@ -726,7 +772,7 @@ const stylePickStyles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   subheading: {
-    color: '#F6F6F2',
+    color: '#111111',
     fontFamily: BrandFonts.primary,
     fontSize: 16,
     fontWeight: '600',
@@ -740,22 +786,21 @@ const stylePickStyles = StyleSheet.create({
     marginBottom: 22,
   },
   carouselContent: {
-    paddingHorizontal: 28,
-    gap: 32,
+    gap: STYLE_PICK_OPTION_GAP,
     alignItems: 'center',
   },
   optionTile: {
     alignItems: 'center',
     justifyContent: 'center',
-    width: 224,
+    width: STYLE_PICK_OPTION_WIDTH,
     padding: 14,
     borderWidth: 2,
     borderColor: 'transparent',
-    backgroundColor: 'rgba(255,255,255,0.02)',
+    backgroundColor: '#F6F7F9',
   },
   optionTileSelected: {
-    borderColor: '#FFFFFF',
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderColor: BrandColors.primary,
+    backgroundColor: '#EEF2FF',
   },
   cardPreviewWrapper: {
     width: 180,
@@ -766,7 +811,7 @@ const stylePickStyles = StyleSheet.create({
     flex: 1,
   },
   tileLabel: {
-    color: 'rgba(246,246,242,0.5)',
+    color: '#555555',
     fontFamily: BrandFonts.primary,
     fontSize: 13,
     fontWeight: '500',
@@ -775,7 +820,7 @@ const stylePickStyles = StyleSheet.create({
     letterSpacing: 0.2,
   },
   tileLabelSelected: {
-    color: '#FFFFFF',
+    color: '#111111',
     fontWeight: '700',
   },
   logoPreviewImage: {
@@ -789,13 +834,13 @@ const stylePickStyles = StyleSheet.create({
     marginBottom: 26,
   },
   optionLabel: {
-    color: 'rgba(246,246,242,0.6)',
+    color: '#555555',
     fontFamily: BrandFonts.primary,
     fontSize: 13,
     fontWeight: '500',
   },
   optionLabelSelected: {
-    color: '#F6F6F2',
+    color: '#111111',
     fontFamily: BrandFonts.primary,
     fontSize: 15,
     fontWeight: '700',
@@ -817,27 +862,31 @@ const stylePickStyles = StyleSheet.create({
     alignItems: 'center',
     flex: 1,
     gap: 10,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+    borderRadius: 8,
+    paddingVertical: 8,
+  },
+  swatchOptionSelected: {
+    borderColor: '#111111',
   },
   swatchCircle: {
     width: 30,
     height: 30,
     borderRadius: 15,
     borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.28)',
+    borderColor: '#C8CDD6',
   },
-  swatchCircleSelected: {
-    borderColor: '#F6F6F2',
-    transform: [{ scale: 1.06 }],
-  },
+  swatchCircleSelected: {},
   swatchLabel: {
-    color: 'rgba(246,246,242,0.62)',
+    color: '#555555',
     fontFamily: BrandFonts.primary,
     fontSize: 12,
     fontWeight: '600',
     textAlign: 'center',
   },
   swatchLabelSelected: {
-    color: '#F6F6F2',
+    color: '#111111',
   },
   continueButton: {
     backgroundColor: '#001B5C',
@@ -845,7 +894,7 @@ const stylePickStyles = StyleSheet.create({
     paddingHorizontal: 64,
     borderRadius: 12,
     borderWidth: 1.5,
-    borderColor: '#FFFFFF',
+    borderColor: '#001B5C',
   },
   continueButtonText: {
     color: '#F6F6F2',

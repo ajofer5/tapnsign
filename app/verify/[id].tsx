@@ -24,6 +24,7 @@ type AutographRecord = {
   template_id: string | null;
   is_for_sale: boolean;
   price_cents: number | null;
+  prints_enabled?: boolean | null;
   creator_name: string;
   creator_verified: boolean;
   owner_name: string;
@@ -76,7 +77,7 @@ const TRUST_SIGNALS = [
   },
   {
     title: 'Creator Age Verified',
-    detail: 'Ophinia requires creators to be 18 or older. Identity-verified creators are confirmed via Stripe Identity.',
+    detail: 'Ophinia requires creators to be 18 or older before capturing public moments.',
   },
   {
     title: 'Ownership Chain Recorded',
@@ -195,7 +196,7 @@ export default function VerifyScreen() {
   const exportPdf = async () => {
     if (!record) return;
     setExporting(true);
-    const appUrl = process.env.EXPO_PUBLIC_APP_URL ?? 'https://tapnsign.app';
+    const appUrl = process.env.EXPO_PUBLIC_APP_URL ?? 'https://ophinia.com';
     const verifyUrl = `${appUrl}/verify/${record.certificate_id}`;
     try {
       if (Platform.OS === 'web') {
@@ -230,7 +231,7 @@ export default function VerifyScreen() {
 
   const openApp = () => {
     const appUrl = `autographappv2://verify/${id}`;
-    const storeUrl = 'https://apps.apple.com/app/tapnsign';
+    const storeUrl = 'https://ophinia.com';
     if (Platform.OS === 'web') {
       Linking.openURL(appUrl).catch(() => Linking.openURL(storeUrl));
     } else {
@@ -259,15 +260,13 @@ export default function VerifyScreen() {
   }
 
   const r = record!;
-  const listingLabel = r.is_for_sale
-    ? `For Sale · ${formatPrice(r.price_cents ?? 0)}`
-    : null;
+  const printLabel = r.prints_enabled ? 'Official prints available' : null;
 
-  const appUrl = process.env.EXPO_PUBLIC_APP_URL ?? 'https://tapnsign.app';
+  const appUrl = process.env.EXPO_PUBLIC_APP_URL ?? 'https://ophinia.com';
   const pageUrl = `${appUrl}/verify/${r.certificate_id}`;
   const ogTitle = `${r.creator_name} · Verified Autograph`;
-  const ogDescription = r.is_for_sale
-    ? `Authenticated signature captured on Ophinia. ${listingLabel} — tap to verify or purchase.`
+  const ogDescription = printLabel
+    ? `Authenticated signature captured on Ophinia. ${printLabel}.`
     : `Authenticated signature captured on Ophinia. Tap to verify certificate of authenticity.`;
   const ogImage = r.thumbnail_url ?? `${appUrl}/assets/images/icon.png`;
 
@@ -332,10 +331,10 @@ export default function VerifyScreen() {
         </View>
       )}
 
-      {/* Listing status */}
-      {r.is_for_sale && (
+      {/* Print status */}
+      {printLabel && (
         <View style={styles.listingBanner}>
-          <Text style={styles.listingBannerText}>{listingLabel}</Text>
+          <Text style={styles.listingBannerText}>{printLabel}</Text>
         </View>
       )}
 
@@ -364,16 +363,12 @@ export default function VerifyScreen() {
 
       <View style={styles.card}>
         <Row label="Signed by" value={r.creator_name} />
-        <Row label="Creator Identity" value={r.creator_verified ? 'Identity Verified' : 'Unverified'} />
-        <Row label="Current Owner" value={r.owner_name} />
         <Row label="Date Captured" value={formatDateTime(r.created_at)} />
       </View>
 
       <View style={styles.hashCard}>
         <Text style={styles.hashLabel}>Certificate ID</Text>
         <Text style={styles.hashValue}>{r.certificate_id}</Text>
-        <Text style={[styles.hashLabel, { marginTop: 12 }]}>Content Hash (SHA-256)</Text>
-        <Text style={styles.hashValue}>{r.content_hash}</Text>
       </View>
 
       <View style={styles.trustCard}>

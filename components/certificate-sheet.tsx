@@ -34,11 +34,11 @@ export function CertificateSheet({
     },
     {
       title: 'Server-Minted Certificate',
-      detail: 'Certificate IDs are issued by TapnSign on the backend, not generated on-device.',
+      detail: 'Certificate IDs are issued by Ophinia on the backend, not generated on-device.',
     },
     {
-      title: 'Original Creator Verified',
-      detail: 'Only verified creators can mint new TapnSign autographs.',
+      title: 'Creator Eligibility',
+      detail: 'Creators must meet Ophinia eligibility requirements before capturing public moments.',
     },
     {
       title: 'Ownership Chain Recorded',
@@ -46,7 +46,7 @@ export function CertificateSheet({
     },
     {
       title: 'Duplicate-Protected Minting',
-      detail: 'TapnSign checks for duplicate media and stroke signatures before minting.',
+      detail: 'Ophinia checks for duplicate media and stroke signatures before minting.',
     },
   ];
 
@@ -61,12 +61,6 @@ export function CertificateSheet({
             <Text style={styles.label}>Signed By</Text>
             <Text style={styles.value}>{signedBy}</Text>
           </View>
-          {currentOwner ? (
-            <View style={styles.row}>
-              <Text style={styles.label}>Current Owner</Text>
-              <Text style={styles.value}>{currentOwner}</Text>
-            </View>
-          ) : null}
           <View style={styles.row}>
             <Text style={styles.label}>Date Captured</Text>
             <Text style={styles.value}>{dateCaptured}</Text>

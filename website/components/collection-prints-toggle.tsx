@@ -21,13 +21,13 @@ export function CollectionPrintsToggle({ autographId, enabled }: Props) {
     <button
       onClick={handleToggle}
       disabled={isPending}
-      className={`shrink-0 rounded-[4px] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] transition-colors disabled:opacity-50 ${
+      className={`shrink-0 rounded-[4px] px-3 py-1.5 text-[11px] font-semibold transition-colors disabled:opacity-50 ${
         enabled
           ? 'bg-[#001B5C] text-white hover:bg-[#00144A]'
           : 'border border-gray-300 text-gray-600 hover:border-gray-500 hover:text-gray-800'
       }`}
     >
-      {isPending ? '…' : enabled ? 'Prints On' : 'Prints Off'}
+      {isPending ? '…' : enabled ? 'Public Prints On' : 'Public Prints Off'}
     </button>
   );
 }

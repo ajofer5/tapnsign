@@ -169,6 +169,7 @@ export default function ProfileScreen() {
   const [printQuantity, setPrintQuantity] = useState(1);
   const [multiPrintMode, setMultiPrintMode] = useState(false);
   const [selectedPrintIds, setSelectedPrintIds] = useState<string[]>([]);
+  const [watchedIds, setWatchedIds] = useState<Set<string>>(new Set());
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
 
   const isOwnProfile = user?.id === id;
@@ -587,6 +588,29 @@ export default function ProfileScreen() {
     }
   };
 
+  const toggleWatch = async (item: Listing) => {
+    if (!user) return;
+    const isWatched = watchedIds.has(item.id);
+    setWatchedIds((prev) => {
+      const next = new Set(prev);
+      if (isWatched) next.delete(item.id); else next.add(item.id);
+      return next;
+    });
+    try {
+      if (isWatched) {
+        await supabase.from('watchlist').delete().eq('user_id', user.id).eq('autograph_id', item.id);
+      } else {
+        await supabase.from('watchlist').insert({ user_id: user.id, autograph_id: item.id });
+      }
+    } catch {
+      setWatchedIds((prev) => {
+        const next = new Set(prev);
+        if (isWatched) next.add(item.id); else next.delete(item.id);
+        return next;
+      });
+    }
+  };
+
   useEffect(() => {
     return () => {
       if (creatorSavedNoticeTimerRef.current) {
@@ -618,7 +642,7 @@ export default function ProfileScreen() {
         }
 
         if (user?.id && user.id !== id) {
-          const [{ data: blockedRow }, { data: savedRow }] = await Promise.all([
+          const [{ data: blockedRow }, { data: savedRow }, { data: watchRows }] = await Promise.all([
             supabase
               .from('blocked_users')
               .select('blocked_user_id')
@@ -631,9 +655,14 @@ export default function ProfileScreen() {
               .eq('user_id', user.id)
               .eq('creator_id', id)
               .maybeSingle(),
+            supabase
+              .from('watchlist')
+              .select('autograph_id')
+              .eq('user_id', user.id),
           ]);
           setIsBlockedProfile(!!blockedRow);
           setSavedCreator(!!savedRow);
+          setWatchedIds(new Set((watchRows ?? []).map((r: { autograph_id: string }) => r.autograph_id)));
           void logInterestEvent('view_profile', { creatorId: id });
         } else {
           setIsBlockedProfile(false);
@@ -684,11 +713,6 @@ export default function ProfileScreen() {
               strokeColor={profile.avatar_autograph?.stroke_color}
               size={72}
             />
-            {profile.verified && (
-              <View style={styles.verifiedBadge}>
-                <Text style={styles.verifiedBadgeText}>✓ Verified</Text>
-              </View>
-            )}
           </View>
           <View style={styles.headerInfo}>
             <View style={styles.nameRow}>
@@ -697,6 +721,11 @@ export default function ProfileScreen() {
             {profile.bio ? (
               <Text style={styles.profileBio}>{profile.bio}</Text>
             ) : null}
+            {!isOwnProfile && (
+              <Pressable onPress={handleToggleSavedCreator} style={[styles.saveCreatorButton, { marginTop: 6, alignSelf: 'flex-start' }]} disabled={savingCreator}>
+                <Text style={styles.saveCreatorButtonText}>{savedCreator ? 'Unsave Creator' : 'Save Creator'}</Text>
+              </Pressable>
+            )}
           </View>
         </Pressable>
       {isOwnProfile && (
@@ -705,14 +734,9 @@ export default function ProfileScreen() {
           </Pressable>
         )}
         {!isOwnProfile && (
-          <View style={styles.profileHeaderActions}>
-            <Pressable onPress={() => setProfileMenuVisible(true)} hitSlop={10} style={styles.profileReportAction}>
-              <FontAwesome name="exclamation-circle" size={20} color="#777" />
-            </Pressable>
-            <Pressable onPress={handleToggleSavedCreator} hitSlop={10} style={styles.profileSaveAction} disabled={savingCreator}>
-              <FontAwesome name={savedCreator ? 'bookmark' : 'bookmark-o'} size={20} color={savedCreator ? BrandColors.primary : '#777'} />
-            </Pressable>
-          </View>
+          <Pressable onPress={() => setProfileMenuVisible(true)} hitSlop={10} style={styles.profileReportAction}>
+            <FontAwesome name="exclamation-circle" size={20} color="#777" />
+          </Pressable>
         )}
       </View>
 
@@ -731,7 +755,7 @@ export default function ProfileScreen() {
               <Text style={styles.multiPrintToolbarText}>
                 {multiPrintMode
                   ? `${selectedPrintIds.length}/5 selected`
-                  : `${publicVideos.length} public prints`}
+                  : `${publicVideos.length} moment${publicVideos.length !== 1 ? 's' : ''}`}
               </Text>
               <View style={styles.multiPrintToolbarActions}>
                 {multiPrintMode ? (
@@ -754,7 +778,7 @@ export default function ProfileScreen() {
                   disabled={multiPrintMode && selectedPrintIds.length === 0}
                 >
                   <Text style={styles.multiPrintPrimaryButtonText}>
-                    {multiPrintMode ? `Print ${selectedPrintIds.length}` : 'Select Prints'}
+                    {multiPrintMode ? `Print ${selectedPrintIds.length}` : 'Print Multiple'}
                   </Text>
                 </Pressable>
               </View>
@@ -858,7 +882,7 @@ export default function ProfileScreen() {
           ) : null}
         </View>
       ) : (
-        <Text style={styles.emptyStateText}>No public prints</Text>
+        <Text style={styles.emptyStateText}>No moments yet</Text>
       )}
 
       <Modal
@@ -958,14 +982,19 @@ export default function ProfileScreen() {
                   </Text>
                 ) : null}
                 <View style={styles.modalUtilityRow}>
-                  <Pressable style={styles.modalUtilityButton} onPress={() => { void handleShare(previewItem); }}>
-                    <Text style={styles.modalUtilityButtonText}>Share</Text>
-                  </Pressable>
-                  {canBuyPrint(previewItem) && (
-                    <Pressable style={styles.modalUtilityButton} onPress={() => { void openPrintPreview(previewItem); }}>
-                      <Text style={styles.modalUtilityButtonText}>Order Print</Text>
+                  {!isOwnProfile && (
+                    <Pressable
+                      style={[styles.modalUtilityButton, watchedIds.has(previewItem.id) && styles.modalUtilityButtonSaved]}
+                      onPress={() => { void toggleWatch(previewItem); }}
+                    >
+                      <Text style={styles.modalUtilityButtonText}>
+                        {watchedIds.has(previewItem.id) ? 'Saved' : 'Save Moment'}
+                      </Text>
                     </Pressable>
                   )}
+                  <Pressable style={styles.modalUtilityButton} onPress={() => { void openPrintPreview(previewItem); }}>
+                    <Text style={styles.modalUtilityButtonText}>Print Preview</Text>
+                  </Pressable>
                 </View>
               </View>
             </>
@@ -1338,6 +1367,23 @@ const styles = StyleSheet.create({
   profileSaveAction: {
     paddingHorizontal: 4,
     paddingVertical: 2,
+  },
+  saveCreatorRow: {
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  saveCreatorButton: {
+    borderWidth: 1,
+    borderColor: BrandColors.primary,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+  },
+  saveCreatorButtonText: {
+    color: BrandColors.primary,
+    fontSize: 13,
+    fontFamily: BrandFonts.primary,
+    fontWeight: '700',
   },
   creatorSavedNotice: {
     position: 'absolute',
@@ -1950,7 +1996,10 @@ const styles = StyleSheet.create({
   },
   modalUtilityRow: {
     width: '100%',
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
     marginTop: 8,
   },
   modalUtilityButton: {
@@ -1959,6 +2008,10 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 18,
     paddingVertical: 8,
+  },
+  modalUtilityButtonSaved: {
+    borderColor: 'rgba(255,255,255,0.7)',
+    backgroundColor: 'rgba(255,255,255,0.15)',
   },
   modalUtilityButtonText: {
     color: '#fff',
