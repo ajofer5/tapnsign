@@ -87,7 +87,7 @@ export default async function VerifyPage({ params }: { params: Promise<{ id: str
 
             {/* Thumbnail */}
             {cert.thumbnail_url && (
-              <div className="rounded-2xl overflow-hidden mb-6 bg-black aspect-[9/16] max-h-72 mx-auto">
+              <div className="overflow-hidden mb-6 bg-black aspect-[9/16] max-h-72 mx-auto">
                 <img
                   src={cert.thumbnail_url}
                   alt="Autograph"

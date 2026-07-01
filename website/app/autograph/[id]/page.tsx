@@ -11,17 +11,12 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
 
   return (
     <div className="mx-auto max-w-sm px-6 py-10">
-      <div className="overflow-hidden rounded-[14px] bg-black">
-        <video
-          poster={listing.thumbnail_url ?? undefined}
-          controls
-          playsInline
-          preload="metadata"
+      <div className="overflow-hidden bg-black">
+        <img
+          src={listing.print_preview_url ?? listing.thumbnail_url ?? undefined}
+          alt="Moment"
           className="aspect-[3/5] w-full object-cover"
-        >
-          <source src={listing.video_url} type="video/mp4" />
-          <source src={listing.video_url} type="video/quicktime" />
-        </video>
+        />
       </div>
 
       <div className="mt-4 flex flex-col gap-2">

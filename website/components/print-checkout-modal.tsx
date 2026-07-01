@@ -134,7 +134,7 @@ export function PrintCheckoutModal({ autographId, autographIds, selectedPrints, 
                   <div className="flex gap-3 overflow-x-auto pb-1">
                     {selectedPrintPreviews.map((item, index) => (
                       <div key={item.id} className="w-28 shrink-0">
-                        <div className="relative overflow-hidden rounded-lg bg-[#151718]">
+                        <div className="relative overflow-hidden bg-[#151718]">
                           {item.imageUrl ? (
                             <img
                               src={item.imageUrl}
@@ -160,7 +160,7 @@ export function PrintCheckoutModal({ autographId, autographIds, selectedPrints, 
                   </div>
                 </div>
               ) : (
-                <div className="relative overflow-hidden rounded-lg bg-[#151718]">
+                <div className="relative overflow-hidden bg-[#151718]">
                   {preview.thumbnail_url ? (
                     <img
                       src={preview.thumbnail_url}
@@ -185,8 +185,8 @@ export function PrintCheckoutModal({ autographId, autographIds, selectedPrints, 
                   </p>
                   <p className="mt-1 text-xs text-gray-500">
                     {isBundle
-                      ? `${selectedAutographIds.length} official 8×10 prints · ships together from US`
-                      : '8×10 lustre photo print · ships from US'}
+                      ? `${selectedAutographIds.length} official 8×10 prints`
+                      : '8×10 print'}
                   </p>
                 </div>
                 {/* Quantity */}

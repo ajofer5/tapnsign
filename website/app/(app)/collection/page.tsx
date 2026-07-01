@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { CollectionPrintsToggle } from '../../../components/collection-prints-toggle';
+import { PrintPreviewButton } from '../../../components/print-preview-button';
 import { type WebsiteListing } from '../../../lib/listings';
 import { getMyListings, type WebsiteMyListing } from '../../../lib/me';
 import { webRouteToAutograph } from '../../../lib/routes';
@@ -150,6 +151,7 @@ export default async function CollectionPage({ searchParams }: CollectionPagePro
               <AutographRow
                 key={item.id}
                 item={item}
+                showPrintCount
                 action={isCreator ? (
                   <CollectionPrintsToggle autographId={item.id} enabled={item.prints_enabled} />
                 ) : (
@@ -167,7 +169,7 @@ export default async function CollectionPage({ searchParams }: CollectionPagePro
             <AutographRow
               key={item.id}
               item={item}
-              action={<ViewLink href={webRouteToAutograph(item.id)} />}
+              action={<PrintPreviewButton autographId={item.id} />}
             />
           ))}
         </div>
@@ -227,9 +229,11 @@ export default async function CollectionPage({ searchParams }: CollectionPagePro
 function AutographRow({
   item,
   action,
+  showPrintCount = false,
 }: {
   item: WebsiteMyListing | WebsiteListing;
   action: ReactNode;
+  showPrintCount?: boolean;
 }) {
   const seqDate = [
     item.creator_sequence_number != null ? `#${item.creator_sequence_number}` : null,
@@ -271,9 +275,11 @@ function AutographRow({
         {seriesLine ? (
           <div className="mt-0.5 truncate text-xs text-gray-400">{seriesLine}</div>
         ) : null}
-        <div className="mt-0.5 text-xs text-gray-400">
-          Printed {item.print_count ?? 0} {(item.print_count ?? 0) === 1 ? 'time' : 'times'}
-        </div>
+        {showPrintCount ? (
+          <div className="mt-0.5 text-xs text-gray-400">
+            Printed {item.print_count ?? 0} {(item.print_count ?? 0) === 1 ? 'time' : 'times'}
+          </div>
+        ) : null}
       </div>
 
       <div className="shrink-0">{action}</div>

@@ -124,24 +124,28 @@ export function WebListingCard({
           ) : null}
         </div>
 
-        {/* Metadata + button */}
-        <div className="border-t border-gray-200 p-3.5">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <p className="line-clamp-1 text-xs leading-5 text-gray-500">
-                {listing.creator_sequence_number != null ? `#${listing.creator_sequence_number} · ` : ''}
-                {formatDate(listing.created_at)}
+        {/* Metadata + buttons */}
+        <div className="border-t border-gray-200 p-3.5 space-y-2.5">
+          {/* Metadata */}
+          <div>
+            <p className="line-clamp-1 text-xs leading-5 text-gray-500">
+              {[
+                listing.creator_sequence_number != null ? `#${listing.creator_sequence_number}` : null,
+                formatDate(listing.created_at),
+              ].filter(Boolean).join(' · ')}
+            </p>
+            {listing.series_name ? (
+              <p className="mt-0.5 line-clamp-1 text-xs leading-5 text-gray-500">
+                {listing.series_name}
+                {listing.series_sequence_number != null && listing.series_max_size != null
+                  ? ` · ${listing.series_sequence_number} of ${listing.series_max_size}`
+                  : ''}
               </p>
-              {listing.series_name ? (
-                <p className="mt-0.5 line-clamp-1 text-xs leading-5 text-gray-500">
-                  {listing.series_name}
-                  {listing.series_sequence_number != null && listing.series_max_size != null
-                    ? ` · ${listing.series_sequence_number} of ${listing.series_max_size}`
-                    : ''}
-                </p>
-              ) : null}
-            </div>
-            <div className="flex shrink-0 items-center gap-1.5">
+            ) : null}
+          </div>
+
+          {/* Buttons */}
+          <div className="flex items-center gap-1.5">
               {showProfileButton && (
                 <Link
                   href={`/profile/${listing.creator_id}`}
@@ -181,7 +185,6 @@ export function WebListingCard({
                   View
                 </Link>
               )}
-            </div>
           </div>
         </div>
       </article>
