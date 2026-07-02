@@ -6,11 +6,8 @@ import { PublicVideoThumbnail } from '@/components/public-video-thumbnail';
 import { BrandColors, BrandFonts } from '@/constants/theme';
 import { callEdgeFunction } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
-import { DIGITAL_TRADING_ENABLED } from '@/lib/digital-trading';
 import { buildAutographUrl } from '@/lib/public-links';
 import { supabase } from '@/lib/supabase';
-import { openAuthenticatedWebPath } from '@/lib/web-handoff';
-import FontAwesome from '@expo/vector-icons/FontAwesome';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useStripe } from '@stripe/stripe-react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -88,18 +85,6 @@ type AutographItem = {
   printLimit: number | null;
 };
 
-type IncomingOfferItem = {
-  id: string;
-  autographId: string;
-  creatorName: string;
-  creatorSequenceNumber: number | null;
-  amountCents: number;
-  status: 'pending' | 'accepted' | 'on_hold';
-  expiresAt: string | null;
-  paymentDueAt: string | null;
-  createdAt: string;
-};
-
 type PrintPreview = {
   autograph_id: string;
   total_print_count: number;
@@ -153,18 +138,6 @@ type OwnedListingRow = {
   print_count: number | null;
   prints_enabled: boolean | null;
   print_limit: number | null;
-};
-
-type OfferQueueRow = {
-  autograph_id: string;
-  offer_id: string;
-  amount_cents: number;
-  status: 'pending' | 'accepted' | 'on_hold';
-  expires_at: string | null;
-  payment_due_at: string | null;
-  created_at: string;
-  creator_name: string | null;
-  creator_sequence_number: number | null;
 };
 
 type SavedCreatorItem = {
@@ -223,19 +196,6 @@ function formatDateTime(value: string) {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
-  });
-}
-
-function formatDateTimeWithClock(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-
-  return date.toLocaleString([], {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
   });
 }
 
@@ -308,20 +268,6 @@ function mapSavedListingRow(row: OwnedListingRow & { saved_at?: string | null })
   };
 }
 
-function mapOfferQueueRow(row: OfferQueueRow): IncomingOfferItem {
-  return {
-    id: row.offer_id,
-    autographId: row.autograph_id,
-    creatorName: row.creator_name ?? 'Unknown',
-    creatorSequenceNumber: row.creator_sequence_number ?? null,
-    amountCents: row.amount_cents,
-    status: row.status,
-    expiresAt: row.expires_at ?? null,
-    paymentDueAt: row.payment_due_at ?? null,
-    createdAt: row.created_at,
-  };
-}
-
 function mapSavedCreatorRow(row: SavedCreatorRow): SavedCreatorItem {
   return {
     savedAt: row.saved_at,
@@ -354,24 +300,8 @@ export default function AutographsScreen() {
   const [savedCards, setSavedCards] = useState<AutographItem[]>([]);
   const [savedCreators, setSavedCreators] = useState<SavedCreatorItem[]>([]);
   const [activeSegment, setActiveSegment] = useState<CollectionSegment>('created');
-  const [incomingOffers, setIncomingOffers] = useState<IncomingOfferItem[]>([]);
   const [selectedItem, setSelectedItem] = useState<AutographItem | null>(null);
   const [certItem, setCertItem] = useState<AutographItem | null>(null);
-  const [sellItems, setSellItems] = useState<AutographItem[]>([]);
-  const [listingMode, setListingMode] = useState<'buy_now' | 'make_offer'>('buy_now');
-  const [priceInput, setPriceInput] = useState('');
-  const [autoDeclineBelow, setAutoDeclineBelow] = useState(false);
-  const [autoAcceptAbove, setAutoAcceptAbove] = useState(false);
-
-  // Formats a cents-as-string value to "X.XX" display string
-  const formatCentsInput = (raw: string) => {
-    const digits = raw.replace(/\D/g, '');
-    if (!digits) return '';
-    const cents = parseInt(digits, 10);
-    return (cents / 100).toFixed(2);
-  };
-  const handlePriceChange = (text: string) => setPriceInput(formatCentsInput(text));
-  const [saving, setSaving] = useState(false);
   const [sort, setSort] = useState<AutographSort>('newest');
   const [seriesNameInput, setSeriesNameInput] = useState('');
   const [seriesSelectionMode, setSeriesSelectionMode] = useState(false);
@@ -379,7 +309,6 @@ export default function AutographsScreen() {
   const [seriesSaving, setSeriesSaving] = useState(false);
   const [contextMenuVisible, setContextMenuVisible] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [offerActioningId, setOfferActioningId] = useState<string | null>(null);
   const [printItem, setPrintItem] = useState<AutographItem | null>(null);
   const [printPreview, setPrintPreview] = useState<PrintPreview | null>(null);
   const [loadingPrintPreview, setLoadingPrintPreview] = useState(false);
@@ -437,29 +366,6 @@ export default function AutographsScreen() {
       AsyncStorage.setItem(collectionSegmentStorageKey, segment).catch(() => {});
     }
   }, [collectionSegmentStorageKey]);
-
-  const closeSellSheet = () => {
-    setSellItems([]);
-    setListingMode('buy_now');
-    setPriceInput('');
-    setAutoDeclineBelow(false);
-    setAutoAcceptAbove(false);
-  };
-
-  const openSellSheet = (_items: AutographItem[]) => {
-    if (!DIGITAL_TRADING_ENABLED) return;
-    void openAuthenticatedWebPath('/app/me/listings').catch(() => {
-      Alert.alert('Print Settings', 'Could not open print settings. Please try again.');
-    });
-  };
-
-  const handleListForSale = async () => {
-    closeSellSheet();
-  };
-
-  const handleRemoveFromSale = (item: AutographItem) => {
-    void item;
-  };
 
   const handleDelete = (item: AutographItem) => {
     // Listed or open to trade — must unlist first
@@ -870,20 +776,19 @@ export default function AutographsScreen() {
     }
   };
 
-  const handleUnsaveCreator = async (creator: SavedCreatorItem) => {
+  const handleToggleSaveCard = async (item: AutographItem) => {
     if (!user) return;
-    const previous = savedCreators;
-    setSavedCreators((current) => current.filter((saved) => saved.creatorId !== creator.creatorId));
-
-    const { error } = await supabase
-      .from('saved_creators')
-      .delete()
-      .eq('user_id', user.id)
-      .eq('creator_id', creator.creatorId);
-
-    if (error) {
-      setSavedCreators(previous);
-      Alert.alert('Saved Creators', 'Could not unsave this creator. Please try again.');
+    const isSaved = savedCards.some((c) => c.id === item.id);
+    if (isSaved) {
+      await handleUnsaveCard(item);
+    } else {
+      setSavedCards((current) => [...current, item]);
+      const { error } = await supabase
+        .from('watchlist')
+        .insert({ user_id: user.id, autograph_id: item.id });
+      if (error && error.code !== '23505') {
+        setSavedCards((current) => current.filter((c) => c.id !== item.id));
+      }
     }
   };
 
@@ -1024,29 +929,6 @@ export default function AutographsScreen() {
     }
   }, [activeSegment, hasMoreCollection, loadingMoreCollection, savedCreators, user]);
 
-  const loadOfferQueue = useCallback(async () => {
-    if (!user || !DIGITAL_TRADING_ENABLED) {
-      setIncomingOffers([]);
-      return;
-    }
-    const offersRes = await supabase.rpc('get_offer_queue_feed', {
-      p_owner_id: user.id,
-      p_limit: 100,
-      p_before_headline_amount: null,
-      p_before_headline_created_at: null,
-      p_before_autograph_id: null,
-    });
-
-    if (offersRes.error) {
-      console.log('Load offers error:', offersRes.error);
-      setIncomingOffers([]);
-      return;
-    }
-
-    const offerRows = (offersRes.data as OfferQueueRow[] ?? []);
-    setIncomingOffers(offerRows.map(mapOfferQueueRow));
-  }, [user]);
-
   useFocusEffect(
     useCallback(() => {
       if (!user) return;
@@ -1055,21 +937,13 @@ export default function AutographsScreen() {
       void (async () => {
         if (cancelled) return;
         await loadInitialCollection();
-        if (!cancelled && DIGITAL_TRADING_ENABLED) {
-          void loadOfferQueue();
-        }
       })();
 
       return () => {
         cancelled = true;
       };
-    }, [loadInitialCollection, loadOfferQueue, user])
+    }, [loadInitialCollection, user])
   );
-
-  const handleIncomingOffer = async (offerId: string, action: 'accept' | 'decline') => {
-    void offerId;
-    void action;
-  };
 
   const filteredData = useMemo(() => {
     if (activeSegment === 'saved_cards') return savedCards;
@@ -1133,40 +1007,6 @@ export default function AutographsScreen() {
     }),
     [insets.bottom]
   );
-
-  const autographMap = useMemo(
-    () => Object.fromEntries(data.map((item) => [item.id, item])),
-    [data]
-  );
-
-  const offersByAutograph = useMemo(() => {
-    if (!DIGITAL_TRADING_ENABLED) return [];
-    const grouped = new Map<string, IncomingOfferItem[]>();
-
-    for (const offer of incomingOffers) {
-      const existing = grouped.get(offer.autographId) ?? [];
-      existing.push(offer);
-      grouped.set(offer.autographId, existing);
-    }
-
-    return Array.from(grouped.entries()).map(([autographId, offers]) => {
-      const accepted = offers.find((offer) => offer.status === 'accepted') ?? null;
-      const onHold = offers
-        .filter((offer) => offer.status === 'on_hold')
-        .sort((a, b) => b.amountCents - a.amountCents || new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-      const pending = offers
-        .filter((offer) => offer.status === 'pending')
-        .sort((a, b) => b.amountCents - a.amountCents || new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-
-      return {
-        autographId,
-        autograph: autographMap[autographId] ?? null,
-        accepted,
-        onHold,
-        pending,
-      };
-    });
-  }, [incomingOffers, autographMap]);
 
   const segmentLabels: { key: CollectionSegment; label: string }[] = [
     { key: 'created', label: 'Captured' },
@@ -1323,16 +1163,6 @@ export default function AutographsScreen() {
                     ) : null}
                   </View>
                   <View style={styles.listRowBottom}>
-                    <Pressable
-                      style={styles.savedRowBookmarkButton}
-                      onPress={(event) => {
-                        event.stopPropagation();
-                        void handleUnsaveCreator(creator);
-                      }}
-                      hitSlop={10}
-                    >
-                      <FontAwesome name="bookmark" size={18} color={BrandColors.primary} />
-                    </Pressable>
                     <Text style={styles.savedMetaText}>Saved {formatDateTime(creator.savedAt)}</Text>
                   </View>
                 </View>
@@ -1421,16 +1251,7 @@ export default function AutographsScreen() {
                     </>
                   ) : (
                     <>
-                      <Pressable
-                        style={styles.savedRowBookmarkButton}
-                        onPress={(event) => {
-                          event.stopPropagation();
-                          void handleUnsaveCard(item);
-                        }}
-                        hitSlop={10}
-                      >
-                        <FontAwesome name="bookmark" size={18} color={BrandColors.primary} />
-                      </Pressable>
+                      <View style={styles.listRowBottomSpacer} />
                       <Pressable
                         style={[styles.publicPrintsButton, styles.buyPrintButton]}
                         onPress={(event) => {
@@ -1497,9 +1318,17 @@ export default function AutographsScreen() {
                   </Text>
                 ) : null}
                 <View style={styles.modalUtilityRow}>
-                  <Pressable style={styles.modalUtilityButton} onPress={() => { void shareAutograph(selectedItem); }}>
-                    <Text style={styles.modalUtilityButtonText}>Share</Text>
-                  </Pressable>
+                  {savedCards.some((c) => c.id === selectedItem.id) ? (
+                    <Pressable style={styles.modalUtilityButton} onPress={() => { void handleToggleSaveCard(selectedItem); }}>
+                      <Text style={styles.modalUtilityButtonText}>
+                        {savedCards.some((c) => c.id === selectedItem.id) ? 'Unsave' : 'Save Moment'}
+                      </Text>
+                    </Pressable>
+                  ) : (
+                    <Pressable style={styles.modalUtilityButton} onPress={() => { void shareAutograph(selectedItem); }}>
+                      <Text style={styles.modalUtilityButtonText}>Share</Text>
+                    </Pressable>
+                  )}
                   <Pressable
                     style={styles.modalUtilityButton}
                     onPress={() => { void openPrintPreview(selectedItem); }}
