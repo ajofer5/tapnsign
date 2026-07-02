@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { PrintPreviewButton } from '../../../components/print-preview-button';
 import { getWebsiteListing } from '../../../lib/listings';
 import { getWebSessionUser } from '../../../lib/web-auth';
 
@@ -10,22 +11,28 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
   if (!listing) notFound();
 
   return (
-    <div className="mx-auto max-w-sm px-6 py-10">
+    <div className="mx-auto max-w-lg px-6 py-10">
       <div className="overflow-hidden bg-black">
         <img
           src={listing.print_preview_url ?? listing.thumbnail_url ?? undefined}
           alt="Moment"
-          className="aspect-[3/5] w-full object-cover"
+          className="w-full h-auto block"
         />
       </div>
 
-      <div className="mt-4 flex flex-col gap-2">
+      <div className="mt-4 flex gap-2">
         <Link
           href={`/verify/${listing.certificate_id}`}
-          className="block rounded-lg border border-gray-300 px-5 py-3 text-center text-sm font-semibold text-gray-700 transition-colors hover:border-black hover:text-black"
+          className="flex-1 block rounded-lg border border-gray-300 px-5 py-3 text-center text-sm font-semibold text-gray-700 transition-colors hover:border-black hover:text-black"
         >
           View Certificate
         </Link>
+        {listing.prints_enabled && (
+          <PrintPreviewButton
+            autographId={listing.id}
+            className="flex-1 rounded-lg bg-[#001B5C] px-5 py-3 text-center text-sm font-semibold text-white transition-colors hover:bg-[#00144A]"
+          />
+        )}
       </div>
     </div>
   );
